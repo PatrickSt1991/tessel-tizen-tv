@@ -150,11 +150,12 @@
             <span id="time-duration">00:00</span>
         </div>
         <div class="controls">
-            <button class="ctrl" data-action="prev" id="btn-prev" title="Previous">⏮</button>
+            <button class="ctrl" data-action="prev" id="btn-prev" title="Restart / Previous">⏮</button>
             <button class="ctrl" data-action="rewind">⏪</button>
             <button class="ctrl big" data-action="play-pause" id="btn-playpause" data-focus>▶</button>
             <button class="ctrl" data-action="forward">⏩</button>
             <button class="ctrl" data-action="next" id="btn-next" title="Next">⏭</button>
+            <span class="ctrl-sep" aria-hidden="true"></span>
             <button class="ctrl" data-action="open-track-menu">CC</button>
             <button class="ctrl ctrl-text" data-action="open-speed-picker" id="btn-speed" title="Playback speed">1×</button>
             <button class="ctrl ctrl-text" data-action="open-aspect-picker" id="btn-aspect" title="Aspect ratio / zoom">Fit</button>
@@ -217,6 +218,10 @@
             <button class="settings-row" data-action="setting-auto-play">
                 <div class="settings-label">Auto-play next file</div>
                 <div class="settings-value" id="setting-auto-play-value">Off</div>
+            </button>
+            <button class="settings-row" data-action="setting-resume-mode">
+                <div class="settings-label">Resume playback</div>
+                <div class="settings-value" id="setting-resume-mode-value">Ask</div>
             </button>
             <button class="settings-row" data-action="setting-shuffle">
                 <div class="settings-label">Shuffle playlist</div>

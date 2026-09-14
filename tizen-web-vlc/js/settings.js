@@ -11,6 +11,10 @@ var Settings = (function () {
         subtitleLang:     'off',       // 'off' = no subs, '' = auto (file's default track), or ISO code
         repeatMode:       'off',       // 'off' | 'one'
         autoPlay:         false,       // auto-play the next file in the folder when one finishes
+        // What to do when a file with a saved position is opened again:
+        // 'ask' shows a Continue / Start-over prompt, 'always' resumes
+        // silently (the pre-1.5 behaviour), 'never' starts from the top.
+        resumeMode:       'ask',       // 'ask' | 'always' | 'never'
         shuffle:          false,       // randomize playlist order (folder + recent) instead of alphabetical
         // Route USB / internal-storage files through the paired transcode
         // server instead of straight into AVPlay.  Off by default: it only
