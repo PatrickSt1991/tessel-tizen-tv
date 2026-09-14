@@ -89,6 +89,11 @@
      * at or just before the exit point — replaying a few seconds of
      * context instead of silently skipping content. */
     var RESUME_BACKOFF_MS = 10000;
+    /* Prev doubles as Restart: past this point in the file it seeks to 0,
+     * and only a press within the first seconds jumps to the previous item
+     * (the music-player convention).  Also the floor for dimming the OSD
+     * button when there is neither a previous item nor anything to rewind. */
+    var RESTART_THRESHOLD_MS = 3000;
     function getResumeMap() {
         try { return JSON.parse(localStorage.getItem(RESUME_KEY) || '{}'); }
         catch (e) { return {}; }
@@ -145,6 +150,8 @@
     var lastProgress = { time: 0, duration: 0 };
     // Throttle for the periodic resume-position checkpoint.
     var lastResumeSaveAt = 0;
+    // Whether the OSD Prev button is currently lit as "Restart".
+    var prevRestartLit = false;
 
     /* When the TV goes to standby, Tizen suspends the WebView.  AVPlay does
      * NOT survive this cleanly: on wake the session comes back with A/V
@@ -258,6 +265,9 @@
             // position, not the real playhead.
             if (!scrub.active && !scrub.waiting)
                 updateProgress(p && p.time, p && p.duration);
+            // Prev lights up as Restart once past the first seconds.
+            var canRestart = lastProgress.time > RESTART_THRESHOLD_MS;
+            if (canRestart !== prevRestartLit) { prevRestartLit = canRestart; updateNextPrevButtons(); }
             // Checkpoint the position every 5 s so it survives a power-off
             // or app kill where exitPlayer never gets a chance to run.
             if (state.playingUri && lastProgress.time >= RESUME_MIN_MS &&
@@ -344,7 +354,7 @@
             case 'back-home':          backToHome(); break;
             case 'play-pause':         Player.togglePause(); scheduleOSDHide(); break;
             case 'stop':               exitPlayer(); break;
-            case 'prev':               if (!playPrev())      UI.toast('No previous item'); break;
+            case 'prev':               handlePrev(); break;
             case 'next':               if (!playNext(false)) UI.toast('No next item');     break;
             case 'rewind':             Player.seekRel(-10000); flashOSD(); break;
             case 'forward':            Player.seekRel( 10000); flashOSD(); break;
@@ -360,6 +370,7 @@
             case 'setting-subtitle-lang': openLangPicker('subtitleLang', 'Preferred subtitle language', LanguageList.forSubtitle()); break;
             case 'setting-repeat-mode':   openRepeatPicker(); break;
             case 'setting-auto-play':     openAutoPlayPicker(); break;
+            case 'setting-resume-mode':   openResumeModePicker(); break;
             case 'setting-shuffle':       openShufflePicker(); break;
             case 'setting-aspect-mode':   openAspectPicker(); break;
             case 'setting-subtitle-size':     openSubtitlePicker('subtitleSize',     'Subtitle size',       SubtitleStyle.forSize());     break;
@@ -377,7 +388,7 @@
         state.originDir = null;
         state.playlist  = [{ uri: url, title: title }];
         state.playlistIndex = 0;
-        playUri(url, title);
+        playUri(url, title, { askResume: true });
     }
 
     /* ── URL drop (paste from any device) ─────────────────────────────
@@ -612,11 +623,32 @@
     function playUri(uri, title, opts) {
         opts = opts || {};
         if (typeof Debug !== 'undefined') Debug.player('playUri uri=' + uri + '  title=' + title);
+
+        /* Issue #78: a file opened from a list or the URL screen that has a
+         * saved position asks Continue / Start over first (Settings → Resume
+         * playback = Ask).  The prompt runs BEFORE anything below touches
+         * player state, so BACK / Cancel simply leaves the user where they
+         * were.  Next/Prev, auto-play and standby wakes never ask. */
+        if (opts.askResume && !opts.resume &&
+            Settings.get('resumeMode') === 'ask' && resumePosFor(uri)) {
+            var again = {};
+            for (var k in opts) again[k] = opts[k];
+            again.askResume = false;
+            openPicker(title || uri, [
+                { code: 'continue', name: 'Continue from ' + fmtTime(resumePosFor(uri)) },
+                { code: 'restart',  name: 'Start from the beginning' }
+            ], 'continue', function (val) {
+                again.fromStart = (val === 'restart');
+                playUri(uri, title, again);
+            });
+            return;
+        }
         // Reset the once-per-file gate so applyLanguagePreferences runs for
         // the new file (and not for the previous file).
         prefsAppliedFor = null;
         lastProgress = { time: 0, duration: 0 };
         lastResumeSaveAt = 0;
+        prevRestartLit = false;
         resetScrub();          // a scrub/settle from the previous file must
                                // not freeze the new file's progress bar
 
@@ -628,6 +660,11 @@
          * never reached PLAYING can't leak into the next file. */
         if (opts.resume) {
             pendingResume = { pos: opts.resume.pos, paused: opts.resume.paused };
+        } else if (opts.fromStart || Settings.get('resumeMode') === 'never') {
+            // Starting over: drop the saved position so the file also opens
+            // clean next time (until playback saves a new one).
+            clearResumePos(uri);
+            pendingResume = null;
         } else {
             var resumeAt = resumePosFor(uri);
             pendingResume = resumeAt
@@ -747,7 +784,7 @@
         }
         var item = state.playlist[state.playlistIndex];
         if (!item) return;
-        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null });
+        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, askResume: true });
     }
     function playNext(isAuto) {
         var ni = state.playlistIndex + 1;
@@ -758,6 +795,21 @@
         playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null });
         return true;
     }
+    /* OSD Prev / MediaTrackPrevious: restart the current file when we're
+     * past the first few seconds, otherwise go to the previous item.  A
+     * second press right after a restart therefore lands on the previous
+     * item, exactly like a music player. */
+    function handlePrev() {
+        if (lastProgress.time > RESTART_THRESHOLD_MS) {
+            if (scrub.active) cancelScrub(false);
+            Player.seekTo(0);
+            updateProgress(0, lastProgress.duration);
+            flashOSD();
+            UI.toast('Restarted');
+            return;
+        }
+        if (!playPrev()) UI.toast('No previous item');
+    }
     function playPrev() {
         if (state.playlistIndex <= 0) return false;
         var pi = state.playlistIndex - 1;
@@ -766,11 +818,13 @@
         playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null });
         return true;
     }
-    /* Dim the prev/next OSD buttons when there's nothing on that side. */
+    /* Dim the prev/next OSD buttons when there's nothing on that side.
+     * Prev stays lit once the file is far enough in to restart. */
     function updateNextPrevButtons() {
         var prev = document.getElementById('btn-prev');
         var next = document.getElementById('btn-next');
-        if (prev) prev.classList.toggle('disabled', state.playlistIndex <= 0);
+        if (prev) prev.classList.toggle('disabled',
+            state.playlistIndex <= 0 && lastProgress.time <= RESTART_THRESHOLD_MS);
         if (next) next.classList.toggle('disabled',
             state.playlistIndex < 0 || state.playlistIndex + 1 >= state.playlist.length);
     }
@@ -995,7 +1049,7 @@
             ['stop',          ifPlaying(function () { exitPlayer(); })],
             ['seekbackward',  ifPlaying(function () { Player.seekRel(-30000); })],
             ['seekforward',   ifPlaying(function () { Player.seekRel( 30000); })],
-            ['previoustrack', ifPlaying(function () { playPrev(); })],
+            ['previoustrack', ifPlaying(function () { handlePrev(); })],
             ['nexttrack',     ifPlaying(function () { playNext(false); })]
         ];
         for (var i = 0; i < pairs.length; i++) {
@@ -1124,6 +1178,7 @@
         document.getElementById('setting-subtitle-lang-value').textContent = LanguageList.nameFor(Settings.get('subtitleLang'));
         document.getElementById('setting-repeat-mode-value').textContent   = (Settings.get('repeatMode') === 'one') ? 'Repeat one' : 'Off';
         document.getElementById('setting-auto-play-value').textContent     = Settings.get('autoPlay') ? 'On' : 'Off';
+        document.getElementById('setting-resume-mode-value').textContent   = resumeModeName(Settings.get('resumeMode'));
         document.getElementById('setting-shuffle-value').textContent       = Settings.get('shuffle')  ? 'On' : 'Off';
         document.getElementById('setting-aspect-mode-value').textContent   = AspectRatio.nameFor(Settings.get('aspectMode'));
         document.getElementById('setting-subtitle-size-value').textContent     = SubtitleStyle.nameForSize(Settings.get('subtitleSize'));
@@ -1336,6 +1391,22 @@
             UI.toast('Auto-play: ' + (val === 'on' ? 'On' : 'Off'));
         });
     }
+    var RESUME_MODES = [
+        { code: 'ask',    name: 'Ask — choose Continue or Start over when opening' },
+        { code: 'always', name: 'Always continue where I left off' },
+        { code: 'never',  name: 'Never — always start from the beginning' }
+    ];
+    function resumeModeName(code) {
+        return code === 'always' ? 'Always' : code === 'never' ? 'Never' : 'Ask';
+    }
+    function openResumeModePicker() {
+        pickerSetting = 'resumeMode';
+        openPicker('Resume playback', RESUME_MODES, Settings.get('resumeMode'), function (val) {
+            Settings.set('resumeMode', val);
+            refreshSettingsValues();
+            UI.toast('Resume: ' + resumeModeName(val));
+        });
+    }
     /* ── Repeat toggle from the OSD ───────────────────────────────── */
     function toggleRepeat() {
         var next = Settings.get('repeatMode') === 'one' ? 'off' : 'one';
@@ -1509,6 +1580,23 @@
         return true;
     }
 
+    /* Number-key seek: digit n → n × 10 % of the duration.  Returns false
+     * when an overlay owns the keys or the duration isn't known yet. */
+    function seekToTenth(digit) {
+        if (!document.getElementById('error-overlay').classList.contains('hidden') ||
+            !document.getElementById('track-menu').classList.contains('hidden') ||
+            !document.getElementById('picker').classList.contains('hidden')) return false;
+        var dur = Player.duration() || lastProgress.duration;
+        if (digit > 0 && !dur) return false;
+        var target = digit ? Math.floor(dur * digit / 10) : 0;
+        if (scrub.active) cancelScrub(false);
+        Player.seekTo(target);
+        updateProgress(target, dur || lastProgress.duration);
+        flashOSD();
+        UI.toast(digit ? 'Jumped to ' + (digit * 10) + '% (' + fmtTime(target) + ')' : 'Restarted');
+        return true;
+    }
+
     /* ── Global remote key dispatcher ─────────────────────────────── */
     function globalKeyHandler(code, ev) {
         var K = Remote.KEY;
@@ -1518,6 +1606,12 @@
         // hardware keys work alongside the on-screen keyboard. Only consumes the
         // key when a text field actually took it, otherwise it falls through.
         if (code >= K.ZERO && code <= K.NINE && typeDigitIntoField(code - K.ZERO)) return true;
+
+        // In the player, the number keys jump by tenths: 0 restarts, 1–9 go
+        // to 10 %–90 % of the file (issue #78).  Only when nothing modal is
+        // up, and only for files with a known duration (0 always works).
+        if (code >= K.ZERO && code <= K.NINE && state.view === 'player' &&
+            seekToTenth(code - K.ZERO)) return true;
 
         // URL input view: let typing flow through except on RETURN/Enter.
         if (state.view === 'url') {

@@ -22,6 +22,11 @@ with VLC-inspired UI and TV remote-friendly navigation.
   laptop instead of typing on the remote; QR pairing, no companion app, no
   account, and no relay to host
 - **Recent history** of last 20 played items
+- **Resume or start over** — reopening a file you stopped partway asks
+  *Continue* or *Start from the beginning* (Settings → Resume playback can
+  make it always continue or always restart).  While playing, the remote's
+  number keys jump by tenths (`0` restarts, `5` goes to 50 %), and the OSD
+  Prev button restarts the file before stepping back to the previous item
 - **VLC-style UI** — dark slate-blue theme matching the cone icon
 - **Full TV remote support** — D-pad navigation, OK/BACK, media keys
   (Play/Pause/Stop/FF/RW), audio + subtitle track picker
