@@ -1,351 +1,69 @@
-# VLC TV — Tizen Web App
+# VLC TV
 
-A VLC-style media player for Samsung Smart TVs running Tizen, built as a Web
-App (`.wgt`) using Samsung's **AVPlay** API for hardware-accelerated playback.
+A VLC-style media player for Samsung Tizen TVs. Network streams, USB drives
+and SMB shares, with a remote-friendly UI and hardware-accelerated playback
+through Samsung's AVPlay.
 
-Plays network streams (HTTP MP4, HLS, MPEG-DASH, RTSP) and local USB files
-with VLC-inspired UI and TV remote-friendly navigation.
-
-![icon](res/vlctv.png)
-
----
+<img width="1457" height="834" alt="VLC TV home screen" src="https://github.com/user-attachments/assets/5ea3ba2f-f797-44b2-8b72-e4760bca657a" />
 
 ## Features
 
-- **Playback** via Samsung AVPlay — hardware-accelerated H.264 / HEVC / VP9,
-  AAC / MP3 / AC3 / EAC3 / DTS, HLS / MPEG-DASH / RTSP / RTMP / Smooth-Streaming
-- **File browser** for USB drives + built-in storage (Videos, Downloads, etc.)
-- **SMB network shares** — browse and stream from SMB2 servers (NAS, Windows,
-  Samba) over your LAN; configure under Settings → SMB network share
-- **Network stream input** with preset chips for quick testing
-- **Cast from any device** — paste a stream URL from your phone, tablet or
-  laptop instead of typing on the remote; QR pairing, no companion app, no
-  account, and no relay to host
-- **Recent history** of last 20 played items
-- **Resume or start over** — reopening a file you stopped partway asks
-  *Continue* or *Start from the beginning* (Settings → Resume playback can
-  make it always continue or always restart).  While playing, the remote's
-  number keys jump by tenths (`0` restarts, `5` goes to 50 %), and the OSD
-  Prev button restarts the file before stepping back to the previous item
-- **VLC-style UI** — dark slate-blue theme matching the cone icon
-- **Full TV remote support** — D-pad navigation, OK/BACK, media keys
-  (Play/Pause/Stop/FF/RW), audio + subtitle track picker
-- **External subtitles** — SRT / VTT / ASS·SSA / SAMI sidecar files and
-  embedded MP4/MKV text tracks — from a USB drive, an SMB share or a network
-  URL alike — painted by the app (AVPlay can't render text subs on this
-  firmware), with **customisable size, font, position and background** under
-  Settings → Subtitle appearance
-- **Every embedded track selectable** — a 40-language mux lists all 40, and
-  picking one the TV's own demuxer won't select (it stops at 32 tracks) reads
-  that track's text straight out of the container through its cue index, so
-  it starts showing within a second or two of being picked
-- **Aspect ratio** — fit, fill (crop the sides) or stretch, from the OSD
-  button or Settings → Video aspect ratio.  Bars *burned into* the frames
-  (2.39:1 film muxed as 16:9) can't be cropped by any player on this
-  firmware — AVPlay would need a video plane larger than the screen and it
-  rejects one — so the app says that plainly instead of offering a zoom that
-  does nothing
-- **No native code** — pure HTML/CSS/JS so it runs on any Tizen TV with a
-  Public-tier developer cert. No partner-cert or platform-side requirements.
+- **Plays almost anything the TV can decode** — H.264 / HEVC / VP9, AAC / MP3 / AC3 / EAC3, HLS / DASH / RTSP / RTMP
+- **USB, internal storage and SMB shares** — browse and stream from a NAS, Windows or Samba
+- **Cast a URL from your phone** — scan a QR once, paste a link, it plays. No account, no app
+- **Subtitles that actually show** — SRT / VTT / ASS / SAMI sidecars and embedded MP4 / MKV tracks, painted by the app with adjustable size, font, position and background
+- **Every embedded track selectable**, even past the TV demuxer's 32-track limit
+- **Resume or start over** — a half-watched file asks *Continue* or *Start from the beginning*; number keys jump by tenths
+- **Transcode server** for files the TV can't decode (DivX, DTS, TrueHD) and for real 5.1 to a soundbar — see [vlc-transcode-server](vlc-transcode-server/)
+- **Full remote support** — D-pad, media keys, aspect ratio, speed, repeat, shuffle, recent history
 
-## Tested on
+## Install
 
-- Samsung UE55RU7020WXXN (2019, Tizen 5.0)
-- Samsung S90C (2023, Tizen 6.5) — MKV plays via AVPlay; DTS/TrueHD audio
-  tracks can't be decoded by the TV (auto-skipped to a supported track when
-  the file has one)
-- Should run on any Tizen TV from 2017 onward with AVPlay support. **SMB share
-  support requires Tizen 4.0+ (2018 sets onward)** — it relies on a background
-  service application that older firmware doesn't run.
+1. **Developer Mode** on the TV: Apps → press `1 2 3 4 5` → Developer Mode **ON** → enter your PC's IP → reboot.
+2. **Easy:** install [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung/releases/latest), pick the *Tizen Community* channel and choose **vlc-tizen-tv**. It signs and sideloads for you.
+3. **Manual:** download `vlctv.wgt` from [Releases](https://github.com/PatrickSt1991/vlc-tizen-tv/releases), re-sign it with your own distributor certificate in Tizen Studio, then:
 
-> **SMB credentials note:** server credentials you enter under Settings are
-> stored unencrypted in the app's local storage on the TV. Prefer a dedicated
-> guest/read-only share account over reusing a sensitive password.
+   ```bash
+   sdb connect <tv-ip>
+   sdb install vlctv.wgt
+   ```
 
-## Installation
+Works on Tizen TVs from 2017 onward. SMB shares need Tizen 4.0+ (2018 sets and later). Tested on a 2019 RU7020 and a 2023 S90C.
 
-The recommended path is the [GitHub Releases page](https://github.com/PatrickSt1991/vlc-tizen-tv/releases) — pre-built `.wgt`
-files are published there by the build workflow.
+## Docs
 
-### 1. Enable Developer Mode on your TV
+- [Playback notes](docs/PLAYBACK-NOTES.md) — files the TV can't decode, 5.1 that comes out as stereo, and what to do about it
+- [Transcode server](vlc-transcode-server/README.md) — Docker or native binaries, pairing, surround, hardware acceleration
+- [Cast from another device](docs/SEND-URL-FROM-DEVICE.md) — how the phone-to-TV link works and how to host your own page
+- [Reading the app's log](docs/DEBUG-LOG.md) — DevTools via Apps2Samsung, SMB trail, remote log capture
+- [Why a web app and not native](docs/WHY-WEB-APP.md)
 
-1. From the Apps screen, press `1 2 3 4 5` on the remote
-2. Toggle **Developer Mode = ON**
-3. Enter your PC's LAN IP in **Host PC IP**
-4. Reboot the TV
-
-### 2. Install the `.wgt`
-
-#### Install with Apps2Samsung
-
-Download the latest version from [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung/releases/latest) choose Tizen Community as release and choose vlc-tizen-tv.
-
-Launch **VLC TV** from your TV's app list.
-
-#### Install the `.wgt` with Tizen Studio
-
-Download the latest `vlctv.wgt` from Releases. Then sign with your Samsung
-distributor cert (the workflow ships a generic cert, but Samsung TVs require
-the `.wgt` to be signed by *your* cert tied to your TV's DUID — Tizen Studio's
-**Certificate Manager** handles this).
-
-Once signed:
+## Building
 
 ```bash
-sdb connect <tv-ip>
-sdb install /path/to/vlctv-signed.wgt
+bash tizen-web-vlc/build.sh      # unsigned .wgt in dist/
 ```
 
-Launch **VLC TV** from your TV's app list.
-
-## Building from source
-
-The repo's GitHub Actions workflow builds a signed `.wgt` automatically on
-every push and `workflow_dispatch`. You can trigger it manually from the
-**Actions** tab.
-
-For local builds:
-
-```bash
-bash tizen-web-vlc/build.sh
-# Output: dist/madebypatk-vlcweb.wgt (unsigned, just zipped)
-```
-
-For a signed build identical to the workflow output, use Tizen Studio's
-`tizen package -t wgt -s <profile>` after generating a profile in **Certificate
-Manager**.
-
-## Streaming URL examples
-
-The home screen has tap-to-fill chips for these:
-
-| Type | URL |
-|---|---|
-| MP4 (short) | `http://vjs.zencdn.net/v/oceans.mp4` |
-| HLS (single bitrate) | `https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8` |
-| MP4 (long) | `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4` |
-| HLS (multi-bitrate) | `https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_16x9/bipbop_16x9_variant.m3u8` |
-| MPEG-DASH | `https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd` |
-| RTSP (public) | `rtsp://170.93.143.139:554/rtplive/470011e600ef003a004ee33696235daa` |
-
-## Playing files the TV can't decode (old AVI / WMV / DTS / etc.)
-
-Samsung TVs only decode what's in their hardware decoder — typically
-**H.264, HEVC, VP9** for video and **AAC, MP3, AC-3, EAC-3** for audio.
-Old AVI / WMV / FLV files (DivX, Xvid, WMV9, etc.) and modern files
-with DTS-HD MA or TrueHD audio will fail in AVPlay's `prepareAsync`
-even when the network and proxy paths are fully working.
-
-VLC TV can't transcode on the TV itself (the CPU isn't fast enough),
-but the existing **Network Stream** view and the **Cast a link from
-your phone** flow already let you play streams that a *server* has
-transcoded for you. Two practical routes:
-
-### Stream through Plex or Jellyfin (no new setup if you already have one)
-
-Both expose every file in their library as a transcoded HTTP / HLS
-stream URL that this TV's AVPlay can decode natively. You just need to
-hand the URL to VLC TV.
-
-- **Plex**: in the web UI, right-click an item → *Get Info → View XML*,
-  or use the official API:
-  ```
-  http://<server>:32400/video/:/transcode/universal/start.m3u8?
-    path=<plex-id>&X-Plex-Token=<token>
-    &mediaIndex=0&directPlay=0&directStream=0
-    &videoResolution=1920x1080&audioBoost=100
-  ```
-- **Jellyfin**: in the web UI, *Play From Beginning → Play with Direct
-  Stream*, copy the URL from the dev tools network tab — looks like:
-  ```
-  http://<server>:8096/Videos/<item-id>/master.m3u8?
-    api_key=<key>&AudioCodec=aac&VideoCodec=h264
-  ```
-
-Once you have the URL, either type it in **Open Network Stream**, or
-paste it from your phone via **Get URL from device**.
-
-### One-shot re-encode with ffmpeg / HandBrake
-
-For files you'll keep on your USB drive or SMB share, a one-time
-re-encode to H.264 + AAC lasts forever:
-
-```bash
-ffmpeg -i input.avi -c:v libx264 -preset fast -c:a aac -b:a 192k output.mp4
-```
-
-For MKVs where only the audio is the problem (DTS, TrueHD), copy the
-video untouched and only re-encode audio — quick even on a Raspberry Pi:
-
-```bash
-ffmpeg -i input.mkv -c:v copy -c:a ac3 -b:a 640k output.mkv
-```
-
-## 5.1 surround reaches the soundbar as stereo
-
-A 5.1 FLAC, AAC or PCM track plays fine and still comes out of the soundbar in
-stereo. That's the HDMI link, not the app. ARC and optical carry either LPCM or
-an IEC 61937-framed bitstream, and only Dolby Digital and Dolby Digital Plus
-have that framing — everything else the TV decodes itself, and plain ARC can
-only carry two channels of the resulting LPCM. FLAC has no bitstream form at
-all, on any device: an external player that "sends FLAC 5.1 to the soundbar" is
-decoding it and sending multichannel LPCM over a link that can carry it.
-
-AVPlay gives an app no channel-layout or passthrough control, so no version of
-VLC TV can fix this on the TV. The two things that do work:
-
-- **Let the [transcode server](vlc-transcode-server/) re-encode it.** Point the
-  TV at it with **Settings → Transcode server → Find server on my network** — it
-  sweeps your LAN, pairs, and sorts the share settings out between the two ends
-  by itself. No pairing code, no internet. Then, in the same menu, set
-  **Surround sound** to Dolby Digital Plus 5.1: multichannel tracks get
-  re-encoded into something the TV passes straight through, keeping all six
-  channels. **Play USB files through the server** does the same for files on a
-  USB stick.
-- **Re-encode the file once yourself**, if you'd rather not run anything:
-
-  ```bash
-  ffmpeg -i input.mkv -c:v copy -c:a eac3 -b:a 768k -ac 6 output.mkv
-  ```
-
-Either way it's a lossy re-encode — you keep the channels, not the
-bit-exactness. And set the TV's **Sound → Expert Settings → Digital Output
-Audio Format** to *Pass-through* / Auto, or it will decode the Dolby stream and
-downmix it again on the way out.
-
-In the audio-track picker, a track that will be flattened this way is labelled
-**"TV downmixes to stereo"**, so you can tell it apart from one the TV can't
-decode at all.
-
-## Cast a link from your phone, tablet or laptop
-
-Typing URLs on a TV remote is painful, so VLC TV lets you paste a stream URL
-from another device instead — **no companion app, no account, and no server you
-have to run.**
-
-Open **Network Stream → 📲 Get URL from device**, or pair once from
-**Settings → Cast from another device** (scan the QR, or enter the short code).
-On your phone or laptop, open the pairing page, paste a URL, tap **Send to TV**,
-then press **Get URL from device** on the TV — it plays.
-
-### How it works
-
-A Tizen `.wgt` runs in the TV's sandboxed WebView, which can't open a listening
-socket — so the TV can never be a server (the same wall that rules out a
-VLC-style built-in web interface). Instead the TV is a *client*:
-
-```
- device page  ──POST──▶  ntfy.sh/vlctv-<code>  ◀──GET──  VLC TV
-```
-
-The device POSTs the URL to a free public [ntfy.sh](https://ntfy.sh) topic; the
-TV pulls the latest message on a button press. Each TV mints a long random
-pairing code once, so the topic (`vlctv-<code>`) is private-by-obscurity. The QR
-encodes the page URL with the code in the hash, so scanning opens the page
-already paired — and the QR is generated **on the TV, offline** (bundled
-`qrcode.js`), so the code never touches a third-party QR service.
-
-> **Privacy:** a public topic is readable by anyone who knows the code, which is
-> why the code is long and random. Fine for public stream URLs — don't push
-> anything secret through it.
-
-### Hosting the pairing page
-
-The pairing page is a single static file (`docs/index.html` + `icon.png`),
-served at the URL set in `js/url-drop.js`:
-
-```js
-var PHONE_PAGE = 'https://vlc-tizen.madebypatrick.nl/';
-```
-
-Host it anywhere static, over **HTTPS** (required — the page POSTs to
-`https://ntfy.sh`, so plain HTTP is blocked as mixed content). Own domain or
-GitHub Pages both work. To own the rendezvous too, ntfy self-hosts as a single
-binary, or flip to the built-in n8n adapter in `url-drop.js`. Details:
-[docs/SEND-URL-FROM-DEVICE.md](docs/SEND-URL-FROM-DEVICE.md).
-
-## Architecture
-
-```
-tizen-web-vlc/
-├── config.xml          Tizen widget manifest (privileges, screen, package id)
-├── index.html          Single-page shell — home / url / browse / player views
-├── icon.png            App icon (also used as the brand mark)
-├── css/
-│   └── style.css       Dark slate-blue theme, focus management, OSD
-├── js/
-│   ├── debug.js        Log lines to the DevTools console, plus optional POSTs to a PC
-│   ├── remote.js       TV remote key registration + dispatch
-│   ├── ui.js           Focus management + view switching + toast
-│   ├── browser.js      USB / Tizen filesystem enumeration
-│   ├── player.js       Samsung AVPlay wrapper (HLS/DASH/RTSP/files)
-│   ├── url-drop.js     "Cast from any device" — pulls a URL via ntfy.sh
-│   ├── qrcode.js       Offline QR generator (MIT, Kazuhiko Arase) for pairing
-│   └── app.js          Top-level coordinator
-└── build.sh            Local zip-only builder (no signing)
-```
-
-## Why a Web App and not Native?
-
-This project started as a native C/C++ port of `libvlc` for Tizen 5.0 ARM,
-fully cross-compiled with `arm-linux-gnueabi-gcc`, GLIBC version-string
-patching, and a custom glibc compat shim for y2038 wrappers. It built cleanly,
-installed cleanly, but **never launched** on the retail TV — Samsung's
-launchpad on retail firmware silently refuses third-party native (`type="capp"`)
-binaries from non-partner distributor certs.
-
-Web apps (`.wgt`, `type="webapp"`) launch fine because they run in the TV's
-sandboxed WebView. AVPlay covers the same codec breadth that libvlc would have
-provided, just through a JS API instead of C. Net result: same user
-experience, supported path.
-
-## Acknowledgments
-
-- VLC and the cone icon design language — © VideoLAN
-- Samsung Tizen TV AVPlay API docs
-- [tizen-jellyfin-avplay](https://github.com/PatrickSt1991/tizen-jellyfin-avplay) — workflow template inspiration
-
-## Reading the app's log
-
-Every debug line the app writes goes to the browser console, tagged `[vlctv]`,
-and needs nothing switched on first. To see it live:
-
-1. In Apps2Samsung, open **Installed apps → VLC TV → Debug**. This starts the
-   app in debug mode and opens `chrome://inspect` for you.
-2. Click **inspect** on the VLC TV entry. A DevTools window opens; type `vlctv`
-   in the console's filter box to hide the TV's own noise.
-3. Reproduce the problem. Warnings and errors show in red, and the Errors
-   filter picks them out.
-
-The SMB code logs under the `[SMB]` tag: what was saved (server, port, share,
-user, password length), why the share browser sent you back to Settings, the
-service launch, and the connection itself. Lines starting `svc` come from the
-background service that speaks SMB2 (its `NEGOTIATE` / `SESSION_SETUP` /
-`TREE_CONNECT` trail and socket errors); the service runs as a separate process
-and does not show up in `chrome://inspect`, so the app pulls its log and
-forwards it after each connection step.
-
-If you'd rather capture a session without DevTools attached, **Settings → Debug
-logging** POSTs the same lines to an HTTP listener on your PC. It ships off.
+GitHub Actions builds and publishes a release on every merge to `main`.
 
 ## Support
 
-If VLC TV is useful to you, consider supporting development:
+If VLC TV is useful to you, consider a coffee: [ko-fi.com/M4M71JOT9R](https://ko-fi.com/M4M71JOT9R)
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/M4M71JOT9R)
+<details>
+<summary>More screenshots</summary>
 
-<img src="tizen-web-vlc/ko-fi-qr.webp" alt="Ko-fi QR" width="180">
+<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/947c1b3c-8e7b-4d4a-934a-f4c25ea12742" />
+<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/e13648e0-bcfe-4773-a817-9e5e10ee4629" />
+<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/a57dd4d1-8761-4101-abf0-c6f93048e9bf" />
+<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/5fe0422f-08e1-43eb-9c5a-ea855f755558" />
+<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/3ffc8365-c73a-4eba-b05b-63ed399ef33a" />
+<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/16e1d60a-8f3d-44de-b419-20e9bc8188ed" />
 
-## Screenshots
-<img width="1457" height="834" alt="Screenshot 2026-06-03 143227" src="https://github.com/user-attachments/assets/5ea3ba2f-f797-44b2-8b72-e4760bca657a" />
-<img width="1457" height="834" alt="Screenshot 2026-06-03 143213" src="https://github.com/user-attachments/assets/947c1b3c-8e7b-4d4a-934a-f4c25ea12742" />
-<img width="1457" height="834" alt="Screenshot 2026-06-03 143110" src="https://github.com/user-attachments/assets/e13648e0-bcfe-4773-a817-9e5e10ee4629" />
-<img width="1457" height="834" alt="Screenshot 2026-06-03 143057" src="https://github.com/user-attachments/assets/a57dd4d1-8761-4101-abf0-c6f93048e9bf" />
-<img width="1457" height="834" alt="Screenshot 2026-06-03 143027" src="https://github.com/user-attachments/assets/5fe0422f-08e1-43eb-9c5a-ea855f755558" />
-<img width="1457" height="834" alt="Screenshot 2026-06-03 143016" src="https://github.com/user-attachments/assets/3ffc8365-c73a-4eba-b05b-63ed399ef33a" />
-<img width="1457" height="834" alt="Screenshot 2026-06-03 143007" src="https://github.com/user-attachments/assets/16e1d60a-8f3d-44de-b419-20e9bc8188ed" />
+</details>
 
+## Acknowledgments
 
-## License
+VLC and the cone icon design language © VideoLAN. Built on Samsung's AVPlay API.
 
-MIT — see [LICENSE](LICENSE).
+MIT licensed — see [LICENSE](LICENSE).
