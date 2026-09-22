@@ -185,6 +185,39 @@ var ST = {
 };
 var FLAGS_SIGNED = 0x00000008;
 
+/* The NT statuses a user can actually do something about.  A bare
+ * "TREE_CONNECT failed 0xc00000cc" on the TV screen (and in the issue tracker)
+ * tells nobody anything; "no share with that name on the server" points
+ * straight at the Share field.  Keyed by the hex string so the table reads
+ * like the wire values it mirrors.  Anything not listed keeps the raw hex. */
+var NT_STATUS = {
+    '0xc000000d': ['STATUS_INVALID_PARAMETER',      'the server rejected the request itself, not the password'],
+    '0xc0000022': ['STATUS_ACCESS_DENIED',          'this account is not allowed in here'],
+    '0xc0000034': ['STATUS_OBJECT_NAME_NOT_FOUND',  'no such file or folder'],
+    '0xc000003a': ['STATUS_OBJECT_PATH_NOT_FOUND',  'no such folder'],
+    '0xc0000043': ['STATUS_SHARING_VIOLATION',      'the file is locked by another program'],
+    '0xc0000064': ['STATUS_NO_SUCH_USER',           'no such user on the server'],
+    '0xc000006a': ['STATUS_WRONG_PASSWORD',         'wrong password'],
+    '0xc000006d': ['STATUS_LOGON_FAILURE',          'wrong username or password'],
+    '0xc000006f': ['STATUS_INVALID_LOGON_HOURS',    'this account may not log on at this hour'],
+    '0xc0000070': ['STATUS_INVALID_WORKSTATION',    'the server refuses logons from this device'],
+    '0xc0000071': ['STATUS_PASSWORD_EXPIRED',       'that password has expired'],
+    '0xc0000072': ['STATUS_ACCOUNT_DISABLED',       'that account is disabled'],
+    '0xc00000bb': ['STATUS_NOT_SUPPORTED',          'the server refused the request (NTLM may be switched off)'],
+    '0xc00000cc': ['STATUS_BAD_NETWORK_NAME',       'no share with that name on the server'],
+    '0xc000015b': ['STATUS_LOGON_TYPE_NOT_GRANTED', 'this account may not log on over the network'],
+    '0xc0000203': ['STATUS_USER_SESSION_DELETED',   'the server dropped the session'],
+    '0xc0000234': ['STATUS_ACCOUNT_LOCKED_OUT',     'that account is locked out']
+};
+function ntHex(status)  { return '0x' + (status >>> 0).toString(16); }
+function ntName(status) { var e = NT_STATUS[ntHex(status)]; return e ? e[0] : ''; }
+/* "wrong password (STATUS_WRONG_PASSWORD 0xc000006a)" — plain words first for
+ * the person reading the TV screen, the codes kept for the bug report. */
+function ntText(status) {
+    var e = NT_STATUS[ntHex(status)];
+    return e ? e[1] + ' (' + e[0] + ' ' + ntHex(status) + ')' : ntHex(status);
+}
+
 /* NTLMSSP negotiate flags (Unicode + extended session security = NTLMv2). */
 var NTLM_F = 0x00000001 | 0x00000004 | 0x00000200 | 0x00008000 | 0x00080000;
 var NTLM_ANON = 0x00000800;   // NTLMSSP_NEGOTIATE_ANONYMOUS
@@ -232,8 +265,9 @@ SmbConnection.prototype._dispatch = function (msg) {
     var credit = msg.readUInt16LE(14);
     /* Async interim STATUS_PENDING: ignore, the real response follows. */
     if (status === ST.PENDING) return;
+    var named = ntName(status);
     log('SMB_RECV', { cmd: SMB2_NAME[cmd] || ('0x' + cmd.toString(16)),
-                      mid: mid, status: '0x' + (status >>> 0).toString(16),
+                      mid: mid, status: ntHex(status) + (named ? ' ' + named : ''),
                       credit: credit, bodyLen: msg.length - 64 });
     var cb = this.pending[mid];
     if (!cb) return;
@@ -361,7 +395,7 @@ SmbConnection.prototype._negotiate = function (cb) {
     for (var i = 0; i < dialects.length; i++) body.writeUInt16LE(dialects[i], 36 + i * 2);
 
     this._send(SMB2.NEGOTIATE, body, 1, function (status, hdr, resp) {
-        if (status !== ST.SUCCESS) return cb(new Error('NEGOTIATE failed 0x' + (status >>> 0).toString(16)));
+        if (status !== ST.SUCCESS) return cb(new Error('NEGOTIATE failed: ' + ntText(status)));
         self.dialect = resp.readUInt16LE(4);
         var securityMode = resp.readUInt16LE(2);
         self.signing = !!(securityMode & 0x0002); // server marks signing REQUIRED
@@ -544,7 +578,7 @@ SmbConnection.prototype._sessionSetup = function (done) {
     // Round 1: type1
     this._sessionSetupRequest(ntlmType1(), function (status, hdr, resp) {
         if (status !== ST.MORE_PROCESSING)
-            return done(new Error('SESSION_SETUP r1 unexpected 0x' + (status >>> 0).toString(16)));
+            return done(new Error('SESSION_SETUP r1 unexpected: ' + ntText(status)));
         // Server assigns SessionId here; use it for every subsequent request.
         hdr.copy(self.sessionId, 0, 40, 48);
         // SESSION_SETUP response: StructureSize(2), SessionFlags(2),
@@ -564,7 +598,7 @@ SmbConnection.prototype._sessionSetup = function (done) {
         }
         self._sessionSetupRequest(t3.token, function (status2, hdr2, resp2) {
             if (status2 !== ST.SUCCESS)
-                return done(new Error('Authentication failed 0x' + (status2 >>> 0).toString(16)));
+                return done(new Error('Sign-in failed: ' + ntText(status2)));
             /* MS-SMB2 §3.2.5.1.3: for SMB 2.1+ on a non-anonymous, non-guest
              * session, the client SHOULD sign subsequent messages even when
              * the server's NEGOTIATE response only set SIGNING_ENABLED (not
@@ -599,7 +633,7 @@ SmbConnection.prototype._treeConnect = function (done) {
     body.writeUInt16LE(unc.length, 6);   // PathLength
     unc.copy(body, 8);
     this._send(SMB2.TREE_CONNECT, body, 1, function (status, hdr) {
-        if (status !== ST.SUCCESS) return done(new Error('TREE_CONNECT failed 0x' + (status >>> 0).toString(16)));
+        if (status !== ST.SUCCESS) return done(new Error('Share "' + self.share + '" refused: ' + ntText(status)));
         self.treeId = hdr.readUInt32LE(36);
         log('SMB_TREE_OK', { share: self.share, treeId: self.treeId });
         done(null);
@@ -635,7 +669,7 @@ SmbConnection.prototype.open = function (path, isDir, cb) {
     if (name.length) name.copy(body, 56);
 
     this._send(SMB2.CREATE, body, 1, function (status, hdr, resp) {
-        if (status !== ST.SUCCESS) return cb(new Error('open "' + path + '" 0x' + (status >>> 0).toString(16)));
+        if (status !== ST.SUCCESS) return cb(new Error('open "' + path + '": ' + ntText(status)));
         var size   = readU64LE(resp, 48);        // EndOfFile
         var fileId = resp.slice(64, 80);         // 16-byte FileId
         cb(null, { fileId: fileId, size: size });
@@ -673,7 +707,7 @@ SmbConnection.prototype.list = function (path, done) {
 
             self._send(SMB2.QUERY_DIRECTORY, body, 1, function (status, hdr, resp) {
                 if (status === ST.NO_MORE_FILES) { self.close(dir.fileId); return done(null, out); }
-                if (status !== ST.SUCCESS) { self.close(dir.fileId); return done(new Error('list 0x' + (status >>> 0).toString(16))); }
+                if (status !== ST.SUCCESS) { self.close(dir.fileId); return done(new Error('list: ' + ntText(status))); }
                 var bufOff = resp.readUInt16LE(2) - 64;
                 var bufLen = resp.readUInt32LE(4);
                 parseDirInfo(resp.slice(bufOff, bufOff + bufLen), out);
@@ -720,7 +754,7 @@ SmbConnection.prototype.read = function (fileId, offset, length, cb) {
 
     this._send(SMB2.READ, body, charge, function (status, hdr, resp) {
         if (status === ST.END_OF_FILE) return cb(null, Buffer.alloc(0));
-        if (status !== ST.SUCCESS) return cb(new Error('read 0x' + (status >>> 0).toString(16)));
+        if (status !== ST.SUCCESS) return cb(new Error('read: ' + ntText(status)));
         // READ response: StructureSize(2), DataOffset(1)@2, Reserved(1),
         // DataLength(4)@4. DataOffset is from the SMB2 header start.
         var dataOff = resp.readUInt8(2) - 64;
