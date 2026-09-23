@@ -185,7 +185,61 @@ var SMB = (function () {
     function isPlayable(name) {
         return /\.(mkv|mp4|m4v|mov|avi|webm|ts|m2ts|flv|wmv|mpe?g|mp3|flac|aac|m4a|ogg|wav|opus)$/i.test(name);
     }
+    /* Text subtitle formats the player can paint.  Image subs (.sub/.idx,
+     * .sup) are left out on purpose — same list as the USB browser. */
+    function isSubtitle(name) {
+        return /\.(srt|vtt|ass|ssa|smi|sami)$/i.test(name);
+    }
     function join(dir, name) { return (dir ? dir.replace(/\/+$/, '') : '') + '/' + name; }
+    function stem(name) {
+        var dot = name.lastIndexOf('.');
+        return dot < 0 ? name : name.slice(0, dot);
+    }
+    function ext(name) {
+        var dot = name.lastIndexOf('.');
+        return dot < 0 ? '' : name.slice(dot + 1).toLowerCase();
+    }
+    /* "Movie.en.srt" → "en", "Movie.eng.srt" → "eng", "Movie.srt" → "". */
+    function langTag(name) {
+        var parts = stem(name).split('.');
+        if (parts.length < 2) return '';
+        var last = parts[parts.length - 1];
+        return /^[a-z]{2,3}$/i.test(last) ? last.toLowerCase() : '';
+    }
+
+    /* Pair every playable file in a folder listing with the subtitle files
+     * sitting next to it, the same way the USB browser does: an exact stem
+     * match first (Movie.srt for Movie.mp4, case-insensitive), then anything
+     * whose stem continues the video's with a dot (Movie.en.srt, Movie.nl.srt).
+     * Returns { "Movie.mp4": [ { name, lang, ext, uri } ] }.  The uri always
+     * goes through the smbproxy — a paired transcode server changes where the
+     * video bytes come from, not where the .srt lives. */
+    function siblingSubtitles(entries, dir) {
+        var subsByStem = {};
+        entries.forEach(function (e) {
+            if (e.isDir || !isSubtitle(e.name)) return;
+            var k = stem(e.name).toLowerCase();
+            (subsByStem[k] = subsByStem[k] || []).push({
+                name: e.name,
+                lang: langTag(e.name),
+                ext:  ext(e.name),
+                uri:  streamUrl(join(dir, e.name))
+            });
+        });
+        var stems = Object.keys(subsByStem);
+        var out = {};
+        entries.forEach(function (e) {
+            if (e.isDir || !isPlayable(e.name)) return;
+            var base = stem(e.name).toLowerCase();
+            var subs = (subsByStem[base] || []).slice();
+            stems.forEach(function (k) {
+                if (k !== base && k.indexOf(base + '.') === 0)
+                    subsByStem[k].forEach(function (s) { if (subs.indexOf(s) < 0) subs.push(s); });
+            });
+            if (subs.length) out[e.name] = subs;
+        });
+        return out;
+    }
 
     function showError(msg) {
         var ul = document.getElementById('browse-list');
@@ -208,10 +262,17 @@ var SMB = (function () {
                 return;
             }
 
-            // Playable files in this folder → the playlist for next/prev/auto-play.
+            // Playable files in this folder → the playlist for next/prev/auto-play,
+            // each carrying the sidecar subtitles found next to it.
+            var sidecars = siblingSubtitles(entries, path);
+            var sidecarCount = Object.keys(sidecars).reduce(function (n, k) { return n + sidecars[k].length; }, 0);
+            dbg('list ' + JSON.stringify(path || '/') + ': ' + entries.length + ' entries, ' +
+                sidecarCount + ' sidecar subtitle(s) matched to ' + Object.keys(sidecars).length + ' video(s)');
             var playlist = entries
                 .filter(function (e) { return !e.isDir && isPlayable(e.name); })
-                .map(function (e) { return { uri: playableUrl(join(path, e.name)), title: e.name }; });
+                .map(function (e) {
+                    return { uri: playableUrl(join(path, e.name)), title: e.name, subtitles: sidecars[e.name] || [] };
+                });
 
             // ".." row to go up (except at root).
             if (pathStack.length > 0) {
@@ -226,10 +287,12 @@ var SMB = (function () {
                 if (!e.isDir && !isPlayable(e.name)) return;   // hide non-media
                 var li = document.createElement('li');
                 li.dataset.dir = e.isDir ? '1' : '0';
+                var subs = sidecars[e.name] || [];
+                var subBadge = subs.length ? '<span class="meta">CC ×' + subs.length + '</span>' : '';
                 li.innerHTML =
                     '<span class="icon">' + (e.isDir ? '📁' : '🎬') + '</span>' +
                     '<span class="name">' + esc(e.name) + '</span>' +
-                    (e.isDir ? '' : '<span class="meta">' + humanSize(e.size) + '</span>');
+                    (e.isDir ? '' : subBadge + '<span class="meta">' + humanSize(e.size) + '</span>');
                 li.addEventListener('click', function () {
                     if (e.isDir) {
                         pathStack.push(path);
@@ -404,6 +467,7 @@ var SMB = (function () {
         streamUrl:       streamUrl,
         dumpServiceLogs: dumpServiceLogs,
         normalizeServer: normalizeServer,   // exposed for the Node tests
+        siblingSubtitles: siblingSubtitles, // exposed for the Node tests
         isStreamUrl:     function (u) { return typeof u === 'string' && u.indexOf(BASE + '/smb/stream') === 0; }
     };
 })();
