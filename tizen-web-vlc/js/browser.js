@@ -226,12 +226,13 @@ var Browser = (function () {
         return '';
     }
 
-    /* Read a subtitle file's content as UTF-8 text via tizen.filesystem.
-     * Accepts entries with either a live Tizen File object on `.file` (the
-     * normal browse-then-play flow) or just a `.fullPath` string (recent-
-     * items replay, where the original File didn't survive JSON.stringify
-     * in localStorage).  In the latter case we resolve the path back to a
-     * File object first. */
+    /* Read a subtitle file's content as UTF-8 text.
+     * Accepts entries with a live Tizen File object on `.file` (the normal
+     * USB browse-then-play flow), just a `.fullPath` string (recent-items
+     * replay, where the original File didn't survive JSON.stringify in
+     * localStorage — the path is resolved back to a File first), or an
+     * http(s) `.uri` with neither (a sidecar next to a video on an SMB
+     * share, served by the smbproxy service). */
     function readSubtitleText(subEntry, cb) {
         if (!subEntry) { cb(new Error('no entry')); return; }
         if (subEntry.file) { readFromFileObj(subEntry.file, cb); return; }
@@ -244,7 +245,22 @@ var Browser = (function () {
             } catch (e) { cb(e); }
             return;
         }
+        if (/^https?:\/\//i.test(subEntry.uri || '')) { readFromUrl(subEntry.uri, cb); return; }
         cb(new Error('no file'));
+    }
+    function readFromUrl(url, cb) {
+        try {
+            var x = new XMLHttpRequest();
+            x.open('GET', url, true);
+            x.timeout = 15000;
+            x.onload = function () {
+                if (x.status >= 200 && x.status < 300) cb(null, x.responseText || '');
+                else cb(new Error('subtitle fetch HTTP ' + x.status + (x.responseText ? ': ' + x.responseText : '')));
+            };
+            x.onerror   = function () { cb(new Error('subtitle fetch failed (service unreachable?)')); };
+            x.ontimeout = function () { cb(new Error('subtitle fetch timed out')); };
+            x.send();
+        } catch (e) { cb(e); }
     }
     function readFromFileObj(file, cb) {
         try {

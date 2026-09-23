@@ -794,7 +794,11 @@ var CT = {
     avi: 'video/x-msvideo', webm: 'video/webm', ts: 'video/mp2t', m2ts: 'video/mp2t',
     flv: 'video/x-flv', wmv: 'video/x-ms-wmv', mpg: 'video/mpeg', mpeg: 'video/mpeg',
     mp3: 'audio/mpeg', flac: 'audio/flac', aac: 'audio/aac', m4a: 'audio/mp4',
-    ogg: 'audio/ogg', wav: 'audio/wav', opus: 'audio/opus'
+    ogg: 'audio/ogg', wav: 'audio/wav', opus: 'audio/opus',
+    // sidecar subtitles the web side fetches as text
+    srt: 'text/plain; charset=utf-8', vtt: 'text/vtt; charset=utf-8',
+    ass: 'text/plain; charset=utf-8', ssa: 'text/plain; charset=utf-8',
+    smi: 'text/plain; charset=utf-8', sami: 'text/plain; charset=utf-8'
 };
 function contentType(path) {
     var ext = (path.split('.').pop() || '').toLowerCase();
