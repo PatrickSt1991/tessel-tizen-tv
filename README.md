@@ -4,7 +4,6 @@ A media player for Samsung Tizen TVs. Network streams, USB drives
 and SMB shares, with a remote-friendly UI and hardware-accelerated playback
 through Samsung's AVPlay.
 
-
 ## Features
 
 - **Plays almost anything the TV can decode** — H.264 / HEVC / VP9, AAC / MP3 / AC3 / EAC3, HLS / DASH / RTSP / RTMP
