@@ -75,7 +75,8 @@ VLC TV can fix this on the TV. The two things that do work:
   **Surround sound** to Dolby Digital Plus 5.1: multichannel tracks get
   re-encoded into something the TV passes straight through, keeping all six
   channels. **Play USB files through the server** does the same for files on a
-  USB stick.
+  USB stick, and **Smart routing** lets the files that need none of this — on
+  the share or on USB — play directly, keeping all their audio tracks.
 - **Re-encode the file once yourself**, if you'd rather not run anything:
 
   ```bash

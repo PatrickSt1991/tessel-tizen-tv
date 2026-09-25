@@ -108,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/hello", s.handleHello) // LAN discovery probe
 	mux.HandleFunc("/api/adopt", s.handleAdopt) // hand the share settings to a paired TV
 	mux.HandleFunc("/api/allow-adopt", s.handleAllowAdopt)
+	mux.HandleFunc("/api/probe", s.handleProbe) // would /play only remux this file?
 
 	// Media plane.
 	mux.HandleFunc("/raw", s.handleRaw)   // ffmpeg input (localhost only)
@@ -181,6 +182,40 @@ func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(rewriteManifest(raw, "/hls/"+sess.ID+"/"))
+}
+
+// handleProbe tells the TV what /play would do with a file, without starting
+// ffmpeg. With smart routing on, the TV plays a file that would only be remuxed
+// straight from the share instead: the HLS remux keeps one audio track and no
+// subtitles, the original keeps everything. Takes the same path/src query as
+// /play, so the answer is about exactly the source /play would open.
+func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
+	if !s.guard(w, r) {
+		return
+	}
+	src, err := s.sourceFor(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
+	defer cancel()
+
+	mi, plan, err := s.mgr.Probe(ctx, src)
+	if err != nil {
+		log.Printf("probe %q failed: %v", src.Label(), err)
+		http.Error(w, "probe failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	direct := plan.DirectPlayable()
+	log.Printf("probe %q: direct=%v (%s)", src.Label(), direct, plan.Reason)
+	writeJSON(w, map[string]any{
+		"direct":        direct,
+		"reason":        plan.Reason,
+		"video":         mi.VideoCodec,
+		"audio":         mi.AudioCodec,
+		"audioChannels": mi.AudioChans,
+	})
 }
 
 // isLoopback reports whether a net/http RemoteAddr is the machine itself.
@@ -449,7 +484,10 @@ const AppID = "vlc-tv-transcode"
 
 // APIVersion lets a future TV app tell an old server from a new one without
 // probing endpoint by endpoint. Bump it when the pairing contract changes.
-const APIVersion = 1
+//
+//	1  pairing, discovery, config, adopt
+//	2  /api/probe (smart routing)
+const APIVersion = 2
 
 // handleHello is the discovery probe: unauthenticated, cheap, and carrying no
 // secrets — just enough for a scanning TV to recognise us and show a name.

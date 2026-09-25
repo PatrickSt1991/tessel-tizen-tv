@@ -19,6 +19,12 @@ var nowFn = time.Now
 // a while — i.e. the user stopped watching or moved on.
 const idleTimeout = 90 * time.Second
 
+// probeTTL is how long an ffprobe result is reused. With smart routing the TV
+// asks /api/probe right before it plays a file, and when the answer is "through
+// the server" /play has to probe the same file again — the cache makes that
+// second ffprobe over SMB free.
+const probeTTL = 10 * time.Minute
+
 // RawURLFunc builds the internal HTTP URL ffmpeg should read for an SMB path.
 // (Injected so this package doesn't import the web/http layer.)
 type RawURLFunc func(smbPath string) string
@@ -37,6 +43,12 @@ type Manager struct {
 
 	mu       sync.Mutex
 	sessions map[string]*session
+	probes   map[string]probed // Source.key() -> last ffprobe result
+}
+
+type probed struct {
+	mi *MediaInfo
+	at time.Time
 }
 
 // NewManager wires the manager and starts the idle-reaper goroutine. surround
@@ -50,7 +62,8 @@ func NewManager(caps *Caps, workDir string, rawURL RawURLFunc, surround Surround
 	for _, e := range entries {
 		os.RemoveAll(e)
 	}
-	m := &Manager{caps: caps, workDir: workDir, rawURL: rawURL, surround: surround, sessions: map[string]*session{}}
+	m := &Manager{caps: caps, workDir: workDir, rawURL: rawURL, surround: surround,
+		sessions: map[string]*session{}, probes: map[string]probed{}}
 	go m.reap()
 	return m, nil
 }
@@ -127,7 +140,7 @@ func (m *Manager) EnsureSession(ctx context.Context, src Source) (*session, erro
 	in := m.input(src)
 
 	// Probe + decide before committing to a session.
-	mi, err := m.caps.Inspect(ctx, in)
+	mi, err := m.inspect(ctx, src)
 	if err != nil {
 		return nil, fmt.Errorf("probe failed: %w", err)
 	}
@@ -172,6 +185,35 @@ func (m *Manager) EnsureSession(ctx context.Context, src Source) (*session, erro
 		return nil, err
 	}
 	return s, nil
+}
+
+// Probe answers "what would /play do with this file?" without starting ffmpeg.
+func (m *Manager) Probe(ctx context.Context, src Source) (*MediaInfo, Plan, error) {
+	mi, err := m.inspect(ctx, src)
+	if err != nil {
+		return nil, Plan{}, err
+	}
+	return mi, Decide(mi, m.surroundMode()), nil
+}
+
+// inspect is Caps.Inspect behind the probe cache.
+func (m *Manager) inspect(ctx context.Context, src Source) (*MediaInfo, error) {
+	key := src.key()
+	m.mu.Lock()
+	if p, ok := m.probes[key]; ok && nowFn().Sub(p.at) < probeTTL {
+		m.mu.Unlock()
+		return p.mi, nil
+	}
+	m.mu.Unlock()
+
+	mi, err := m.caps.Inspect(ctx, m.input(src))
+	if err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	m.probes[key] = probed{mi: mi, at: nowFn()}
+	m.mu.Unlock()
+	return mi, nil
 }
 
 // Session looks up a live session by id (used when serving segments).
@@ -226,6 +268,11 @@ func (m *Manager) reap() {
 				log.Printf("reap session %s (%s)", id, s.SrcPath)
 				s.stop()
 				delete(m.sessions, id)
+			}
+		}
+		for key, p := range m.probes {
+			if now.Sub(p.at) >= probeTTL {
+				delete(m.probes, key)
 			}
 		}
 		m.mu.Unlock()

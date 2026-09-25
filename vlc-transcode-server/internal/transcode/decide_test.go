@@ -71,3 +71,30 @@ func TestIDForIncludesSurround(t *testing.T) {
 		t.Fatalf("session id ignored the surround policy: %s", a)
 	}
 }
+
+// Smart routing plays a file straight from the share only when /play would
+// have copied both streams — anything it would re-encode still goes through it.
+func TestDirectPlayable(t *testing.T) {
+	cases := []struct {
+		name     string
+		mi       MediaInfo
+		surround string
+		want     bool
+	}{
+		{"h264 aac", MediaInfo{VideoCodec: "h264", AudioCodec: "aac", AudioChans: 2}, SurroundOff, true},
+		{"hevc eac3 5.1", MediaInfo{VideoCodec: "hevc", AudioCodec: "eac3", AudioChans: 6}, SurroundEAC3, true},
+		{"dts needs audio", MediaInfo{VideoCodec: "h264", AudioCodec: "dts", AudioChans: 6}, SurroundOff, false},
+		{"vp9 needs video", MediaInfo{VideoCodec: "vp9", AudioCodec: "aac", AudioChans: 2}, SurroundOff, false},
+		// Decodable, but the user asked for surround on the soundbar.
+		{"aac 5.1 with surround on", MediaInfo{VideoCodec: "h264", AudioCodec: "aac", AudioChans: 6}, SurroundEAC3, false},
+		{"aac 5.1 with surround off", MediaInfo{VideoCodec: "h264", AudioCodec: "aac", AudioChans: 6}, SurroundOff, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			mi := c.mi
+			if got := Decide(&mi, c.surround).DirectPlayable(); got != c.want {
+				t.Errorf("DirectPlayable = %v, want %v", got, c.want)
+			}
+		})
+	}
+}

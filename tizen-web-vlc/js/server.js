@@ -32,6 +32,8 @@ var TranscodeServer = (function () {
     }
     function set(s) {
         try { localStorage.setItem(STORE_KEY, JSON.stringify(s || null)); } catch (e) {}
+        // A different (or updated) server may decide differently.
+        probeCache = {}; probeMissing = false;
     }
     function clear() { try { localStorage.removeItem(STORE_KEY); } catch (e) {} }
     function isPaired() { var s = get(); return !!(s && s.url); }
@@ -167,23 +169,150 @@ var TranscodeServer = (function () {
         xhrPost(SVC_BASE + '/local/disable', {}, function () {});
     }
 
-    /* Wrap a TV-local path in a /play?src=… URL for the box.
+    /* The relay URL the box fetches a TV-local file from.
      *
      * tizen's File.toURI() percent-encodes, so decode once to recover the real
      * filesystem path before re-encoding it as a query value — otherwise a file
      * with a space in its name arrives at the service still encoded and
      * statSync misses it. */
-    function localPlayUrl(fileUri) {
-        var s = get();
-        if (!s || !s.url || !relay) return null;
+    function localSrcUrl(fileUri) {
+        if (!relay) return null;
         var path = String(fileUri || '').replace(/^file:\/\//, '');
         try { path = decodeURIComponent(path); } catch (e) {}
         if (!path) return null;
-        var srcUrl = relay.url + '/local/stream?path=' + encodeURIComponent(path) +
-                     '&key=' + encodeURIComponent(relaySecret());
+        return relay.url + '/local/stream?path=' + encodeURIComponent(path) +
+               '&key=' + encodeURIComponent(relaySecret());
+    }
+
+    /* Wrap a TV-local path in a /play?src=… URL for the box. */
+    function localPlayUrl(fileUri) {
+        var s = get();
+        var srcUrl = localSrcUrl(fileUri);
+        if (!s || !s.url || !srcUrl) return null;
         var u = s.url.replace(/\/+$/, '') + '/play?src=' + encodeURIComponent(srcUrl);
         if (s.token) u += '&token=' + encodeURIComponent(s.token);
         return u;
+    }
+
+    function isLocalFileUri(u) { return typeof u === 'string' && u.indexOf('file://') === 0; }
+
+    /* ── smart routing (issue #87) ──────────────────────────────────────────
+     *
+     * A paired server plays a file as an HLS remux carrying one audio track and
+     * no subtitle streams — even a file the TV could open itself.  With Smart
+     * routing on we ask the box first (/api/probe, which runs the same codec
+     * decision /play would) and play a file it would only remux the way an
+     * unpaired TV does: a share file through the local smbproxy, a USB file
+     * straight off the drive.  Everything that goes wrong lands on the server
+     * route: a probe that fails, a server too old to have /api/probe, and —
+     * through app.js — a direct open that doesn't start, after which the file
+     * is remembered and goes through the server from then on.
+     *
+     * A file is keyed by its share path, or by its file:// URI for USB.
+     * ------------------------------------------------------------------- */
+    var DIRECT_FAILED_KEY = 'vlctv_direct_failed_v1';
+    var DIRECT_FAILED_MAX = 200;       // oldest forgotten first
+    var PROBE_TIMEOUT_MS  = 8000;      // ffprobe over SMB on a small box
+    var probeCache = {};               // file key -> probe answer, this app session
+    var probeMissing = false;          // server answered 404: older than API 2
+
+    function smartEnabled() {
+        return typeof Settings !== 'undefined' && !!Settings.get('smartRouting');
+    }
+
+    /* The share path inside one of our /play?path=… URLs; null for anything
+     * else, including the USB relay's /play?src=… form. */
+    function sharePathOf(u) {
+        if (!isPlayUrl(u)) return null;
+        var m = /[?&]path=([^&]*)/.exec(u);
+        if (!m) return null;
+        try { return decodeURIComponent(m[1]); } catch (e) { return null; }
+    }
+
+    /* The key smart routing remembers a file by, for the URI app.js plays. */
+    function smartKeyOf(uri) {
+        var path = sharePathOf(uri);
+        if (path !== null) return path;
+        return isLocalFileUri(uri) ? uri : null;
+    }
+
+    function directFailedList() {
+        try {
+            var l = JSON.parse(localStorage.getItem(DIRECT_FAILED_KEY) || '[]');
+            return Array.isArray(l) ? l : [];
+        } catch (e) { return []; }
+    }
+    function directFailed(key) { return directFailedList().indexOf(key) >= 0; }
+
+    /* app.js calls this when a file we sent direct never started playing. */
+    function markDirectFailed(uri) {
+        var key = smartKeyOf(uri);
+        if (key === null) return;
+        var l = directFailedList().filter(function (k) { return k !== key; });
+        l.push(key);
+        if (l.length > DIRECT_FAILED_MAX) l = l.slice(l.length - DIRECT_FAILED_MAX);
+        try { localStorage.setItem(DIRECT_FAILED_KEY, JSON.stringify(l)); } catch (e) {}
+        log('smart: ' + key + ' will play through the server from now on');
+    }
+
+    /* query is what names the file to the box: "path=…" or "src=…", the same
+     * forms /play takes. */
+    function probe(key, query, cb) {
+        if (Object.prototype.hasOwnProperty.call(probeCache, key)) return cb(null, probeCache[key], true);
+        var u = withToken('/api/probe?' + query);
+        if (!u) return cb(new Error('not paired'));
+        getJson(u, function (err, res) {
+            if (err && /HTTP 404/.test(err.message)) probeMissing = true;
+            if (err) return cb(err);
+            if (typeof res.direct !== 'boolean') return cb(new Error('unexpected reply'));
+            probeCache[key] = res;
+            cb(null, res, false);
+        }, PROBE_TIMEOUT_MS);
+    }
+
+    /* Decide one file's route.  r = { key, query, serverUrl, directUrl, ready }
+     * where ready(cb) makes directUrl playable.  cb(openUrl, route):
+     * route.fallback is set when openUrl bypasses the server — the URL to
+     * retry through if the direct open fails. */
+    function resolveSmart(r, cb) {
+        function viaServer(why) {
+            log('smart: ' + r.key + ' → server (' + why + ')');
+            cb(r.serverUrl, null);
+        }
+        if (directFailed(r.key)) return viaServer('direct play failed here before');
+        if (probeMissing) return viaServer('server has no /api/probe — update it');
+        var t0 = Date.now();
+        probe(r.key, r.query, function (err, res, cached) {
+            var took = cached ? 'cached' : (Date.now() - t0) + ' ms';
+            if (err) return viaServer('probe failed: ' + err.message);
+            var codecs = (res.video || '?') + '/' + (res.audio || '?') +
+                         (res.audioChannels ? ' ' + res.audioChannels + 'ch' : '');
+            if (!res.direct) return viaServer(codecs + ', ' + res.reason + ', ' + took);
+            r.ready(function (e2) {
+                if (e2) return viaServer(e2.message);
+                log('smart: ' + r.key + ' → direct (' + codecs + ', ' + took + ')');
+                cb(r.directUrl, { fallback: r.serverUrl });
+            });
+        });
+    }
+
+    /* A share file: direct means the local smbproxy stream. */
+    function resolveShare(uri, path, cb) {
+        if (typeof SMB === 'undefined' || !SMB.streamUrl || !SMB.ensureConnected) {
+            log('smart: ' + path + ' → server (no local SMB stream)');
+            return cb(uri, null);
+        }
+        resolveSmart({
+            key: path,
+            query: 'path=' + encodeURIComponent(path),
+            serverUrl: uri,
+            directUrl: SMB.streamUrl(path),
+            ready: function (done) {
+                SMB.ensureConnected(function (e) {
+                    done(e ? new Error('local SMB not ready: ' + e.message) : null);
+                });
+            }
+        }, cb);
     }
 
     /* The one entry point app.js needs: given the URI we would have played,
@@ -191,11 +320,23 @@ var TranscodeServer = (function () {
      * original on every failure path, so this can only change which bytes
      * AVPlay reads — never whether it gets any. */
     function resolvePlaybackUri(uri, cb) {
-        var isLocalFile = typeof uri === 'string' && uri.indexOf('file://') === 0;
-        if (!isLocalFile || !relayEnabled() || !isPaired()) return cb(uri);
+        var sharePath = smartEnabled() ? sharePathOf(uri) : null;
+        if (sharePath !== null) return resolveShare(uri, sharePath, cb);
+        if (!isLocalFileUri(uri) || !relayEnabled() || !isPaired()) return cb(uri);
         armRelay(function (r) {
             if (!r) return cb(uri);
-            cb(localPlayUrl(uri) || uri);
+            var serverUrl = localPlayUrl(uri);
+            if (!serverUrl) return cb(uri);
+            if (!smartEnabled()) return cb(serverUrl);
+            // The box probes through the relay, so it has to be armed first.
+            // Direct is the file:// URI itself — how USB plays with the relay off.
+            resolveSmart({
+                key: uri,
+                query: 'src=' + encodeURIComponent(localSrcUrl(uri)),
+                serverUrl: serverUrl,
+                directUrl: uri,
+                ready: function (done) { done(null); }
+            }, cb);
         });
     }
 
@@ -476,6 +617,11 @@ var TranscodeServer = (function () {
         el.textContent = s && s.url ? (s.name || 'Paired') + ' · ' + s.url : 'Not paired';
     }
 
+    function paintSmart() {
+        var el = document.getElementById('srv-smart-val');
+        if (el) el.textContent = smartEnabled() ? 'On' : 'Off';
+    }
+
     function paintRelay() {
         var el = document.getElementById('srv-local-val');
         if (el) el.textContent = relayEnabled() ? 'On' : 'Off';
@@ -583,6 +729,7 @@ var TranscodeServer = (function () {
         var pairBtn = document.getElementById('srv-pair');
         var unpairBtn = document.getElementById('srv-unpair');
         var localBtn = document.getElementById('srv-local');
+        var smartBtn = document.getElementById('srv-smart');
         var findBtn = document.getElementById('srv-find');
         var connectBtn = document.getElementById('srv-connect');
         var addrInput = document.getElementById('srv-addr');
@@ -591,6 +738,7 @@ var TranscodeServer = (function () {
         var adoptBtn = document.getElementById('srv-adopt');
         paintStatus();
         paintRelay();
+        paintSmart();
         paintSurround();
 
         var cur = get();
@@ -642,6 +790,15 @@ var TranscodeServer = (function () {
                 afterConnect(srv);
             });
         });
+        if (smartBtn) smartBtn.addEventListener('click', function () {
+            var on = !smartEnabled();
+            Settings.set('smartRouting', on);
+            probeCache = {}; probeMissing = false;   // a server update may have added /api/probe
+            paintSmart();
+            if (!on) { toast('Everything plays through the transcode server again'); return; }
+            if (!isPaired()) { toast('Pair a transcode server first — until then everything plays directly anyway'); return; }
+            toast('Files the TV can play itself now skip the transcode server');
+        });
         if (localBtn) localBtn.addEventListener('click', function () {
             var on = !relayEnabled();
             Settings.set('localRelay', on);
@@ -678,6 +835,7 @@ var TranscodeServer = (function () {
         });
         if (unpairBtn) unpairBtn.addEventListener('click', function () {
             clear(); disarmRelay(); paintStatus();
+            probeCache = {}; probeMissing = false;
             if (typeof UI !== 'undefined' && UI.toast) UI.toast('Transcode server removed');
         });
     }
@@ -690,9 +848,12 @@ var TranscodeServer = (function () {
     return {
         get: get, set: set, clear: clear, isPaired: isPaired,
         playUrl: playUrl, isPlayUrl: isPlayUrl, pair: pair,
-        resolvePlaybackUri: resolvePlaybackUri,
+        resolvePlaybackUri: resolvePlaybackUri, markDirectFailed: markDirectFailed,
         findServers: findServers, connectTo: connectTo,
         adoptShare: adoptShare, pushShare: pushShare,
         loadServerConfig: loadServerConfig, patchServerConfig: patchServerConfig
     };
 })();
+
+// Ignored by the Tizen/browser build; lets Node tests drive the module.
+if (typeof module !== 'undefined' && module.exports) module.exports = TranscodeServer;

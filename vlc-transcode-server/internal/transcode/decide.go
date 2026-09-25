@@ -65,6 +65,12 @@ type Plan struct {
 	mi *MediaInfo
 }
 
+// DirectPlayable reports whether the plan is a pure remux: both streams go
+// through untouched, so the TV can play the original file itself. Doing that
+// keeps every audio track and native seeking, which the single-track HLS remux
+// drops — it's what the TV's smart routing asks /api/probe for.
+func (p Plan) DirectPlayable() bool { return p.CopyVideo && p.CopyAudio }
+
 // Decide chooses the cheapest treatment that yields a TV-playable HLS stream:
 //
 //   - both streams already fine        → remux only (copy/copy, ~no CPU)

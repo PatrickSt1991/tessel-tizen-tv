@@ -225,6 +225,36 @@ serves the live HLS manifest. A DTS/TrueHD file should now play **with sound**.
 | Video codec unsupported | Hardware-transcode video → H.264, fix audio |
 | Multichannel audio, surround on | Copy video, transcode audio → E-AC-3 / AC-3 5.1 |
 
+## Smart routing: skip the server when it wouldn't do anything
+
+Without it, a paired TV plays **every** share file through this box (and every
+USB file, with the USB setting below on) — including
+the ones it would only remux. That works, but the HLS stream it produces carries
+one audio track and no subtitle streams, and seeks in HLS segments rather than
+in the file. A film with English and Dutch audio loses the choice.
+
+Turn on **Settings → Transcode server → Smart routing** on the TV and it asks
+first. Before each file it calls `/api/probe` — with the same `path=` or `src=`
+it would hand `/play` — which runs the same
+decision as `/play` (the table above, with your surround setting applied)
+without starting ffmpeg:
+
+```
+GET /api/probe?path=/Movies/SomeMovie.mkv&token=<token>
+{"direct":true,"reason":"remux only — both streams TV-compatible","video":"h264","audio":"aac","audioChannels":2}
+```
+
+`"direct": true` — a pure remux — means the TV plays the original itself,
+exactly like an unpaired TV, with all its tracks: a share file straight from the
+share, a USB file straight off the drive. Anything else goes
+through the box as before. The probe result is cached here for 10 minutes, so
+when the answer is "through the server" `/play` doesn't run ffprobe again.
+
+It is off by default, and it can only ever fall back to the server route: a
+probe that fails or times out, a server too old to have `/api/probe`, or a
+direct open that doesn't start playing all end up here. A file whose direct
+open failed is remembered on the TV and goes through the server from then on.
+
 ## Surround sound (5.1 to a soundbar)
 
 A 5.1 FLAC, AAC or PCM track plays on the TV and still arrives at the soundbar

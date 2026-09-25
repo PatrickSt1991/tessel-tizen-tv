@@ -21,6 +21,13 @@ var Settings = (function () {
         // helps when a transcode server is paired, and it costs the embedded
         // AVPlay fallbacks that direct local playback gets.
         localRelay:       false,
+        // Ask the paired transcode server about each file first (share files,
+        // and USB files when localRelay is on), and play the ones it would only
+        // remux directly — keeping every audio track and native seeking.  Off
+        // by default: it adds a probe before each play, and trusts the server's
+        // codec list over the always-works HLS route (a failed direct open
+        // falls back to it).
+        smartRouting:     false,
         // ── Subtitle appearance (applied to the painted overlay) ──────────
         subtitleSize:     'medium',    // 'small' | 'medium' | 'large' | 'xlarge'
         subtitleFont:     'sans',      // 'sans' | 'serif' | 'mono'

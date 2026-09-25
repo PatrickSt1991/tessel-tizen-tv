@@ -9,7 +9,7 @@
  *                       → NEGOTIATE + NTLMv2 SESSION_SETUP + TREE_CONNECT
  *   GET  /smb/list?path=/sub          → JSON [{ name, isDir, size }]
  *   GET  /smb/stream?path=/a/b.mkv    → byte stream, honours HTTP Range
- *   GET  /smb/ping                    → { ok:true } liveness check
+ *   GET  /smb/ping                    → { ok:true, connected } liveness check
  *
  * It also hosts the optional *local relay* (see the block near the bottom):
  * a second listener, on the LAN rather than loopback, that serves files off
@@ -1304,7 +1304,7 @@ var server = http.createServer(function (req, res) {
     var u = require('url').parse(req.url, true);
     if (req.method === 'OPTIONS') { cors(res, 204, 'text/plain'); return res.end(); }
 
-    if (u.pathname === '/smb/ping')        return sendJson(res, 200, { ok: true });
+    if (u.pathname === '/smb/ping')        return sendJson(res, 200, { ok: true, connected: !!lastCreds });
     if (u.pathname === '/smb/debug/logs')  return sendJson(res, 200, { logs: LOGS });
     if (u.pathname === '/smb/connect' && req.method === 'POST') return handleConnect(req, res);
     if (u.pathname === '/smb/list')        return handleList(req, res, u.query);
