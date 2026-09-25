@@ -1,6 +1,6 @@
 'use strict';
 // Setup-page strings, looked up by key — the same scheme as the TV app's
-// tizen-app/js/i18n.js.  i18n/en.json is the English source Crowdin translates
+// tizen-app/js/i18n.js.  i18n/en.json is the English source every translation works
 // from; each translation is i18n/<locale>.json and carries only what has been
 // translated, so a key it lacks falls back to English.
 //

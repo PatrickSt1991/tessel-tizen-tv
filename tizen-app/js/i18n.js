@@ -1,6 +1,6 @@
 /* i18n.js — every user-facing string, looked up by key.
  *
- * The English text lives in i18n/en.json, the source file Crowdin translates
+ * The English text lives in i18n/en.json, the source every translation works
  * from; each translation is i18n/<locale>.json (nl-NL.json, pt-BR.json …),
  * named by full locale so pt-BR/pt-PT and zh-CN/zh-TW can't collide.  A
  * language file only carries what has been translated: a key it lacks falls
