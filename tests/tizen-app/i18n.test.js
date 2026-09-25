@@ -71,21 +71,60 @@ test('match() maps TV and setting locales onto the offered languages', function 
     assert.strictEqual(I18n.match(''), 'en');
 });
 
+/* The transcode server's setup page uses the same scheme with its own table. */
+var SETUP = path.join(__dirname, '../../transcode-server/internal/web/static');
+var setupEn = require('../../transcode-server/internal/web/static/i18n/en.json');
+
+/* Both translation folders, each with its English source. */
+var TABLES = [
+    { dir: path.join(ROOT, 'i18n'), en: en },
+    { dir: path.join(SETUP, 'i18n'), en: setupEn }
+];
+
+function translations(table) {
+    return fs.readdirSync(table.dir).filter(function (f) { return f !== 'en.json' && /\.json$/.test(f); })
+        .map(function (f) { return { file: f, strings: JSON.parse(fs.readFileSync(path.join(table.dir, f), 'utf8')) }; });
+}
+
 test('every placeholder in a translation exists in the English text', function () {
-    var dir = path.join(ROOT, 'i18n');
-    fs.readdirSync(dir).filter(function (f) { return f !== 'en.json' && /\.json$/.test(f); }).forEach(function (f) {
-        var tr = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
-        Object.keys(tr).forEach(function (k) {
-            var want = (String(en[k] || '').match(/\{\d+\}/g) || []).sort().join();
-            var got  = (String(tr[k]).match(/\{\d+\}/g) || []).sort().join();
-            assert.strictEqual(got, want, f + ': ' + k);
+    TABLES.forEach(function (table) {
+        translations(table).forEach(function (tr) {
+            Object.keys(tr.strings).forEach(function (k) {
+                var want = (String(table.en[k] || '').match(/\{\d+\}/g) || []).sort().join();
+                var got  = (String(tr.strings[k]).match(/\{\d+\}/g) || []).sort().join();
+                assert.strictEqual(got, want, tr.file + ': ' + k);
+            });
         });
     });
 });
 
-/* The transcode server's setup page uses the same scheme with its own table. */
-var SETUP = path.join(__dirname, '../../transcode-server/internal/web/static');
-var setupEn = require('../../transcode-server/internal/web/static/i18n/en.json');
+test('a translation carries no keys English no longer has', function () {
+    TABLES.forEach(function (table) {
+        translations(table).forEach(function (tr) {
+            var stale = Object.keys(tr.strings).filter(function (k) { return !(k in table.en); });
+            assert.deepStrictEqual(stale, [], table.dir + '/' + tr.file);
+        });
+    });
+});
+
+/* The language menus list every language, so each one needs its file —
+ * otherwise picking it quietly shows English. */
+test('every offered language has a translation for the app and the setup page', function () {
+    TABLES.forEach(function (table) {
+        var missing = I18n.languages().map(function (l) { return l.code; }).filter(function (code) {
+            return !fs.existsSync(path.join(table.dir, code + '.json'));
+        });
+        assert.deepStrictEqual(missing, [], table.dir);
+    });
+});
+
+test('the setup page offers the same languages as the app', function () {
+    var src = fs.readFileSync(path.join(SETUP, 'i18n.js'), 'utf8');
+    var list = src.slice(src.indexOf('const LANGUAGES'), src.indexOf('];'));
+    var codes = [], m, re = /\['([^']+)',/g;
+    while ((m = re.exec(list))) codes.push(m[1]);
+    assert.deepStrictEqual(codes, I18n.languages().map(function (l) { return l.code; }));
+});
 
 test('the setup page and its en.json agree on the keys', function () {
     var html = fs.readFileSync(path.join(SETUP, 'index.html'), 'utf8');

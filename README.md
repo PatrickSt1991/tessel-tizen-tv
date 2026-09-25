@@ -44,6 +44,15 @@ bash tizen-app/build.sh      # unsigned .wgt in dist/
 
 GitHub Actions builds and publishes a release on every merge to `main`.
 
+## Translations
+
+The app follows the TV's menu language, or whatever you pick under *Settings → App language*. The setup page follows your browser and has its own language menu. Every string lives in two flat JSON files per language:
+
+- `tizen-app/i18n/<locale>.json`: the TV app
+- `transcode-server/internal/web/static/i18n/<locale>.json`: the setup page
+
+`en.json` is the source. A translation can leave keys out, and those show in English. Keep `{0}`, `{1}` … as they are; you can move them anywhere in the sentence. Fixes are welcome as a pull request, and editing the file on GitHub is enough.
+
 ## Support
 
 If Tessel is useful to you, consider a coffee: [ko-fi.com/M4M71JOT9R](https://ko-fi.com/M4M71JOT9R)
