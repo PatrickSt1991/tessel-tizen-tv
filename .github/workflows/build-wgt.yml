@@ -1,10 +1,10 @@
-name: Build VLC TV WGT
+name: Build Tessel WGT
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - 'tizen-web-vlc/**'
+      - 'tizen-app/**'
       - '.github/workflows/build-wgt.yml'
 
 permissions:
@@ -71,7 +71,7 @@ jobs:
       - name: Validate web app source
         run: |
           TIZEN="${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin/tizen"
-          cd tizen-web-vlc
+          cd tizen-app
           # build-web prepares .buildResult/ with the bundle to sign
           $TIZEN build-web -- "$PWD"
 
@@ -80,7 +80,7 @@ jobs:
           cat > package.exp << 'EOF'
           #!/usr/bin/expect -f
           set timeout 300
-          spawn $env(GITHUB_WORKSPACE)/tizen-studio/tools/ide/bin/tizen package -t wgt -s $env(PROFILE) -- $env(GITHUB_WORKSPACE)/tizen-web-vlc/.buildResult
+          spawn $env(GITHUB_WORKSPACE)/tizen-studio/tools/ide/bin/tizen package -t wgt -s $env(PROFILE) -- $env(GITHUB_WORKSPACE)/tizen-app/.buildResult
           expect {
             "Author password:"        { send "$env(CERT_PASSWORD)\r"; exp_continue }
             "Save author password"    { send "n\r"; exp_continue }
@@ -94,13 +94,13 @@ jobs:
 
           # Move the signed wgt out of the build result
           mkdir -p release
-          mv tizen-web-vlc/.buildResult/*.wgt release/vlctv.wgt
+          mv tizen-app/.buildResult/*.wgt release/tessel.wgt
           ls -lh release/
 
       - name: Compute version + date tags
         id: meta
         run: |
-          VERSION=$(xmllint --xpath 'string(/*/@version)' tizen-web-vlc/config.xml)
+          VERSION=$(xmllint --xpath 'string(/*/@version)' tizen-app/config.xml)
           DATE_TAG=$(date +'%Y%m%d-%H%M')
           DATE_PRETTY=$(date +'%Y-%m-%d %H:%M UTC')
           {
@@ -112,18 +112,18 @@ jobs:
       - name: Upload artifact (per-run)
         uses: actions/upload-artifact@v4
         with:
-          name: vlctv-${{ steps.meta.outputs.date_tag }}
-          path: release/vlctv.wgt
+          name: tessel-${{ steps.meta.outputs.date_tag }}
+          path: release/tessel.wgt
 
       - name: Create GitHub Release
         if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: 'v${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.date_tag }}'
-          name:    'VLC TV v${{ steps.meta.outputs.version }} — ${{ steps.meta.outputs.date_pretty }}'
+          name:    'Tessel v${{ steps.meta.outputs.version }} — ${{ steps.meta.outputs.date_pretty }}'
           files:   release/*.wgt
           body: |
-            # VLC TV — Tizen Web App
+            # Tessel — Tizen Web App
 
             Built ${{ steps.meta.outputs.date_pretty }} by GitHub Actions.
 
@@ -137,7 +137,7 @@ jobs:
               ### ✅ Easy — via Apps2Samsung (recommended)
               Download and install automatically through [Apps2Samsung](https://apps2samsung.madebypatrick.nl/):
               - Open the app, select **Tizen Community** as the release channel
-              - Pick **vlc-tizen-tv** and follow the on-screen steps
+              - Pick **Tessel** and follow the on-screen steps
 
               > Apps2Samsung handles signing and sideloading for you.
 
@@ -149,18 +149,18 @@ jobs:
             
               **Re-sign:**
                 ```bash
-                  tizen package -t wgt -s YourProfile -- /path/to/vlctv.wgt
+                  tizen package -t wgt -s YourProfile -- /path/to/tessel.wgt
                 ```
               *(Use Tizen Studio's Certificate Manager to create/select `YourProfile`)*
             
               **Install:**
                 ```bash
                   sdb connect <tv-ip>
-                  sdb install vlctv.wgt
+                  sdb install tessel.wgt
                 ```
 
             ## Whats in this build
             - All sources at the matching commit
-            - Output: `vlctv.wgt`
+            - Output: `tessel.wgt`
           draft:      false
           prerelease: false

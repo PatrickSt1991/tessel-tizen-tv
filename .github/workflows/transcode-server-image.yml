@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'vlc-transcode-server/**'
+      - 'transcode-server/**'
       - '.github/workflows/transcode-server-image.yml'
     tags:
       - 'transcode-v*'
@@ -16,7 +16,10 @@ permissions:
 
 env:
   # ghcr requires a lowercase image path.
-  IMAGE: ghcr.io/patrickst1991/vlc-tv-transcode
+  IMAGE: ghcr.io/patrickst1991/tessel-transcode
+  # The pre-rename name, still pushed so existing docker-compose files and
+  # `docker pull` commands keep getting updates.
+  LEGACY_IMAGE: ghcr.io/patrickst1991/vlc-tv-transcode
 
 jobs:
   build:
@@ -42,7 +45,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE }}
+          images: |
+            ${{ env.IMAGE }}
+            ${{ env.LEGACY_IMAGE }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=,format=short
@@ -51,8 +56,8 @@ jobs:
       - name: Build and push (amd64 + arm64)
         uses: docker/build-push-action@v6
         with:
-          context: vlc-transcode-server
-          file: vlc-transcode-server/Dockerfile
+          context: transcode-server
+          file: transcode-server/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

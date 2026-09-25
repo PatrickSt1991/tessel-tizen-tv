@@ -10,7 +10,7 @@ Old AVI / WMV / FLV files (DivX, Xvid, WMV9, etc.) and modern files
 with DTS-HD MA or TrueHD audio will fail in AVPlay's `prepareAsync`
 even when the network and proxy paths are fully working.
 
-VLC TV can't transcode on the TV itself (the CPU isn't fast enough),
+Tessel can't transcode on the TV itself (the CPU isn't fast enough),
 but the existing **Network Stream** view and the **Cast a link from
 your phone** flow already let you play streams that a *server* has
 transcoded for you. Two practical routes:
@@ -19,7 +19,7 @@ transcoded for you. Two practical routes:
 
 Both expose every file in their library as a transcoded HTTP / HLS
 stream URL that this TV's AVPlay can decode natively. You just need to
-hand the URL to VLC TV.
+hand the URL to Tessel.
 
 - **Plex**: in the web UI, right-click an item → *Get Info → View XML*,
   or use the official API:
@@ -66,9 +66,9 @@ all, on any device: an external player that "sends FLAC 5.1 to the soundbar" is
 decoding it and sending multichannel LPCM over a link that can carry it.
 
 AVPlay gives an app no channel-layout or passthrough control, so no version of
-VLC TV can fix this on the TV. The two things that do work:
+Tessel can fix this on the TV. The two things that do work:
 
-- **Let the [transcode server](../vlc-transcode-server/) re-encode it.** Point the
+- **Let the [transcode server](../transcode-server/) re-encode it.** Point the
   TV at it with **Settings → Transcode server → Find server on my network** — it
   sweeps your LAN, pairs, and sorts the share settings out between the two ends
   by itself. No pairing code, no internet. Then, in the same menu, set
