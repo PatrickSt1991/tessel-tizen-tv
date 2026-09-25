@@ -94,7 +94,7 @@ jobs:
 
           # Move the signed wgt out of the build result
           mkdir -p release
-          mv tizen-app/.buildResult/*.wgt release/vlctv.wgt
+          mv tizen-app/.buildResult/*.wgt release/tessel.wgt
           ls -lh release/
 
       - name: Compute version + date tags
@@ -112,8 +112,8 @@ jobs:
       - name: Upload artifact (per-run)
         uses: actions/upload-artifact@v4
         with:
-          name: vlctv-${{ steps.meta.outputs.date_tag }}
-          path: release/vlctv.wgt
+          name: tessel-${{ steps.meta.outputs.date_tag }}
+          path: release/tessel.wgt
 
       - name: Create GitHub Release
         if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
@@ -149,18 +149,18 @@ jobs:
             
               **Re-sign:**
                 ```bash
-                  tizen package -t wgt -s YourProfile -- /path/to/vlctv.wgt
+                  tizen package -t wgt -s YourProfile -- /path/to/tessel.wgt
                 ```
               *(Use Tizen Studio's Certificate Manager to create/select `YourProfile`)*
             
               **Install:**
                 ```bash
                   sdb connect <tv-ip>
-                  sdb install vlctv.wgt
+                  sdb install tessel.wgt
                 ```
 
             ## Whats in this build
             - All sources at the matching commit
-            - Output: `vlctv.wgt`
+            - Output: `tessel.wgt`
           draft:      false
           prerelease: false

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Package the Tessel web app as a .wgt for Samsung Tizen TV.
 #
-# Output: dist/madebypatk-vlctv.wgt
+# Output: dist/tessel.wgt
 #
 # Sign the resulting .wgt with your Samsung distributor cert before installing.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="${ROOT}/tizen-app"
-OUT="${ROOT}/dist/madebypatk-vlcweb.wgt"
+OUT="${ROOT}/dist/tessel.wgt"
 
 # Use the existing app icon from the native attempt
 cp -f "${ROOT}/res/tessel.png" "${SRC}/icon.png"

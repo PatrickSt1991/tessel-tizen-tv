@@ -26,7 +26,10 @@ code once — the browser remembers it) and you're paired. The topic is
 The page is `docs/index.html` (plus `icon.png`). Serve it over **HTTPS** at the
 URL set in `PHONE_PAGE` in `js/url-drop.js` — currently:
 
-`https://vlc-tizen.madebypatrick.nl/`
+`https://tessel.madebypatrick.nl/`
+
+(Before 1.7.0 it was `vlc-tizen.madebypatrick.nl`. That name still redirects
+to the new one, so the QR code on TVs running an older version keeps working.)
 
 HTTPS is required: the page POSTs to `https://ntfy.sh`, so a plain-HTTP page is
 blocked by the browser as mixed content and sending fails silently. Any static

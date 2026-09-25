@@ -25,7 +25,9 @@ var UrlDrop = (function () {
     var CODE_KEY   = 'urlDropCode';
     var NTFY_BASE  = 'https://ntfy.sh';
     // GitHub Pages page users open on their phone (deploy docs/index.html).
-    var PHONE_PAGE = 'https://vlc-tizen.madebypatrick.nl/';
+    // Before 1.7.0 this was vlc-tizen.madebypatrick.nl, which still redirects
+    // here (query and #code intact) for TVs running an older version.
+    var PHONE_PAGE = 'https://tessel.madebypatrick.nl/';
 
     function log(m) { if (typeof Debug !== 'undefined' && Debug.net) Debug.net('[url-drop] ' + m); }
 

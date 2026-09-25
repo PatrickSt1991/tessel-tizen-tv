@@ -21,11 +21,11 @@ through Samsung's AVPlay.
 
 1. **Developer Mode** on the TV: Apps → press `1 2 3 4 5` → Developer Mode **ON** → enter your PC's IP → reboot.
 2. **Easy:** install [Apps2Samsung](https://github.com/Apps2Samsung/Apps2Samsung/releases/latest), pick the *Tizen Community* channel and choose **Tessel**. It signs and sideloads for you.
-3. **Manual:** download `vlctv.wgt` from [Releases](https://github.com/PatrickSt1991/tessel-tizen-tv/releases), re-sign it with your own distributor certificate in Tizen Studio, then:
+3. **Manual:** download `tessel.wgt` from [Releases](https://github.com/PatrickSt1991/tessel-tizen-tv/releases), re-sign it with your own distributor certificate in Tizen Studio, then:
 
    ```bash
    sdb connect <tv-ip>
-   sdb install vlctv.wgt
+   sdb install tessel.wgt
    ```
 
 Works on Tizen TVs from 2017 onward. SMB shares need Tizen 4.0+ (2018 sets and later). Tested on a 2019 RU7020 and a 2023 S90C.
