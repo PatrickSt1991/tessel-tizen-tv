@@ -227,13 +227,15 @@ serves the live HLS manifest. A DTS/TrueHD file should now play **with sound**.
 
 ## Smart routing: skip the server when it wouldn't do anything
 
-Without it, a paired TV plays **every** share file through this box — including
+Without it, a paired TV plays **every** share file through this box (and every
+USB file, with the USB setting below on) — including
 the ones it would only remux. That works, but the HLS stream it produces carries
 one audio track and no subtitle streams, and seeks in HLS segments rather than
 in the file. A film with English and Dutch audio loses the choice.
 
 Turn on **Settings → Transcode server → Smart routing** on the TV and it asks
-first. Before each share file it calls `/api/probe`, which runs the same
+first. Before each file it calls `/api/probe` — with the same `path=` or `src=`
+it would hand `/play` — which runs the same
 decision as `/play` (the table above, with your surround setting applied)
 without starting ffmpeg:
 
@@ -242,8 +244,9 @@ GET /api/probe?path=/Movies/SomeMovie.mkv&token=<token>
 {"direct":true,"reason":"remux only — both streams TV-compatible","video":"h264","audio":"aac","audioChannels":2}
 ```
 
-`"direct": true` — a pure remux — means the TV plays the original straight from
-the share, exactly like an unpaired TV, with all its tracks. Anything else goes
+`"direct": true` — a pure remux — means the TV plays the original itself,
+exactly like an unpaired TV, with all its tracks: a share file straight from the
+share, a USB file straight off the drive. Anything else goes
 through the box as before. The probe result is cached here for 10 minutes, so
 when the answer is "through the server" `/play` doesn't run ffprobe again.
 

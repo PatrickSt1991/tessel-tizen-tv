@@ -11,6 +11,8 @@ var SRC = fs.readFileSync(
 
 var SERVER = 'http://192.168.1.20:8200';
 var STREAM = 'http://127.0.0.1:8127/smb/stream?path=';
+var RELAY  = 'http://192.168.1.50:8128';
+var USB    = 'file:///opt/usr/media/USBDriveA1/Films/My%20Film.mkv';
 
 /* server.js expects a browser, Settings and the SMB module; stub all three.
  * `probe` answers /api/probe: a function (path) → { status, body }. */
@@ -18,7 +20,7 @@ function loadServer(opts) {
     opts = opts || {};
     var store = {};
     store.vlctv_server_v1 = JSON.stringify({ url: SERVER, token: 'tok', name: 'box', api: 2 });
-    var settings = { smartRouting: opts.smart !== false };
+    var settings = { smartRouting: opts.smart !== false, localRelay: !!opts.relay };
     var requests = [];
     var connects = 0;
 
@@ -29,7 +31,14 @@ function loadServer(opts) {
         // Only probes are counted; loading also reads /api/config for the
         // settings screen, which is not what these tests are about.
         if (this.url.indexOf('/api/probe') >= 0) requests.push(this.url);
-        var m = /\/api\/probe\?path=([^&]*)/.exec(this.url);
+        if (/\/api\/status$/.test(this.url) || /\/local\/enable$/.test(this.url)) {
+            this.readyState = 4; this.status = 200;
+            this.responseText = JSON.stringify(/status$/.test(this.url)
+                ? { localRelay: opts.serverAcceptsUsb !== false, token: 'tok' }
+                : { ok: true, url: RELAY });
+            return this.onreadystatechange();
+        }
+        var m = /\/api\/probe\?(?:path|src)=([^&]*)/.exec(this.url);
         var r = m && opts.probe ? opts.probe(decodeURIComponent(m[1])) : { status: 404, body: '' };
         if (r === 'network') { this.readyState = 4; this.status = 0; return this.onerror(); }
         this.readyState = 4;
@@ -41,7 +50,9 @@ function loadServer(opts) {
     var sandbox = {
         module: { exports: {} },
         Settings: { get: function (k) { return settings[k]; }, set: function (k, v) { settings[k] = v; } },
+        Browser: { listRoots: function (cb) { cb(null, [{ fullPath: '/opt/usr/media/USBDriveA1' }]); } },
         SMB: {
+            ensureService: function (cb) { cb(null); },
             streamUrl: function (p) { return STREAM + encodeURIComponent(p); },
             ensureConnected: function (cb) {
                 connects++;
@@ -169,4 +180,62 @@ test('URLs that are not share play URLs are not probed', function () {
         assert.strictEqual(t.resolve(u).url, u);
     });
     assert.strictEqual(t.requests.length, 0);
+});
+
+/* ── USB / internal storage, with "Play USB files through the server" on ── */
+
+test('USB with smart routing off still goes through the relay, unprobed', function () {
+    var t = loadServer({ smart: false, relay: true, probe: direct(true) });
+    var r = t.resolve(USB);
+    assert.ok(r.url.indexOf(SERVER + '/play?src=') === 0, r.url);
+    assert.strictEqual(r.route, null);
+    assert.strictEqual(t.requests.length, 0);
+});
+
+test('a USB file the server would only remux plays straight off the drive', function () {
+    var t = loadServer({ relay: true, probe: direct(true) });
+    var r = t.resolve(USB);
+    assert.strictEqual(r.url, USB, 'direct is the file:// URI, as with the relay off');
+    assert.ok(r.route && r.route.fallback.indexOf(SERVER + '/play?src=') === 0, 'server route kept as fallback');
+    // The box is asked about the same relay URL /play would fetch.
+    var q = /\/api\/probe\?src=([^&]*)&token=tok$/.exec(t.requests[0]);
+    assert.ok(q, t.requests[0]);
+    var src = decodeURIComponent(q[1]);
+    assert.ok(src.indexOf(RELAY + '/local/stream?path=' + encodeURIComponent('/opt/usr/media/USBDriveA1/Films/My Film.mkv')) === 0, src);
+    assert.ok(r.route.fallback.indexOf(encodeURIComponent(src)) > 0, 'probe and play name the same source');
+    assert.strictEqual(t.connects(), 0, 'no SMB involved');
+});
+
+test('a USB file that needs transcoding goes through the relay', function () {
+    var t = loadServer({ relay: true, probe: direct(false) });
+    var r = t.resolve(USB);
+    assert.ok(r.url.indexOf(SERVER + '/play?src=') === 0, r.url);
+    assert.strictEqual(r.route, null);
+});
+
+test('a USB file that failed direct play goes through the relay from then on', function () {
+    var t = loadServer({ relay: true, probe: direct(true) });
+    assert.strictEqual(t.resolve(USB).url, USB);
+    t.TS.markDirectFailed(USB);
+    var r = t.resolve(USB);
+    assert.ok(r.url.indexOf(SERVER + '/play?src=') === 0, r.url);
+    assert.strictEqual(t.requests.length, 1, 'not probed again');
+    assert.deepStrictEqual(JSON.parse(t.store.vlctv_direct_failed_v1), [USB]);
+});
+
+test('USB probe failure keeps the relay route; a relay that is off leaves USB direct as before', function () {
+    var t = loadServer({ relay: true, probe: function () { return { status: 400, body: 'local relay is disabled' }; } });
+    assert.ok(t.resolve(USB).url.indexOf(SERVER + '/play?src=') === 0);
+
+    // Server refuses USB files: no relay, so the file plays directly, unprobed.
+    var t2 = loadServer({ relay: true, serverAcceptsUsb: false, probe: direct(true) });
+    var r2 = t2.resolve(USB);
+    assert.strictEqual(r2.url, USB);
+    assert.strictEqual(r2.route, null);
+    assert.strictEqual(t2.requests.length, 0);
+
+    // The USB setting off: smart routing has nothing to decide for USB.
+    var t3 = loadServer({ relay: false, probe: direct(true) });
+    assert.strictEqual(t3.resolve(USB).url, USB);
+    assert.strictEqual(t3.requests.length, 0);
 });
