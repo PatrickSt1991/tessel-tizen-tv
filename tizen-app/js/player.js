@@ -989,9 +989,9 @@ var Player = (function () {
     function subExtractReason(err) {
         var m = (err && err.message) || String(err || 'unknown error');
         if (/no cue index|no block positions|no entries for track/.test(m))
-            return 'the file carries no index for it';
+            return I18n.t('subs.noIndex');
         if (/only text subtitles/.test(m))
-            return 'its subtitles are images, not text';
+            return I18n.t('subs.imageBased');
         return m.length > 80 ? m.slice(0, 77) + '…' : m;
     }
 
@@ -1044,8 +1044,7 @@ var Player = (function () {
         avNativeSubsAllowed = false;
         applyExternalSubtitleLive(entry);
         emit('onsubsupdated');
-        emit('onsubnotice', 'Reading ' + base.replace(/^\(embedded\) /, '') +
-                            ' from the file — subtitles appear as they load');
+        emit('onsubnotice', I18n.t('subs.reading', base.replace(/^\(embedded\) /, '')));
 
         cancelTrackExtraction('another track picked');
         var token    = ++trackExtractToken;
@@ -1083,8 +1082,7 @@ var Player = (function () {
                     currentExternalSub = null;
                 }
                 emit('onsubsupdated');
-                emit('onsubnotice', 'Can’t read ' + base.replace(/^\(embedded\) /, '') +
-                                    ' from this file — ' + subExtractReason(err));
+                emit('onsubnotice', I18n.t('subs.cantRead', base.replace(/^\(embedded\) /, ''), subExtractReason(err)));
                 return;
             }
             entry._partial = !!err;
@@ -1320,7 +1318,7 @@ var Player = (function () {
                         if (typeof Debug !== 'undefined') Debug.warn('writeSrtToTmp: ' + ((werr && (werr.message || werr)) || 'no record'));
                     } else {
                         playerSubtitles.push({
-                            name:       'Embedded subtitle ' + (i + 1) + ' (' + label + ')',
+                            name:       I18n.t('subs.embedded', i + 1, label),
                             lang:       s.lang || '',
                             ext:        'srt',
                             file:       rec.file,
@@ -1681,7 +1679,7 @@ var Player = (function () {
      *   - subtitle: the sibling subtitle files passed in opts.subtitles, plus
      *               any embedded textTracks the video exposes. */
     function getTracks() {
-        var out = { audio: [], subtitle: [{ index: -1, name: 'Off', off: true, active: false }] };
+        var out = { audio: [], subtitle: [{ index: -1, name: I18n.t('common.off'), off: true, active: false }] };
 
         if (backend === BACKEND_AVPLAY) {
             // Show native AVPlay-reported embedded subtitle tracks as a
@@ -1738,14 +1736,14 @@ var Player = (function () {
                         // the label rather than leaving the user to wonder.
                         var downmixed = !unsupported &&
                                         isDownmixedAudio(parsed.codec, parsed.channels);
-                        var note = unsupported ? ' — not supported by TV'
-                                 : downmixed   ? ' — TV downmixes to stereo'
+                        var note = unsupported ? ' — ' + I18n.t('audio.notSupported')
+                                 : downmixed   ? ' — ' + I18n.t('audio.downmixed')
                                  : '';
                         out.audio.push({
                             index:  t.index,
                             // Flag codecs the TV can't decode right in the
                             // label so the user knows why a track is silent.
-                            name:   (parsed.label || ('Audio ' + t.index)) + note,
+                            name:   (parsed.label || I18n.t('audio.numbered', t.index)) + note,
                             lang:   parsed.lang || '',
                             codec:  parsed.codec || '',
                             channels: parsed.channels || 0,
@@ -1757,7 +1755,7 @@ var Player = (function () {
                     } else if (t.type === 'TEXT' || t.type === 'SUBTITLE') {
                         avTextTracks.push({
                             index: t.index,
-                            label: parsed.label || ('Subtitle ' + t.index),
+                            label: parsed.label || I18n.t('subs.numbered', t.index),
                             lang:  parsed.lang || ''
                         });
                     }
@@ -1870,8 +1868,7 @@ var Player = (function () {
                 var missing = declaredTextCount - extractedCount;
                 out.subtitle.push({
                     index:  'missing',
-                    name:   '+' + missing + ' embedded track' + (missing === 1 ? '' : 's') +
-                            ' this TV can’t draw (image-based subs)',
+                    name:   I18n.t(missing === 1 ? 'subs.missingOne' : 'subs.missingMany', missing),
                     muted:  true,
                     active: false
                 });
@@ -1897,7 +1894,7 @@ var Player = (function () {
                     var at = v.audioTracks[j];
                     out.audio.push({
                         index:  j,
-                        name:   at.label || at.language || ('Audio ' + j),
+                        name:   at.label || at.language || I18n.t('audio.numbered', j),
                         type:   'HTML5_AUDIO',
                         active: !!at.enabled
                     });

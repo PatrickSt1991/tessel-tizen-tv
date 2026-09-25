@@ -1,0 +1,83 @@
+name: Crowdin sync
+
+# English strings go up to Crowdin whenever an en.json changes on main; translations come back
+# as a pull request, on the same push and once a week for whatever translators finished since.
+#
+# Needs two repository secrets — until they exist the job warns and skips rather than failing:
+#   CROWDIN_PROJECT_ID       numeric project id
+#   CROWDIN_PERSONAL_TOKEN   personal access token with the Projects scope
+#
+# Merging the translations PR touches tizen-app/, so it cuts an app release like any other
+# change there; that is how new translations reach TVs.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tizen-app/i18n/en.json'
+      - 'transcode-server/internal/web/static/i18n/en.json'
+      - 'crowdin.yml'
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: crowdin-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check for Crowdin credentials
+        id: creds
+        env:
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+        run: |
+          if [ -z "$CROWDIN_PROJECT_ID" ] || [ -z "$CROWDIN_PERSONAL_TOKEN" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CROWDIN_PROJECT_ID / CROWDIN_PERSONAL_TOKEN are not set - skipping the sync."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.creds.outputs.configured == 'true'
+
+      # The action stacks commits on an existing l10n branch while the PRs get squash-merged, so
+      # the branch drifts from main until it conflicts over nothing (Apps2Samsung #677). Start
+      # every run from main instead; an open translations PR is simply replaced by the new one.
+      - name: Start the translations branch from main
+        if: steps.creds.outputs.configured == 'true'
+        run: git push origin --delete l10n_main || echo "No l10n_main to drop."
+
+      - name: Upload sources and open a translations PR
+        if: steps.creds.outputs.configured == 'true'
+        uses: crowdin/github-action@v2
+        with:
+          upload_sources: true
+          # Crowdin owns the translations; the repo only receives them.
+          upload_translations: false
+          # A value equal to the English is an untranslated key, not a translation (Apps2Samsung
+          # once carried ~150 of those per language as approved translations). Both are the
+          # action's defaults, spelled out so an edit here can't flip them quietly.
+          import_eq_suggestions: false
+          auto_approve_imported: false
+          download_translations: true
+          localization_branch_name: l10n_main
+          create_pull_request: true
+          pull_request_base_branch_name: main
+          pull_request_title: 'i18n: new translations from Crowdin'
+          pull_request_body: |
+            Translations downloaded from Crowdin for the TV app and the transcode server's setup page.
+          commit_message: 'i18n: new translations from Crowdin'
+        env:
+          # GITHUB_TOKEN can only open the PR when "Allow GitHub Actions to create and approve pull
+          # requests" is on for this repo; CI_PUSH_TOKEN, a PAT, is the way around that setting.
+          GITHUB_TOKEN: ${{ secrets.CI_PUSH_TOKEN || secrets.GITHUB_TOKEN }}
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}

@@ -56,44 +56,49 @@
   code { background:var(--bg-2); border:1px solid var(--line); color:var(--acc); }
   a { color:var(--acc); }
   a:hover { color:var(--acc-2); }
+  .head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  .lang { padding:6px 8px; border-radius:8px; border:1px solid var(--line); background:var(--bg-2); color:var(--fg); font-size:13px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1><span class="dot" id="hdot"></span> Tessel Transcode Server</h1>
-  <p class="sub">Reads your SMB share, transcodes only what the TV can't play, streams it back.</p>
+  <div class="head">
+    <h1><span class="dot" id="hdot"></span> Tessel Transcode Server</h1>
+    <select class="lang" id="lang" aria-label="Language"></select>
+  </div>
+  <p class="sub" data-i18n="page.sub">Reads your SMB share, transcodes only what the TV can't play, streams it back.</p>
 
   <div class="card">
-    <h2>Status</h2>
-    <div class="kv"><span>Encoder</span><span class="pill" id="st-enc">…</span></div>
-    <div class="kv"><span>Hardware accel</span><span class="pill" id="st-hw">…</span></div>
-    <div class="kv"><span>Share</span><span id="st-share">…</span></div>
-    <div class="kv"><span>This server</span><span id="st-url">…</span></div>
+    <h2 data-i18n="status.title">Status</h2>
+    <div class="kv"><span data-i18n="status.encoder">Encoder</span><span class="pill" id="st-enc">…</span></div>
+    <div class="kv"><span data-i18n="status.hwaccel">Hardware accel</span><span class="pill" id="st-hw">…</span></div>
+    <div class="kv"><span data-i18n="status.share">Share</span><span id="st-share">…</span></div>
+    <div class="kv"><span data-i18n="status.thisServer">This server</span><span id="st-url">…</span></div>
   </div>
 
   <div class="card">
-    <h2>SMB Share</h2>
+    <h2 data-i18n="smb.title">SMB Share</h2>
     <div class="row">
-      <div><label>Host / IP</label><input type="text" id="host" placeholder="192.168.1.10"></div>
-      <div style="max-width:110px"><label>Port</label><input type="text" id="port" placeholder="445"></div>
+      <div><label data-i18n="smb.host">Host / IP</label><input type="text" id="host" placeholder="192.168.1.10"></div>
+      <div style="max-width:110px"><label data-i18n="smb.port">Port</label><input type="text" id="port" placeholder="445"></div>
     </div>
-    <label>Share name</label><input type="text" id="share" placeholder="Media">
+    <label data-i18n="smb.share">Share name</label><input type="text" id="share" placeholder="Media">
     <div class="toggle">
-      <span>Guest / anonymous</span>
+      <span data-i18n="smb.guest">Guest / anonymous</span>
       <div class="switch" id="anon"><i></i></div>
     </div>
     <div id="creds">
       <div class="row">
-        <div><label>Username</label><input type="text" id="user" placeholder="patrick"></div>
-        <div><label>Domain (optional)</label><input type="text" id="domain"></div>
+        <div><label data-i18n="smb.user">Username</label><input type="text" id="user" placeholder="patrick"></div>
+        <div><label data-i18n="smb.domain">Domain (optional)</label><input type="text" id="domain"></div>
       </div>
-      <label>Password</label><input type="password" id="pass" placeholder="••••••• (blank = unchanged)">
+      <label data-i18n="smb.pass">Password</label><input type="password" id="pass" placeholder="••••••• (blank = unchanged)" data-i18n-placeholder="smb.passPlaceholder">
     </div>
     <div class="toggle" style="margin-top:14px">
-      <span>Let a paired TV copy these settings</span>
+      <span data-i18n="adopt.toggle">Let a paired TV copy these settings</span>
       <div class="switch" id="adopt"><i></i></div>
     </div>
-    <p class="sub" style="margin:8px 0 0">
+    <p class="sub" style="margin:8px 0 0" data-i18n="adopt.explain">
       Saves typing the share, username and password again on a TV remote — the TV
       pulls them from here when it pairs. They're only on offer for ten minutes
       after this box starts, after you save the share, or after you press the
@@ -101,68 +106,68 @@
       Turn the switch off to never hand it out.
     </p>
     <div class="bar">
-      <button class="ghost" id="allow-adopt">Allow pairing for 10 minutes</button>
+      <button class="ghost" id="allow-adopt" data-i18n="adopt.allow">Allow pairing for 10 minutes</button>
       <span class="sub" id="adopt-state" style="align-self:center">…</span>
     </div>
     <div class="bar">
-      <button class="primary" id="save">Save</button>
-      <button class="ghost" id="test">Test connection</button>
-      <button class="ghost" id="browse">Browse share</button>
+      <button class="primary" id="save" data-i18n="common.save">Save</button>
+      <button class="ghost" id="test" data-i18n="smb.test">Test connection</button>
+      <button class="ghost" id="browse" data-i18n="smb.browse">Browse share</button>
     </div>
     <div class="msg" id="msg"></div>
     <ul id="list" style="list-style:none;padding:0;margin:12px 0 0;font-size:13px;"></ul>
   </div>
 
   <div class="card">
-    <h2>Playback</h2>
-    <p class="sub" style="margin:0 0 12px">
+    <h2 data-i18n="pb.title">Playback</h2>
+    <p class="sub" style="margin:0 0 12px" data-i18n-fmt="pb.explain">
       Playback settings live on the TV, under
-      <b>Settings → Transcode server</b> — that's where you are when you notice the
+      <b data-slot="0" data-i18n="tv.srvMenu">Settings → Transcode server</b> — that's where you are when you notice the
       sound is wrong. They're shown here so you can see what the box is doing.
     </p>
-    <div class="kv"><span>Surround sound</span><span class="pill" id="pb-surround">…</span></div>
-    <div class="kv"><span>USB files from the TV</span><span class="pill" id="pb-relay">…</span></div>
+    <div class="kv"><span data-i18n="pb.surround">Surround sound</span><span class="pill" id="pb-surround">…</span></div>
+    <div class="kv"><span data-i18n="pb.relay">USB files from the TV</span><span class="pill" id="pb-relay">…</span></div>
 
     <div class="toggle" style="margin-top:16px">
-      <span>Allow the TV to send USB / internal files</span>
+      <span data-i18n="pb.relayToggle">Allow the TV to send USB / internal files</span>
       <div class="switch" id="localrelay"><i></i></div>
     </div>
-    <p class="sub" style="margin:8px 0 0">
+    <p class="sub" style="margin:8px 0 0" data-i18n-fmt="pb.relayExplain">
       A paired TV turns this on for itself when you enable
-      <b>Play USB files through the server</b> there. Switch it off here to revoke
+      <b data-slot="0" data-i18n="tv.relayOption">Play USB files through the server</b> there. Switch it off here to revoke
       that — the box will stop accepting files from the TV and go back to reading
       only from the share.
     </p>
     <div class="bar">
-      <button class="primary" id="save-playback">Save</button>
+      <button class="primary" id="save-playback" data-i18n="common.save">Save</button>
     </div>
     <div class="msg" id="pbmsg"></div>
   </div>
 
   <div class="card">
-    <h2>Pair with TV</h2>
-    <p class="sub" style="margin:0 0 6px">
+    <h2 data-i18n="pair.title">Pair with TV</h2>
+    <p class="sub" style="margin:0 0 6px" data-i18n-fmt="pair.lan">
       Nothing to do here. On the TV, open
-      <b>Settings → Transcode server → Find server on my network</b> — it sweeps
+      <b data-slot="0" data-i18n="tv.findMenu">Settings → Transcode server → Find server on my network</b> — it sweeps
       your LAN, finds this box, pairs, and copies the share settings above.
     </p>
-    <p class="sub" style="margin:0 0 14px">
+    <p class="sub" style="margin:0 0 14px" data-i18n-fmt="pair.manual">
       If the scan comes up empty (guest Wi-Fi, VLANs, a subnet wider than /22),
-      pick <b>Enter server address</b> on the TV and type
-      <b id="pair-addr">this box's address</b>.
+      pick <b data-slot="0" data-i18n="tv.addressOption">Server address</b> on the TV and type
+      <b id="pair-addr" data-slot="1" data-i18n="pair.thisAddress">this box's address</b>.
     </p>
 
     <details>
-      <summary style="cursor:pointer;color:var(--mut);font-size:13px">Pair with a code instead</summary>
-      <p class="sub" style="margin:10px 0">
+      <summary style="cursor:pointer;color:var(--mut);font-size:13px" data-i18n="pair.codeSummary">Pair with a code instead</summary>
+      <p class="sub" style="margin:10px 0" data-i18n-fmt="pair.codeExplain">
         The original method, kept for networks where the TV can't reach this box
         directly. It relays through ntfy.sh, so it needs internet on both ends.
-        On the TV: <b>Settings → Transcode server → Pair with a code</b>, then
-        type the code it shows here <i>before</i> pressing Pair on the TV.
+        On the TV: <b data-slot="0" data-i18n="tv.codeMenu">Settings → Transcode server → Pair with a code</b>, then
+        type the code it shows here <i data-slot="1" data-i18n="pair.before">before</i> pressing Pair on the TV.
       </p>
       <div class="row">
-        <div><label>TV pairing code</label><input type="text" id="code" placeholder="e.g. 7gk2p9qx1m"></div>
-        <div style="flex:0 0 auto;display:flex;align-items:flex-end"><button class="primary" id="pair">Pair</button></div>
+        <div><label data-i18n="pair.codeLabel">TV pairing code</label><input type="text" id="code" placeholder="e.g. 7gk2p9qx1m" data-i18n-placeholder="pair.codePlaceholder"></div>
+        <div style="flex:0 0 auto;display:flex;align-items:flex-end"><button class="primary" id="pair" data-i18n="pair.button">Pair</button></div>
       </div>
       <div class="msg" id="pairmsg"></div>
     </details>
@@ -173,11 +178,12 @@
   </div>
 
   <div class="card" id="testcard" style="display:none">
-    <h2>Test transcoding</h2>
-    <p class="sub" style="margin:0 0 8px">Open this in VLC on a laptop to confirm a file plays (replace the path):</p>
+    <h2 data-i18n="testcard.title">Test transcoding</h2>
+    <p class="sub" style="margin:0 0 8px" data-i18n="testcard.explain">Open this in VLC on a laptop to confirm a file plays (replace the path):</p>
     <code id="testlink" style="display:block;word-break:break-all;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;color:var(--acc)"></code>
   </div>
 </div>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

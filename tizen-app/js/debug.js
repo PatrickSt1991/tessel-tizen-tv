@@ -94,6 +94,10 @@ var Debug = (function () {
     }
     function getConfig() { return { enabled: cfg.enabled, host: cfg.host, port: cfg.port }; }
 
+    /* debug.js loads before i18n.js; the form is wired once the page has
+     * parsed, when I18n is there — except in the Node tests. */
+    function tr(key, english) { return (typeof I18n !== 'undefined') ? I18n.t(key) : english; }
+
     /* Wire the Settings form (toggle + IP + port + Save). */
     function wireForm() {
         var save = document.getElementById('dbg-save');
@@ -105,14 +109,14 @@ var Debug = (function () {
         if (hostEl) hostEl.value = cfg.host || '';
         if (portEl) portEl.value = cfg.port || 9999;
         var enState = cfg.enabled;
-        function paint() { if (enVal) enVal.textContent = enState ? 'On' : 'Off'; }
+        function paint() { if (enVal) enVal.textContent = enState ? tr('common.on', 'On') : tr('common.off', 'Off'); }
         paint();
         if (enBtn) enBtn.addEventListener('click', function () { enState = !enState; paint(); });
         save.addEventListener('click', function () {
             configure({ enabled: enState,
                         host: hostEl ? hostEl.value : '',
                         port: portEl ? portEl.value : 9999 });
-            if (typeof UI !== 'undefined' && UI.toast) UI.toast('Debug settings saved');
+            if (typeof UI !== 'undefined' && UI.toast) UI.toast(tr('dbg.saved', 'Debug settings saved'));
             if (active()) send('INFO', 'debug logging enabled from settings → ' + url());
         });
     }

@@ -14,11 +14,12 @@ let token = '';
 let lastAdoptLeft = 0;   // so the switch can repaint the window line without a fetch
 const api = (path) => path + (token ? (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token) : '');
 
-// Human labels for the read-only playback pills.
+// Human labels for the read-only playback pills.  The formats are product
+// names, the same in every language.
 const SURROUND_LABEL = {
-  off:  'off — stereo out',
-  eac3: 'Dolby Digital Plus 5.1',
-  ac3:  'Dolby Digital 5.1',
+  off:  () => I18n.t('pb.surroundOff'),
+  eac3: () => 'Dolby Digital Plus 5.1',
+  ac3:  () => 'Dolby Digital 5.1',
 };
 
 function setMsg(text, kind) {
@@ -44,18 +45,18 @@ function paintAdopt() {
 // TV pairing right now would get it.
 function paintAdoptWindow(secondsLeft) {
   const el = $('adopt-state');
-  if (!adopt)          { el.textContent = 'switched off — the TV will never get these'; return; }
-  if (secondsLeft <= 0) { el.textContent = 'closed — a TV pairing now must be given the share by hand'; return; }
+  if (!adopt)          { el.textContent = I18n.t('adopt.off'); return; }
+  if (secondsLeft <= 0) { el.textContent = I18n.t('adopt.closed'); return; }
   const mins = Math.ceil(secondsLeft / 60);
-  el.textContent = 'open for another ' + (mins === 1 ? 'minute' : mins + ' minutes');
+  el.textContent = mins === 1 ? I18n.t('adopt.openOne') : I18n.t('adopt.openMany', mins);
 }
 
 async function allowAdopt() {
   const r = await fetch(api('/api/allow-adopt'), { method: 'POST' });
-  if (!r.ok) { setMsg('Could not reopen the pairing window.', 'err'); return; }
+  if (!r.ok) { setMsg(I18n.t('adopt.reopenFailed'), 'err'); return; }
   const j = await r.json();
   paintAdoptWindow(j.seconds || 0);
-  setMsg('Pairing window open — pair the TV now.', 'ok');
+  setMsg(I18n.t('adopt.reopened'), 'ok');
 }
 
 // Format a UTC ISO timestamp as "just now / N min ago / today at HH:MM /
@@ -66,8 +67,8 @@ function formatAgo(iso) {
   const t = new Date(iso);
   if (isNaN(t)) return '';
   const sec = Math.floor((Date.now() - t.getTime()) / 1000);
-  if (sec < 60)             return 'just now';
-  if (sec < 60 * 60)        return Math.floor(sec / 60) + ' min ago';
+  if (sec < 60)             return I18n.t('ago.now');
+  if (sec < 60 * 60)        return I18n.t('ago.minutes', Math.floor(sec / 60));
   // Today: same Y/M/D as now → show HH:MM
   const now = new Date();
   const sameDay =
@@ -75,7 +76,7 @@ function formatAgo(iso) {
     t.getMonth()    === now.getMonth() &&
     t.getDate()     === now.getDate();
   const hhmm = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
-  if (sameDay) return 'today at ' + hhmm;
+  if (sameDay) return I18n.t('ago.today', hhmm);
   return t.toISOString().slice(0,10) + ' ' + hhmm;
 }
 
@@ -84,15 +85,15 @@ async function loadStatus() {
     const s = await (await fetch('/api/status')).json();
     token = s.token || '';
     $('st-enc').textContent = s.encoder || '—';
-    $('st-hw').textContent = s.hwaccel === 'none' ? 'software' : (s.hwaccel || '—');
-    $('st-share').textContent = s.configured ? s.share : 'not configured';
-    $('pb-surround').textContent = SURROUND_LABEL[s.surround] || SURROUND_LABEL.off;
-    $('pb-relay').textContent = s.localRelay ? 'accepted' : 'not accepted';
+    $('st-hw').textContent = s.hwaccel === 'none' ? I18n.t('status.software') : (s.hwaccel || '—');
+    $('st-share').textContent = s.configured ? s.share : I18n.t('status.notConfigured');
+    $('pb-surround').textContent = (SURROUND_LABEL[s.surround] || SURROUND_LABEL.off)();
+    $('pb-relay').textContent = I18n.t(s.localRelay ? 'pb.accepted' : 'pb.notAccepted');
     lastAdoptLeft = s.adoptLeft || 0;
     paintAdoptWindow(lastAdoptLeft);
     $('st-url').textContent = s.serverURL || '—';
     // The address to type on the TV when the LAN scan can't reach this box.
-    $('pair-addr').textContent = s.serverURL ? s.serverURL.replace(/^https?:\/\//, '') : "this box's address";
+    $('pair-addr').textContent = s.serverURL ? s.serverURL.replace(/^https?:\/\//, '') : I18n.t('pair.thisAddress');
     $('hdot').style.background = s.configured ? 'var(--ok)' : 'var(--mut)';
     if (s.configured && s.serverURL && s.token) {
       $('testcard').style.display = '';
@@ -103,8 +104,7 @@ async function loadStatus() {
     const lp = s.lastPair;
     const lpEl = $('lastpair');
     if (lp && lp.code && lp.at) {
-      lpEl.textContent = 'Last paired with code ' + lp.code + ' · ' + formatAgo(lp.at) +
-                         ' — the TV should still be paired; only re-pair if you reinstall the app on it.';
+      lpEl.textContent = I18n.t('pair.last', lp.code, formatAgo(lp.at));
       lpEl.style.display = '';
     } else {
       lpEl.style.display = 'none';
@@ -114,19 +114,19 @@ async function loadStatus() {
 
 async function pair() {
   const code = $('code').value.trim();
-  if (!code) { $('pairmsg').textContent = 'Enter the code shown on the TV.'; $('pairmsg').className = 'msg err'; return; }
-  $('pairmsg').textContent = 'Pairing…'; $('pairmsg').className = 'msg';
+  if (!code) { $('pairmsg').textContent = I18n.t('pair.needCode'); $('pairmsg').className = 'msg err'; return; }
+  $('pairmsg').textContent = I18n.t('pair.pairing'); $('pairmsg').className = 'msg';
   const res = await (await fetch(api('/api/pair'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
   })).json();
   if (res.ok) {
-    $('pairmsg').textContent = 'Sent ' + res.url + ' to the TV. Press “Pair” on the TV to finish.';
+    $('pairmsg').textContent = I18n.t('pair.sent', res.url);
     $('pairmsg').className = 'msg ok';
     // Pick up the freshly-saved lastPair without waiting for the 5 s poll.
     loadStatus();
   } else {
-    $('pairmsg').textContent = 'Pairing failed: ' + (res.error || 'unknown');
+    $('pairmsg').textContent = I18n.t('pair.failed', res.error || I18n.t('common.unknown'));
     $('pairmsg').className = 'msg err';
   }
 }
@@ -149,6 +149,7 @@ async function loadConfig() {
 
 // Status carries the token, so it has to land before anything else is fetched.
 async function boot() {
+  await I18n.init($('lang'));
   await loadStatus();
   await loadConfig();
   setInterval(loadStatus, 5000);
@@ -176,8 +177,8 @@ async function postConfig(body) {
 
 async function save() {
   const r = await postConfig(readForm());
-  if (r.ok) { setMsg('Saved.', 'ok'); $('pass').value = ''; loadStatus(); }
-  else setMsg('Save failed.', 'err');
+  if (r.ok) { setMsg(I18n.t('common.saved'), 'ok'); $('pass').value = ''; loadStatus(); }
+  else setMsg(I18n.t('common.saveFailed'), 'err');
 }
 
 // Posts only the relay permission — the server applies just the keys it's sent,
@@ -186,31 +187,29 @@ async function savePlayback() {
   const m = $('pbmsg');
   const r = await postConfig({ local_relay: localRelay });
   if (r.ok) {
-    m.textContent = localRelay
-      ? 'Saved. The TV may now send files from its USB drive.'
-      : 'Saved. The box will only read from the share again.';
+    m.textContent = I18n.t(localRelay ? 'pb.relaySaved' : 'pb.relayRevoked');
     m.className = 'msg ok';
     loadStatus();
   } else {
-    m.textContent = 'Save failed.';
+    m.textContent = I18n.t('common.saveFailed');
     m.className = 'msg err';
   }
 }
 
 async function test() {
-  setMsg('Testing…');
+  setMsg(I18n.t('smb.testing'));
   await save();
   const res = await (await fetch(api('/api/test'), { method: 'POST' })).json();
-  if (res.ok) setMsg('Connected to the share ✓', 'ok');
-  else setMsg('Could not connect: ' + (res.error || 'unknown'), 'err');
+  if (res.ok) setMsg(I18n.t('smb.connected'), 'ok');
+  else setMsg(I18n.t('smb.connectFailed', res.error || I18n.t('common.unknown')), 'err');
 }
 
 async function browse(path) {
-  setMsg('Loading ' + (path || 'root') + '…');
+  setMsg(path ? I18n.t('smb.loadingPath', path) : I18n.t('smb.loadingRoot'));
   const res = await (await fetch(api('/api/browse?path=' + encodeURIComponent(path || '')))).json();
   const ul = $('list');
   ul.innerHTML = '';
-  if (!res.ok) { setMsg('Browse failed: ' + (res.error || 'unknown'), 'err'); return; }
+  if (!res.ok) { setMsg(I18n.t('smb.browseFailed', res.error || I18n.t('common.unknown')), 'err'); return; }
   setMsg('');
   if (path) {
     const up = document.createElement('li');

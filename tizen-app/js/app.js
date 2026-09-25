@@ -94,6 +94,10 @@
      * (the music-player convention).  Also the floor for dimming the OSD
      * button when there is neither a previous item nor anything to rewind. */
     var RESTART_THRESHOLD_MS = 3000;
+
+    // Where the error hints send people for the transcode server.
+    var RELEASES_URL = 'github.com/PatrickSt1991/tessel-tizen-tv/releases';
+
     function getResumeMap() {
         try { return JSON.parse(localStorage.getItem(RESUME_KEY) || '{}'); }
         catch (e) { return {}; }
@@ -233,7 +237,7 @@
                     try {
                         if (pr.pos > 1500) {
                             Player.seekTo(pr.pos);
-                            if (pr.announce) UI.toast('Resumed from ' + fmtTime(pr.pos));
+                            if (pr.announce) UI.toast(I18n.t('player.resumedFrom', fmtTime(pr.pos)));
                         }
                         if (pr.paused) Player.pause();
                     } catch (e) {}
@@ -254,7 +258,7 @@
             showError(text);
         });
         Player.setListener('onbuffering', function (active) {
-            if (active) showSpinner('Buffering…');
+            if (active) showSpinner(I18n.t('player.buffering'));
             else hideSpinner();
         });
         Player.setListener('onprogress', function (p) {
@@ -292,7 +296,7 @@
             markWatched(state.playingUri);
             // Auto-play the next sibling if enabled and one exists.
             if (Settings.get('autoPlay') && playNext(true)) return;
-            UI.toast('Playback finished');
+            UI.toast(I18n.t('player.finished'));
             exitPlayer();
         });
         // A track being read out of the container, or one that turned out
@@ -352,7 +356,7 @@
             case 'open-current-url': {
                 var v = document.getElementById('url-input').value.trim();
                 if (v) openUrl(v);
-                else UI.toast('Enter a URL first');
+                else UI.toast(I18n.t('url.enterFirst'));
                 break;
             }
             case 'fetch-remote-url':   fetchRemoteUrl(); break;
@@ -360,7 +364,7 @@
             case 'play-pause':         Player.togglePause(); scheduleOSDHide(); break;
             case 'stop':               exitPlayer(); break;
             case 'prev':               handlePrev(); break;
-            case 'next':               if (!playNext(false)) UI.toast('No next item');     break;
+            case 'next':               if (!playNext(false)) UI.toast(I18n.t('player.noNext'));     break;
             case 'rewind':             Player.seekRel(-10000); flashOSD(); break;
             case 'forward':            Player.seekRel( 10000); flashOSD(); break;
             case 'seek-backward':      Player.seekRel(-60000); flashOSD(); break;
@@ -371,17 +375,18 @@
             case 'open-aspect-picker': openAspectPicker(); break;
             case 'open-track-menu':    openTrackMenu(); break;
             case 'close-track-menu':   closeTrackMenu(); break;
-            case 'setting-audio-lang':    openLangPicker('audioLang',    'Preferred audio language', LanguageList.forAudio());    break;
-            case 'setting-subtitle-lang': openLangPicker('subtitleLang', 'Preferred subtitle language', LanguageList.forSubtitle()); break;
+            case 'setting-ui-lang':       openUiLangPicker(); break;
+            case 'setting-audio-lang':    openLangPicker('audioLang',    I18n.t('settings.audioLang'), LanguageList.forAudio());    break;
+            case 'setting-subtitle-lang': openLangPicker('subtitleLang', I18n.t('settings.subtitleLang'), LanguageList.forSubtitle()); break;
             case 'setting-repeat-mode':   openRepeatPicker(); break;
             case 'setting-auto-play':     openAutoPlayPicker(); break;
             case 'setting-resume-mode':   openResumeModePicker(); break;
             case 'setting-shuffle':       openShufflePicker(); break;
             case 'setting-aspect-mode':   openAspectPicker(); break;
-            case 'setting-subtitle-size':     openSubtitlePicker('subtitleSize',     'Subtitle size',       SubtitleStyle.forSize());     break;
-            case 'setting-subtitle-font':     openSubtitlePicker('subtitleFont',     'Subtitle font',       SubtitleStyle.forFont());     break;
-            case 'setting-subtitle-position': openSubtitlePicker('subtitlePosition', 'Subtitle position',   SubtitleStyle.forPosition()); break;
-            case 'setting-subtitle-bg':       openSubtitlePicker('subtitleBg',       'Subtitle background', SubtitleStyle.forBg());       break;
+            case 'setting-subtitle-size':     openSubtitlePicker('subtitleSize',     I18n.t('settings.subSize'),     SubtitleStyle.forSize());     break;
+            case 'setting-subtitle-font':     openSubtitlePicker('subtitleFont',     I18n.t('settings.subFont'),     SubtitleStyle.forFont());     break;
+            case 'setting-subtitle-position': openSubtitlePicker('subtitlePosition', I18n.t('settings.subPosition'), SubtitleStyle.forPosition()); break;
+            case 'setting-subtitle-bg':       openSubtitlePicker('subtitleBg',       I18n.t('settings.subBg'),       SubtitleStyle.forBg());       break;
             case 'close-picker':       closePicker(); break;
         }
     }
@@ -401,21 +406,21 @@
      * and play it. The field is filled first so the URL is visible if
      * playback fails. Pairing (code + QR) lives in Settings. */
     function fetchRemoteUrl() {
-        if (typeof UrlDrop === 'undefined') { UI.toast('URL drop unavailable'); return; }
-        UI.toast('Checking your device…');
+        if (typeof UrlDrop === 'undefined') { UI.toast(I18n.t('url.dropUnavailable')); return; }
+        UI.toast(I18n.t('url.checking'));
         UrlDrop.fetchLatest(function (err, url) {
             if (err) {
                 if (typeof Debug !== 'undefined') Debug.error('url-drop: ' + err);
-                UI.toast('Could not reach the URL service');
+                UI.toast(I18n.t('url.serviceDown'));
                 return;
             }
             if (!url) {
-                UI.toast('Nothing waiting — paste a URL on your device first');
+                UI.toast(I18n.t('url.nothingWaiting'));
                 return;
             }
             var input = document.getElementById('url-input');
             if (input) input.value = url;
-            UI.toast('Got it — playing');
+            UI.toast(I18n.t('url.gotIt'));
             openUrl(url);
         });
     }
@@ -438,7 +443,7 @@
             var qr = qrcode(0, 'M');
             qr.addData(UrlDrop.deviceUrl());
             qr.make();
-            qrEl.innerHTML = '<img alt="Pairing QR code" ' +
+            qrEl.innerHTML = '<img alt="' + escapeHtml(I18n.t('cast.qrAlt')) + '" ' +
                 'style="width:100%;height:100%;image-rendering:pixelated" src="' +
                 qr.createDataURL(8, 8) + '">';
         } catch (e) {
@@ -459,7 +464,7 @@
         state.browseAtRoot = true;
         state.browseDir   = null;
         UI.showView('view-browse'); state.view = 'browse';
-        document.getElementById('browse-title').textContent = 'Storage';
+        document.getElementById('browse-title').textContent = I18n.t('browse.storage');
         document.getElementById('browse-path').textContent = '/';
 
         Browser.listRoots(function (err, roots) {
@@ -472,7 +477,7 @@
             }
             if (!roots.length) {
                 ul.innerHTML = '<li><span class="icon">i</span>'
-                             + '<span class="name">No accessible storage found.</span></li>';
+                             + '<span class="name">' + escapeHtml(I18n.t('browse.noStorage')) + '</span></li>';
                 return;
             }
             roots.forEach(function (r, i) {
@@ -498,7 +503,7 @@
     function listInto(dir) {
         if (!dir) return;
         state.browseDir = dir;
-        document.getElementById('browse-title').textContent = dir.name || 'Folder';
+        document.getElementById('browse-title').textContent = dir.name || I18n.t('browse.folder');
         document.getElementById('browse-path').textContent = dir.fullPath;
 
         Browser.listDir(dir, function (err, entries) {
@@ -522,7 +527,7 @@
                 li.dataset.dir = e.isDir ? '1' : '0';
                 var watched = !e.isDir && isWatched(e.uri);
                 if (watched) li.classList.add('watched-item');
-                var watchedBadge = watched ? '<span class="watched" title="Watched">✓</span>' : '';
+                var watchedBadge = watched ? '<span class="watched" title="' + escapeHtml(I18n.t('browse.watched')) + '">✓</span>' : '';
                 var subBadge = (e.subtitles && e.subtitles.length)
                     ? '<span class="meta">CC ×' + e.subtitles.length + '</span>'
                     : '';
@@ -554,9 +559,9 @@
 
     function openRecent() {
         var list = getRecent();
-        if (!list.length) { UI.toast('No recent items'); return; }
+        if (!list.length) { UI.toast(I18n.t('recent.none')); return; }
         UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = true;
-        document.getElementById('browse-title').textContent = 'Recently Played';
+        document.getElementById('browse-title').textContent = I18n.t('home.recent');
         document.getElementById('browse-path').textContent = '';
         var ul = document.getElementById('browse-list'); ul.innerHTML = '';
         var playlist = list.map(function (item) {
@@ -566,7 +571,7 @@
             var li = document.createElement('li');
             var watched = isWatched(item.uri);
             if (watched) li.classList.add('watched-item');
-            var watchedBadge = watched ? '<span class="watched" title="Watched">✓</span>' : '';
+            var watchedBadge = watched ? '<span class="watched" title="' + escapeHtml(I18n.t('browse.watched')) + '">✓</span>' : '';
             li.innerHTML = '<span class="icon">★</span>' +
                            '<span class="name">' + escapeHtml(item.title) + '</span>' +
                            watchedBadge +
@@ -640,8 +645,8 @@
             for (var k in opts) again[k] = opts[k];
             again.askResume = false;
             openPicker(title || uri, [
-                { code: 'continue', name: 'Continue from ' + fmtTime(resumePosFor(uri)) },
-                { code: 'restart',  name: 'Start from the beginning' }
+                { code: 'continue', name: I18n.t('resume.continueFrom', fmtTime(resumePosFor(uri))) },
+                { code: 'restart',  name: I18n.t('resume.restart') }
             ], 'continue', function (val) {
                 again.fromStart = (val === 'restart');
                 playUri(uri, title, again);
@@ -687,7 +692,7 @@
         document.getElementById('osd-title').textContent = title || uri;
         document.getElementById('osd-top').classList.remove('hidden');
         document.getElementById('osd-bottom').classList.remove('hidden');
-        showSpinner('Opening…');
+        showSpinner(I18n.t('player.openingShort'));
         hideError();
 
         // Defer slightly so the <object> element is laid out before AVPlay
@@ -745,18 +750,13 @@
             if (elapsed > 20000 && state !== 'PLAYING' && state !== 'PAUSED' && !bufferingRecent) {
                 clearInterval(openWatchdog);
                 if (retryThroughServer('stuck loading, AVPlay state ' + state)) return;
-                showError('Stuck loading after 20 s.  AVPlay state: ' + state +
-                          '.  The codec, container, or source may not be supported.');
+                showError(I18n.t('player.stuck', state), 'codec');
                 return;
             }
             if (elapsed > 10000 && state === 'PLAYING' && (!time || time === 0) && !bufferingRecent) {
                 clearInterval(openWatchdog);
                 if (retryThroughServer('playhead not advancing')) return;
-                showError('Playback stalled: AVPlay reports playing but the playhead ' +
-                          'isn\'t advancing, and no buffering events are coming in.  ' +
-                          'This usually means the codec inside the file isn\'t supported ' +
-                          'by your TV (most often HEVC Main10 / 10-bit colour on a TV ' +
-                          'that only handles HEVC Main8).');
+                showError(I18n.t('player.stalled'));
                 return;
             }
             if (state === 'PLAYING' && time > 0) {
@@ -784,7 +784,7 @@
         if (typeof TranscodeServer !== 'undefined' && TranscodeServer.markDirectFailed)
             TranscodeServer.markDirectFailed(fb.uri);
         try { Player.stop(); } catch (e) {}
-        UI.toast('Playing through the transcode server instead');
+        UI.toast(I18n.t('player.viaServer'));
         var again = {};
         for (var k in fb.opts) again[k] = fb.opts[k];
         again.askResume = false;   // already answered for this open
@@ -829,7 +829,7 @@
         if (state.playlistIndex < 0 || ni >= state.playlist.length) return false;
         var item = state.playlist[ni];
         state.playlistIndex = ni;
-        if (isAuto) UI.toast('Up next: ' + item.title);
+        if (isAuto) UI.toast(I18n.t('player.upNext', item.title));
         playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null });
         return true;
     }
@@ -843,10 +843,10 @@
             Player.seekTo(0);
             updateProgress(0, lastProgress.duration);
             flashOSD();
-            UI.toast('Restarted');
+            UI.toast(I18n.t('player.restarted'));
             return;
         }
-        if (!playPrev()) UI.toast('No previous item');
+        if (!playPrev()) UI.toast(I18n.t('player.noPrev'));
     }
     function playPrev() {
         if (state.playlistIndex <= 0) return false;
@@ -1097,12 +1097,14 @@
 
     function showSpinner(msg) {
         var sp = document.getElementById('spinner');
-        sp.querySelector('.spinner-text').textContent = msg || 'Loading…';
+        sp.querySelector('.spinner-text').textContent = msg || I18n.t('common.loading');
         sp.classList.remove('hidden');
     }
     function hideSpinner() { document.getElementById('spinner').classList.add('hidden'); }
 
-    function showError(msg) {
+    /* kind 'codec': the message is our own (and so translated), and the
+     * codec hint below can't be matched out of its text. */
+    function showError(msg, kind) {
         // Hide all sibling overlays so the error stays the only focusable thing
         document.getElementById('osd-top').classList.add('hidden');
         document.getElementById('osd-bottom').classList.add('hidden');
@@ -1127,47 +1129,16 @@
 
         if (isLegacyContainer) {
             var ext = (uri.match(/\.([a-z0-9]+)(?:[?#]|$)/i) || [,''])[1].toLowerCase();
-            msg = 'This ' + ext.toUpperCase() + ' file can’t be played on this TV';
-            hint = 'The container opened but your TV’s hardware decoder doesn’t recognise ' +
-                   'the codec inside.  ' + ext.toUpperCase() + ' files from the late-90s / ' +
-                   '2000s usually carry DivX, Xvid, WMV9 or similar — Samsung TVs only decode ' +
-                   'H.264, HEVC and a handful of others natively.\n\n' +
-                   'Three ways to play these:\n' +
-                   '  1. Set up the companion Tessel transcode server (recommended for ' +
-                   'SMB shares): a small Go binary you run once on a Linux box, Windows ' +
-                   'PC, Mac mini, NAS or Proxmox VM.  Pair it from Settings → Transcode ' +
-                   'server, and from then on every file streams through it — TV-incompatible ' +
-                   'codecs get transcoded on the fly, everything else passes through ' +
-                   'untouched.  See github.com/PatrickSt1991/tessel-tizen-tv/releases ' +
-                   '(transcode-v* assets).\n' +
-                   '  2. Stream via Plex or Jellyfin if you already run one — they transcode ' +
-                   'server-side too, just hand the URL to Open Network Stream.\n' +
-                   '  3. Re-encode once with HandBrake or ffmpeg:\n' +
-                   '       ffmpeg -i input.' + ext + ' -c:v libx264 -preset fast ' +
-                   '-c:a aac -b:a 192k output.mp4';
+            msg = I18n.t('err.legacyTitle', ext.toUpperCase());
+            hint = I18n.t('err.legacyHint', ext.toUpperCase(), RELEASES_URL,
+                          'ffmpeg -i input.' + ext + ' -c:v libx264 -preset fast -c:a aac -b:a 192k output.mp4');
         } else if (isMkv) {
-            msg = 'This MKV couldn’t be played';
-            hint = 'The MKV container itself is fine on this TV — the problem is a ' +
-                   'track inside it.  Most often that’s DTS or TrueHD audio, which ' +
-                   'Samsung TVs can’t decode (they only pass those through to an AV ' +
-                   'receiver over HDMI).  Less often it’s AV1 or 10-bit HEVC video.\n\n' +
-                   'Try, in order:\n' +
-                   '  1. Open the CC / track menu and pick another audio track (many ' +
-                   'releases include an AC3 or AAC track alongside the DTS one).\n' +
-                   '  2. Set up the companion Tessel transcode server: a small Go binary ' +
-                   'on any Linux box, Windows PC, Mac mini, NAS or Proxmox VM.  Pair from ' +
-                   'Settings → Transcode server; from then on TV-incompatible audio gets ' +
-                   'remuxed to AC3/AAC on the fly, video copied untouched.  See ' +
-                   'github.com/PatrickSt1991/tessel-tizen-tv/releases (transcode-v* assets).\n' +
-                   '  3. Re-encode just the audio yourself (fast even on a Pi):\n' +
-                   '       ffmpeg -i input.mkv -c:v copy -c:a ac3 -b:a 640k output.mkv';
-        } else if (/unknown error|not supported|invalid|stuck loading|unsupported source/i.test(msg)) {
-            hint = 'The file or stream may use a codec or container that this TV can\'t ' +
-                   'decode (HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2, etc.). ' +
-                   'For local files, remux to MP4 with: ffmpeg -i input.ext -c copy output.mp4';
+            msg = I18n.t('err.mkvTitle');
+            hint = I18n.t('err.mkvHint', RELEASES_URL, 'ffmpeg -i input.mkv -c:v copy -c:a ac3 -b:a 640k output.mkv');
+        } else if (kind === 'codec' || /unknown error|not supported|invalid|stuck loading|unsupported source/i.test(msg)) {
+            hint = I18n.t('err.codecHint', 'ffmpeg -i input.ext -c copy output.mp4');
         } else if (/connection|network|timeout/i.test(msg)) {
-            hint = 'The TV couldn\'t reach the source.  Check the URL, the server is up, ' +
-                   'and your TV has network access.';
+            hint = I18n.t('err.networkHint');
         }
 
         document.getElementById('error-title').textContent = msg;
@@ -1212,12 +1183,13 @@
         renderTvInfo();
     }
     function refreshSettingsValues() {
+        document.getElementById('setting-ui-lang-value').textContent       = uiLanguageName(Settings.get('uiLanguage'));
         document.getElementById('setting-audio-lang-value').textContent    = LanguageList.nameFor(Settings.get('audioLang'));
         document.getElementById('setting-subtitle-lang-value').textContent = LanguageList.nameFor(Settings.get('subtitleLang'));
-        document.getElementById('setting-repeat-mode-value').textContent   = (Settings.get('repeatMode') === 'one') ? 'Repeat one' : 'Off';
-        document.getElementById('setting-auto-play-value').textContent     = Settings.get('autoPlay') ? 'On' : 'Off';
+        document.getElementById('setting-repeat-mode-value').textContent   = I18n.t((Settings.get('repeatMode') === 'one') ? 'repeat.one' : 'common.off');
+        document.getElementById('setting-auto-play-value').textContent     = I18n.t(Settings.get('autoPlay') ? 'common.on' : 'common.off');
         document.getElementById('setting-resume-mode-value').textContent   = resumeModeName(Settings.get('resumeMode'));
-        document.getElementById('setting-shuffle-value').textContent       = Settings.get('shuffle')  ? 'On' : 'Off';
+        document.getElementById('setting-shuffle-value').textContent       = I18n.t(Settings.get('shuffle') ? 'common.on' : 'common.off');
         document.getElementById('setting-aspect-mode-value').textContent   = AspectRatio.nameFor(Settings.get('aspectMode'));
         document.getElementById('setting-subtitle-size-value').textContent     = SubtitleStyle.nameForSize(Settings.get('subtitleSize'));
         document.getElementById('setting-subtitle-font-value').textContent     = SubtitleStyle.nameForFont(Settings.get('subtitleFont'));
@@ -1237,36 +1209,34 @@
         TvInfo.getBuild(function (b) {
             var rows = [];
             function row(k, v) { rows.push('<div class="row"><div class="k">' + escapeHtml(k) + '</div><div class="v">' + escapeHtml(v || '—') + '</div></div>'); }
-            row('Model',            pInfo.realModel || b.model || '—');
-            row('Marketing name',   pInfo.tvName    || b.buildDescription || '—');
-            row('Firmware',         pInfo.firmwareVersion || b.buildVersion || '—');
-            row('Build release',    b.buildReleaseDate || '—');
-            row('Manufacturer',     b.manufacturer || '—');
-            row('User-Agent',       ua);
+            row(I18n.t('tv.model'),        pInfo.realModel || b.model || '—');
+            row(I18n.t('tv.marketingName'), pInfo.tvName    || b.buildDescription || '—');
+            row(I18n.t('tv.firmware'),     pInfo.firmwareVersion || b.buildVersion || '—');
+            row(I18n.t('tv.buildRelease'), b.buildReleaseDate || '—');
+            row(I18n.t('tv.manufacturer'), b.manufacturer || '—');
+            row('User-Agent',              ua);
+            function codec(name, cls, label) {
+                return '<div class="codec"><span class="name">' + escapeHtml(name) + '</span>' +
+                       '<span class="status ' + cls + '">' + escapeHtml(label) + '</span></div>';
+            }
 
-            var codecHtml = '<h3>HTML5 video codec support</h3><div class="codecs">';
+            var codecHtml = '<h3>' + escapeHtml(I18n.t('tv.html5Codecs')) + '</h3><div class="codecs">';
             Object.keys(codecs).forEach(function (name) {
                 var status = codecs[name];
                 var cls = status === 'probably' ? 'ok' : status === 'maybe' ? 'maybe' : 'no';
-                var label = status === 'probably' ? '✓ Supported' :
-                            status === 'maybe'    ? '? Possibly' :
-                                                    '✗ Not supported';
-                codecHtml += '<div class="codec"><span class="name">' + escapeHtml(name) + '</span>' +
-                             '<span class="status ' + cls + '">' + label + '</span></div>';
+                var label = status === 'probably' ? '✓ ' + I18n.t('tv.supported') :
+                            status === 'maybe'    ? '? ' + I18n.t('tv.possibly') :
+                                                    '✗ ' + I18n.t('tv.notSupported');
+                codecHtml += codec(name, cls, label);
             });
             codecHtml += '</div>';
 
-            codecHtml += '<h3>Streaming &amp; protocols (via Samsung AVPlay)</h3><div class="codecs">';
-            codecHtml += '<div class="codec"><span class="name">HLS / DASH</span>' +
-                         '<span class="status ok">✓ Supported</span></div>';
-            codecHtml += '<div class="codec"><span class="name">RTSP / RTMP</span>' +
-                         '<span class="status ok">✓ Supported</span></div>';
-            codecHtml += '<div class="codec"><span class="name">USB local files</span>' +
-                         '<span class="status ok">✓ Via HTML5 video</span></div>';
-            codecHtml += '<div class="codec"><span class="name">MKV container</span>' +
-                         '<span class="status ok">✓ Via AVPlay</span></div>';
-            codecHtml += '<div class="codec"><span class="name">DTS / TrueHD audio</span>' +
-                         '<span class="status no">✗ TV can’t decode</span></div>';
+            codecHtml += '<h3>' + escapeHtml(I18n.t('tv.streaming')) + '</h3><div class="codecs">';
+            codecHtml += codec('HLS / DASH', 'ok', '✓ ' + I18n.t('tv.supported'));
+            codecHtml += codec('RTSP / RTMP', 'ok', '✓ ' + I18n.t('tv.supported'));
+            codecHtml += codec(I18n.t('tv.usbFiles'), 'ok', '✓ ' + I18n.t('tv.viaHtml5'));
+            codecHtml += codec(I18n.t('tv.mkv'), 'ok', '✓ ' + I18n.t('tv.viaAvplay'));
+            codecHtml += codec(I18n.t('tv.dtsAudio'), 'no', '✗ ' + I18n.t('tv.cantDecode'));
             codecHtml += '</div>';
 
             box.innerHTML = rows.join('') + codecHtml;
@@ -1307,19 +1277,33 @@
         openPicker(title, options, cur, function (val) {
             Settings.set(settingKey, val);
             refreshSettingsValues();
-            UI.toast(title + ': ' + LanguageList.nameFor(val));
+            UI.toast(I18n.t('toast.setTo', title, LanguageList.nameFor(val)));
+        });
+    }
+    /* The app's own language.  Every language is listed by its own name, so
+     * someone stuck in a language they can't read still finds theirs. */
+    function uiLanguageName(code) {
+        return code ? I18n.languageName(I18n.match(code))
+                    : I18n.t('uiLang.followTv', I18n.languageName(I18n.current()));
+    }
+    function openUiLangPicker() {
+        pickerSetting = 'uiLanguage';
+        var opts = [{ code: '', name: uiLanguageName('') }].concat(I18n.languages());
+        openPicker(I18n.t('settings.uiLang'), opts, Settings.get('uiLanguage'), function (val) {
+            if (val === Settings.get('uiLanguage')) return;
+            I18n.setLanguage(val);
         });
     }
     function openRepeatPicker() {
         pickerSetting = 'repeatMode';
         var cur = Settings.get('repeatMode');
-        openPicker('Repeat mode', [
-            { code: 'off', name: 'Off' },
-            { code: 'one', name: 'Repeat current file' }
+        openPicker(I18n.t('settings.repeatMode'), [
+            { code: 'off', name: I18n.t('common.off') },
+            { code: 'one', name: I18n.t('repeat.current') }
         ], cur, function (val) {
             Settings.set('repeatMode', val);
             refreshSettingsValues();
-            UI.toast('Repeat: ' + (val === 'one' ? 'On' : 'Off'));
+            UI.toast(I18n.t('toast.repeat', I18n.t(val === 'one' ? 'common.on' : 'common.off')));
         });
     }
     /* Subtitle-appearance pickers — share the generic option list, then
@@ -1331,7 +1315,7 @@
             Settings.set(settingKey, val);
             SubtitleStyle.apply();
             refreshSettingsValues();
-            UI.toast(title + ' updated');
+            UI.toast(I18n.t('toast.updated', title));
         });
     }
     /* Playback-speed picker (issue #28 part 3).  Six rates from 0.5× to 2×,
@@ -1347,23 +1331,23 @@
          * the option labels so the user isn't blindsided by a mute the
          * moment they pick 1.5×. */
         var avplay = Player.getBackend && Player.getBackend() === 'avplay';
-        var muteNote = avplay ? '  (audio muted)' : '';
-        openPicker('Playback speed', [
+        var muteNote = avplay ? '  ' + I18n.t('speed.mutedNote') : '';
+        openPicker(I18n.t('player.speed'), [
             { code: '0.5',  name: '0.5×' + muteNote },
             { code: '0.75', name: '0.75×' + muteNote },
-            { code: '1',    name: 'Normal (1×)' },
+            { code: '1',    name: I18n.t('speed.normalOption') },
             { code: '1.25', name: '1.25×' + muteNote },
             { code: '1.5',  name: '1.5×' + muteNote },
             { code: '2',    name: '2×' + muteNote }
         ], cur, function (val) {
             if (!Player.setSpeed(parseFloat(val))) {
-                UI.toast('Speed change not supported on this stream');
+                UI.toast(I18n.t('speed.unsupported'));
                 return;
             }
             updateSpeedButton();
-            var msg = 'Speed: ' + (val === '1' ? 'normal' : val + '×');
+            var msg = I18n.t('toast.speed', val === '1' ? I18n.t('speed.normal') : val + '×');
             if (Player.isSpeedMuted && Player.isSpeedMuted())
-                msg += ' — audio muted (Samsung TV limitation)';
+                msg += ' — ' + I18n.t('speed.mutedToast');
             UI.toast(msg);
         });
     }
@@ -1385,12 +1369,12 @@
      * this one picker. */
     function openAspectPicker() {
         var cur = Settings.get('aspectMode');
-        openPicker('Video aspect ratio', AspectRatio.forList(), cur, function (val) {
+        openPicker(I18n.t('settings.aspect'), AspectRatio.forList(), cur, function (val) {
             Settings.set('aspectMode', val);
             Player.applyAspect();
             updateAspectButton();
             refreshSettingsValues();
-            UI.toast('Aspect: ' + AspectRatio.nameFor(val) + aspectToastNote());
+            UI.toast(I18n.t('toast.aspect', AspectRatio.nameFor(val)) + aspectToastNote());
         });
     }
 
@@ -1405,8 +1389,7 @@
         var d;
         try { d = Player.describeAspect(); } catch (e) { return ''; }
         if (!d || !d.noop) return '';
-        return ' — no change: this picture already fills the screen. Black bars ' +
-               'inside the frames are part of the picture and can’t be cropped.';
+        return ' — ' + I18n.t('aspect.noop');
     }
     function updateAspectButton() {
         var btn = document.getElementById('btn-aspect');
@@ -1420,29 +1403,29 @@
     function openAutoPlayPicker() {
         pickerSetting = 'autoPlay';
         var cur = Settings.get('autoPlay') ? 'on' : 'off';
-        openPicker('Auto-play next file', [
-            { code: 'off', name: 'Off' },
-            { code: 'on',  name: 'On — play the next file in the folder automatically' }
+        openPicker(I18n.t('settings.autoPlay'), [
+            { code: 'off', name: I18n.t('common.off') },
+            { code: 'on',  name: I18n.t('autoPlay.on') }
         ], cur, function (val) {
             Settings.set('autoPlay', val === 'on');
             refreshSettingsValues();
-            UI.toast('Auto-play: ' + (val === 'on' ? 'On' : 'Off'));
+            UI.toast(I18n.t('toast.autoPlay', I18n.t(val === 'on' ? 'common.on' : 'common.off')));
         });
     }
     var RESUME_MODES = [
-        { code: 'ask',    name: 'Ask — choose Continue or Start over when opening' },
-        { code: 'always', name: 'Always continue where I left off' },
-        { code: 'never',  name: 'Never — always start from the beginning' }
+        { code: 'ask',    name: I18n.t('resume.askOption') },
+        { code: 'always', name: I18n.t('resume.alwaysOption') },
+        { code: 'never',  name: I18n.t('resume.neverOption') }
     ];
     function resumeModeName(code) {
-        return code === 'always' ? 'Always' : code === 'never' ? 'Never' : 'Ask';
+        return I18n.t(code === 'always' ? 'resume.always' : code === 'never' ? 'resume.never' : 'resume.ask');
     }
     function openResumeModePicker() {
         pickerSetting = 'resumeMode';
-        openPicker('Resume playback', RESUME_MODES, Settings.get('resumeMode'), function (val) {
+        openPicker(I18n.t('settings.resume'), RESUME_MODES, Settings.get('resumeMode'), function (val) {
             Settings.set('resumeMode', val);
             refreshSettingsValues();
-            UI.toast('Resume: ' + resumeModeName(val));
+            UI.toast(I18n.t('toast.resume', resumeModeName(val)));
         });
     }
     /* ── Repeat toggle from the OSD ───────────────────────────────── */
@@ -1450,7 +1433,7 @@
         var next = Settings.get('repeatMode') === 'one' ? 'off' : 'one';
         Settings.set('repeatMode', next);
         updateRepeatButton();
-        UI.toast('Repeat: ' + (next === 'one' ? 'On' : 'Off'));
+        UI.toast(I18n.t('toast.repeat', I18n.t(next === 'one' ? 'common.on' : 'common.off')));
     }
     function updateRepeatButton() {
         var btn = document.getElementById('btn-repeat');
@@ -1469,19 +1452,19 @@
     function openShufflePicker() {
         pickerSetting = 'shuffle';
         var cur = Settings.get('shuffle') ? 'on' : 'off';
-        openPicker('Shuffle playlist', [
-            { code: 'off', name: 'Off — folder order' },
-            { code: 'on',  name: 'On — random order within the folder' }
+        openPicker(I18n.t('settings.shuffle'), [
+            { code: 'off', name: I18n.t('shuffle.offOption') },
+            { code: 'on',  name: I18n.t('shuffle.onOption') }
         ], cur, function (val) {
             applyShuffle(val === 'on');
             refreshSettingsValues();
-            UI.toast('Shuffle: ' + (val === 'on' ? 'On' : 'Off'));
+            UI.toast(I18n.t('toast.shuffle', I18n.t(val === 'on' ? 'common.on' : 'common.off')));
         });
     }
     function toggleShuffle() {
         var next = !Settings.get('shuffle');
         applyShuffle(next);
-        UI.toast('Shuffle: ' + (next ? 'On' : 'Off'));
+        UI.toast(I18n.t('toast.shuffle', I18n.t(next ? 'common.on' : 'common.off')));
     }
     function applyShuffle(on) {
         Settings.set('shuffle', !!on);
@@ -1532,15 +1515,15 @@
         var aUL = document.getElementById('audio-tracks');
         var sUL = document.getElementById('subtitle-tracks');
         aUL.innerHTML = ''; sUL.innerHTML = '';
-        setTrackSectionTitle('audio-tracks-title', 'Audio', t.audio.length);
+        setTrackSectionTitle('audio-tracks-title', I18n.t('tracks.audio'), t.audio.length);
         // Count only real, selectable tracks: not the synthetic "Off" row and
         // not the "+N can't be drawn" note.
         var subCount = 0;
         t.subtitle.forEach(function (tr) { if (!tr.off && !tr.muted) subCount++; });
-        setTrackSectionTitle('subtitle-tracks-title', 'Subtitle', subCount);
+        setTrackSectionTitle('subtitle-tracks-title', I18n.t('tracks.subtitle'), subCount);
 
         if (!t.audio.length) {
-            aUL.innerHTML = '<li class="muted">Only one audio track</li>';
+            aUL.innerHTML = '<li class="muted">' + escapeHtml(I18n.t('tracks.oneAudio')) + '</li>';
         } else {
             t.audio.forEach(function (tr) {
                 var li = document.createElement('li');
@@ -1548,7 +1531,7 @@
                 if (tr.active) li.classList.add('active');
                 li.addEventListener('click', function () {
                     Player.setAudioTrack(tr.index);
-                    UI.toast('Audio: ' + tr.name);
+                    UI.toast(I18n.t('toast.audio', tr.name));
                     closeTrackMenu();
                 });
                 aUL.appendChild(li);
@@ -1572,9 +1555,7 @@
                 // 'extracting' announces itself through onsubnotice — a
                 // second toast here would only overwrite it.
                 if (how !== 'extracting') {
-                    UI.toast(how === null
-                        ? 'This TV can’t show ' + tr.name
-                        : 'Subtitle: ' + tr.name);
+                    UI.toast(I18n.t(how === null ? 'tracks.cantShow' : 'toast.subtitle', tr.name));
                 }
                 closeTrackMenu();
             });
@@ -1631,7 +1612,7 @@
         Player.seekTo(target);
         updateProgress(target, dur || lastProgress.duration);
         flashOSD();
-        UI.toast(digit ? 'Jumped to ' + (digit * 10) + '% (' + fmtTime(target) + ')' : 'Restarted');
+        UI.toast(digit ? I18n.t('player.jumped', digit * 10, fmtTime(target)) : I18n.t('player.restarted'));
         return true;
     }
 
@@ -1825,8 +1806,9 @@
         if (target && (!active || target.index !== active.index)) {
             Player.setAudioTrack(target.index);
             if (active && active.unsupported && !target.unsupported)
-                UI.toast('Switched to ' + (target.codec || 'a decodable') +
-                         ' audio — TV can’t decode ' + (active.codec || 'the default track'));
+                UI.toast(target.codec && active.codec
+                    ? I18n.t('audio.switched', target.codec, active.codec)
+                    : I18n.t('audio.switchedGeneric'));
             if (typeof Debug !== 'undefined')
                 Debug.player('chooseAudioTrack → ' + target.name +
                              ' (active was ' + (active ? active.name : 'none') + ')');
@@ -1835,8 +1817,7 @@
         // If we still can't get a decodable track, tell the user why it's silent.
         var finalT = target || active;
         if (finalT && finalT.unsupported && !firstSupported(audio)) {
-            UI.toast('No audio track this TV can decode (' +
-                     (finalT.codec || 'DTS/TrueHD') + ') — playing without sound');
+            UI.toast(I18n.t('audio.noneDecodable', finalT.codec || 'DTS/TrueHD'));
         }
     }
 
@@ -1952,14 +1933,14 @@
 
     /* ── Helpers ──────────────────────────────────────────────────── */
     function prettifyRootName(name) {
-        if (!name) return 'Unknown';
-        if (/^removable.*/i.test(name)) return 'USB Drive';
-        if (/^usb/i.test(name)) return 'USB Drive';
-        if (name === 'downloads') return 'Downloads';
-        if (name === 'videos')    return 'Videos';
-        if (name === 'music')     return 'Music';
-        if (name === 'images')    return 'Pictures';
-        if (name === 'documents') return 'Documents';
+        if (!name) return I18n.t('root.unknown');
+        if (/^removable.*/i.test(name)) return I18n.t('browse.usbTitle');
+        if (/^usb/i.test(name)) return I18n.t('browse.usbTitle');
+        if (name === 'downloads') return I18n.t('root.downloads');
+        if (name === 'videos')    return I18n.t('root.videos');
+        if (name === 'music')     return I18n.t('root.music');
+        if (name === 'images')    return I18n.t('root.pictures');
+        if (name === 'documents') return I18n.t('root.documents');
         return name.charAt(0).toUpperCase() + name.slice(1);
     }
 

@@ -5,6 +5,7 @@ var test   = require('node:test');
 var fs     = require('fs');
 var vm     = require('vm');
 var path   = require('path');
+var I18n   = require('./helpers/i18n.js');
 
 var SRC = fs.readFileSync(
     path.join(__dirname, '../../tizen-app/js/server.js'), 'utf8');
@@ -50,6 +51,7 @@ function loadServer(opts) {
     var sandbox = {
         module: { exports: {} },
         Settings: { get: function (k) { return settings[k]; }, set: function (k, v) { settings[k] = v; } },
+        I18n: I18n,
         Browser: { listRoots: function (cb) { cb(null, [{ fullPath: '/opt/usr/media/USBDriveA1' }]); } },
         SMB: {
             ensureService: function (cb) { cb(null); },

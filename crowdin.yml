@@ -1,0 +1,22 @@
+# Crowdin sync for the TV app and the transcode server's setup page.
+#
+# Each translation is named by its full locale — nl-NL.json, pt-BR.json, zh-TW.json — the only
+# naming that can't collide: under %two_letters_code% pt-BR/pt-PT and zh-CN/zh-TW each collapse
+# into one file and Crowdin silently drops a language from every export (Apps2Samsung #617).
+# Both i18n.js files list their languages by those same codes.
+#
+# skip_untranslated_strings keeps a language file to what has actually been translated. Without
+# it every untranslated key is written out with its English text, which reads as a finished
+# translation and hides how much is left. Nothing is lost: both pages fall back to English for a
+# key a language file doesn't carry.
+#
+# The two sources are both called en.json, so each gets its own name in Crowdin.
+files:
+  - source: /tizen-app/i18n/en.json
+    dest: /tv-app.json
+    translation: /tizen-app/i18n/%locale%.json
+    skip_untranslated_strings: true
+  - source: /transcode-server/internal/web/static/i18n/en.json
+    dest: /setup-page.json
+    translation: /transcode-server/internal/web/static/i18n/%locale%.json
+    skip_untranslated_strings: true

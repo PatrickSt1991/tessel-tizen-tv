@@ -7,6 +7,9 @@
 var Settings = (function () {
     var KEY = 'vlctv_settings_v1';
     var defaults = {
+        // Language of the app itself: '' = follow the TV, or a locale code
+        // from I18n.languages() (nl-NL, pt-BR …).
+        uiLanguage:       '',
         audioLang:        '',          // '' = auto (use file's default), or ISO code
         subtitleLang:     'off',       // 'off' = no subs, '' = auto (file's default track), or ISO code
         repeatMode:       'off',       // 'off' | 'one'
@@ -140,6 +143,27 @@ var TvInfo = (function () {
 })();
 
 
+/* The option lists below are built before i18n.js loads, so an entry that
+ * needs translating carries the key of its label, and the label is looked up
+ * each time the list is handed out.  Without I18n (the Node tests) the
+ * English name stays. */
+function i18nName(entry, field) {
+    var key = entry[(field || 'name') + 'Key'];
+    return (key && typeof I18n !== 'undefined') ? I18n.t(key) : entry[field || 'name'];
+}
+function i18nList(list) {
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+        var copy = {};
+        for (var k in list[i]) if (Object.prototype.hasOwnProperty.call(list[i], k)) copy[k] = list[i][k];
+        copy.name = i18nName(list[i]);
+        if (copy.short !== undefined) copy.short = i18nName(list[i], 'short');
+        out.push(copy);
+    }
+    return out;
+}
+
+
 /* Curated language list — common languages for media subtitles + audio.
  * '' = auto (no preference), 'off' is added only to the subtitle picker.
  *
@@ -151,7 +175,7 @@ var TvInfo = (function () {
  * the alias list a 'vi' preference happily matched "Movie". */
 var LanguageList = (function () {
     var langs = [
-        { code: '',   name: 'Auto (file default)', alt: [] },
+        { code: '',   name: 'Auto (file default)', nameKey: 'lang.auto', alt: [] },
         { code: 'en', name: 'English',    alt: ['eng', 'english'] },
         { code: 'nl', name: 'Nederlands', alt: ['dut', 'nld', 'dutch', 'nederlands'] },
         { code: 'de', name: 'Deutsch',    alt: ['ger', 'deu', 'german', 'deutsch'] },
@@ -237,13 +261,15 @@ var LanguageList = (function () {
     }
 
     return {
-        forAudio:    function () { return langs; },
-        forSubtitle: function () { return [{ code: 'off', name: 'Off (no subtitles)' }].concat(langs); },
+        forAudio:    function () { return i18nList(langs); },
+        forSubtitle: function () {
+            return i18nList([{ code: 'off', name: 'Off (no subtitles)', nameKey: 'lang.off' }].concat(langs));
+        },
         matchScore:  matchScore,
         nameFor:     function (code) {
-            if (code === 'off') return 'Off';
+            if (code === 'off') return i18nName({ name: 'Off', nameKey: 'common.off' });
             var e = entryFor(code);
-            return e ? e.name : (code || 'Auto');
+            return e ? i18nName(e) : (code || i18nName({ name: 'Auto', nameKey: 'common.auto' }));
         }
     };
 })();
@@ -255,31 +281,31 @@ var LanguageList = (function () {
  * so apply() drives both surfaces from the saved Settings. */
 var SubtitleStyle = (function () {
     var SIZE = [
-        { code: 'small',  name: 'Small',       px: 26 },
-        { code: 'medium', name: 'Medium',      px: 36 },
-        { code: 'large',  name: 'Large',       px: 48 },
-        { code: 'xlarge', name: 'Extra large', px: 60 }
+        { code: 'small',  name: 'Small',       nameKey: 'sub.size.small',  px: 26 },
+        { code: 'medium', name: 'Medium',      nameKey: 'sub.size.medium', px: 36 },
+        { code: 'large',  name: 'Large',       nameKey: 'sub.size.large',  px: 48 },
+        { code: 'xlarge', name: 'Extra large', nameKey: 'sub.size.xlarge', px: 60 }
     ];
     var FONT = [
-        { code: 'sans',  name: 'Sans-serif', css: "'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" },
-        { code: 'serif', name: 'Serif',      css: "Georgia,'Times New Roman',serif" },
-        { code: 'mono',  name: 'Monospace',  css: "'Consolas','Courier New',monospace" }
+        { code: 'sans',  name: 'Sans-serif', nameKey: 'sub.font.sans',  css: "'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif" },
+        { code: 'serif', name: 'Serif',      nameKey: 'sub.font.serif', css: "Georgia,'Times New Roman',serif" },
+        { code: 'mono',  name: 'Monospace',  nameKey: 'sub.font.mono',  css: "'Consolas','Courier New',monospace" }
     ];
     var POSITION = [
-        { code: 'bottom', name: 'Bottom' },
-        { code: 'middle', name: 'Middle' },
-        { code: 'top',    name: 'Top' }
+        { code: 'bottom', name: 'Bottom', nameKey: 'sub.pos.bottom' },
+        { code: 'middle', name: 'Middle', nameKey: 'sub.pos.middle' },
+        { code: 'top',    name: 'Top',    nameKey: 'sub.pos.top' }
     ];
     var BG = [
-        { code: 'none', name: 'None (outline only)' },
-        { code: 'box',  name: 'Translucent box' }
+        { code: 'none', name: 'None (outline only)', nameKey: 'sub.bg.none' },
+        { code: 'box',  name: 'Translucent box',     nameKey: 'sub.bg.box' }
     ];
 
     function find(list, code) {
         for (var i = 0; i < list.length; i++) if (list[i].code === code) return list[i];
         return list[0];
     }
-    function nameFor(group, code) { return find(group, code).name; }
+    function nameFor(group, code) { return i18nName(find(group, code)); }
 
     /* Read the four subtitle settings and push them onto the document: CSS
      * custom properties (consumed by #subtitle-overlay) + a generated
@@ -320,10 +346,10 @@ var SubtitleStyle = (function () {
     }
 
     return {
-        forSize:     function () { return SIZE; },
-        forFont:     function () { return FONT; },
-        forPosition: function () { return POSITION; },
-        forBg:       function () { return BG; },
+        forSize:     function () { return i18nList(SIZE); },
+        forFont:     function () { return i18nList(FONT); },
+        forPosition: function () { return i18nList(POSITION); },
+        forBg:       function () { return i18nList(BG); },
         nameForSize: function (c) { return nameFor(SIZE, c); },
         nameForFont: function (c) { return nameFor(FONT, c); },
         nameForPosition: function (c) { return nameFor(POSITION, c); },
@@ -368,12 +394,15 @@ var SubtitleStyle = (function () {
 var AspectRatio = (function () {
     var MODES = [
         { code: 'fit',     name: 'Fit screen (keep black bars)',    short: 'Fit',
+          nameKey: 'aspect.fit', shortKey: 'aspect.fitShort',
           av: 'PLAYER_DISPLAY_MODE_LETTER_BOX',   fit: 'contain' },
         { code: 'fill',    name: 'Fill screen (crop the sides)',    short: 'Fill',
+          nameKey: 'aspect.fill', shortKey: 'aspect.fillShort',
           av: 'PLAYER_DISPLAY_MODE_CROPPED_FULL', fit: 'cover' },
         // 'Wide' is the label TVs traditionally put on a stretched 16:9
         // picture, and unlike 'Stretch' it fits inside the round OSD button.
         { code: 'stretch', name: 'Stretch (fills, distorts shape)', short: 'Wide',
+          nameKey: 'aspect.stretch', shortKey: 'aspect.stretchShort',
           av: 'PLAYER_DISPLAY_MODE_FULL_SCREEN',  fit: 'fill' }
     ];
 
@@ -400,13 +429,13 @@ var AspectRatio = (function () {
     }
 
     return {
-        forList: function () { return MODES; },
+        forList: function () { return i18nList(MODES); },
         find:    find,
         isKnown: isKnown,
         current: current,
         next:    next,
-        nameFor:  function (c) { return find(c).name; },
-        shortFor: function (c) { return find(c).short; }
+        nameFor:  function (c) { return i18nName(find(c)); },
+        shortFor: function (c) { return i18nName(find(c), 'short'); }
     };
 })();
 

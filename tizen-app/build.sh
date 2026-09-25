@@ -23,6 +23,7 @@ zip -rq "${OUT}" \
     icon.png \
     css \
     js \
+    i18n \
     service
 
 # Quick sanity-check: warn if Debug is still enabled in a "release" build

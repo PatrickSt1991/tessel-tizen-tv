@@ -387,7 +387,7 @@ var TranscodeServer = (function () {
     /* Sweep the LAN via the background service. cb(err, servers[]). */
     function findServers(cb) {
         if (typeof SMB === 'undefined' || !SMB.ensureService)
-            return cb(new Error('the background service is unavailable on this TV'));
+            return cb(new Error(I18n.t('srv.err.noService')));
         SMB.ensureService(function (err) {
             if (err) return cb(err);
             // A /24 sweep is ~250 TCP connects at 500 ms worst case, batched 48
@@ -404,29 +404,28 @@ var TranscodeServer = (function () {
     /* Confirm a URL really is a transcode server, then store the pairing. */
     function connectTo(url, cb) {
         var base = normalizeServerUrl(url);
-        if (!base) return cb(new Error('enter the server address first'));
+        if (!base) return cb(new Error(I18n.t('srv.err.noAddress')));
         getJson(base + '/api/hello', function (err, hello) {
             // Distinguish "nothing there" from "something there, but not us" —
             // that's the difference between a typo in the address and a typo in
             // the port, and the user can only fix the one they're told about.
             if (err) {
                 var answered = /^HTTP /.test(err.message) || err.message === 'unexpected reply';
-                return cb(new Error(answered ? 'something else is running at ' + base
-                                             : 'nothing answered at ' + base));
+                return cb(new Error(I18n.t(answered ? 'srv.err.notOurs' : 'srv.err.noAnswer', base)));
             }
             if (!hello || hello.app !== 'vlc-tv-transcode')
-                return cb(new Error('something else is running at ' + base));
+                return cb(new Error(I18n.t('srv.err.notOurs', base)));
             // The token lives on /api/status, not /api/hello — hello is the
             // unauthenticated probe and deliberately carries no secrets.
             getJson(base + '/api/status', function (e2, st) {
                 if (e2) return cb(e2);
                 set({
                     url: base, token: (st && st.token) || '',
-                    name: hello.name || 'Transcode server', api: hello.api || 1
+                    name: hello.name || I18n.t('srv.section'), api: hello.api || 1
                 });
                 log('connected to ' + (hello.name || base) + ' @ ' + base);
                 cb(null, {
-                    url: base, name: hello.name || 'Transcode server',
+                    url: base, name: hello.name || I18n.t('srv.section'),
                     canAdopt: !!hello.canAdopt, configured: !!hello.configured
                 });
             });
@@ -461,7 +460,7 @@ var TranscodeServer = (function () {
 
     function requireModernServer(cb) {
         serverApiVersion(function (v) {
-            if (!v) return cb(new Error('this transcode server is too old for that — update it and pair again'));
+            if (!v) return cb(new Error(I18n.t('srv.err.tooOld')));
             cb(null);
         });
     }
@@ -509,7 +508,7 @@ var TranscodeServer = (function () {
      * that happens to hold something older would be a nasty surprise. */
     function pushShare(cb) {
         var c = (typeof SMB !== 'undefined' && SMB.getCreds) ? SMB.getCreds() : null;
-        if (!c || !c.host || !c.share) return cb(new Error('no share configured on this TV yet'));
+        if (!c || !c.host || !c.share) return cb(new Error(I18n.t('srv.err.noTvShare')));
         patchServerConfig({
             host: c.host, port: c.port || 445, share: c.share,
             user: c.user || '', pass: c.pass || '',
@@ -532,7 +531,7 @@ var TranscodeServer = (function () {
             if (err) return cb(err);
             if (!res.ok) return cb(new Error(res.error || 'the server declined'));
             var smb = res.smb || {};
-            if (!smb.host || !smb.share) return cb(new Error('the server has no share configured'));
+            if (!smb.host || !smb.share) return cb(new Error(I18n.t('srv.err.noServerShare')));
             if (typeof SMB !== 'undefined' && SMB.applyCreds) {
                 SMB.applyCreds({
                     host: smb.host, port: smb.port || 445, share: smb.share,
@@ -600,10 +599,10 @@ var TranscodeServer = (function () {
         xhrGet(url, function (err, text) {
             if (err) return cb(err);
             var ann = parseLatestAnnounce(text);
-            if (!ann) return cb(new Error('no server found — open the tool and press Pair there first'));
+            if (!ann) return cb(new Error(I18n.t('srv.err.noAnnounce')));
             // No api field here: the ntfy announcement predates it, so the
             // first thing that needs to drive this server will probe for it.
-            set({ url: ann.url, token: ann.token || '', name: ann.name || 'Transcode server' });
+            set({ url: ann.url, token: ann.token || '', name: ann.name || I18n.t('srv.section') });
             log('paired with ' + ann.name + ' @ ' + ann.url);
             cb(null, ann);
         });
@@ -614,35 +613,37 @@ var TranscodeServer = (function () {
         var el = document.getElementById('srv-status-val');
         if (!el) return;
         var s = get();
-        el.textContent = s && s.url ? (s.name || 'Paired') + ' · ' + s.url : 'Not paired';
+        el.textContent = s && s.url ? (s.name || I18n.t('srv.paired')) + ' · ' + s.url : I18n.t('srv.notPaired');
     }
 
     function paintSmart() {
         var el = document.getElementById('srv-smart-val');
-        if (el) el.textContent = smartEnabled() ? 'On' : 'Off';
+        if (el) el.textContent = I18n.t(smartEnabled() ? 'common.on' : 'common.off');
     }
 
     function paintRelay() {
         var el = document.getElementById('srv-local-val');
-        if (el) el.textContent = relayEnabled() ? 'On' : 'Off';
+        if (el) el.textContent = I18n.t(relayEnabled() ? 'common.on' : 'common.off');
     }
 
-    var SURROUND_OPTIONS = [
-        { code: 'off',  name: 'Off — only fix audio the TV can\u2019t decode' },
-        { code: 'eac3', name: 'Dolby Digital Plus 5.1 (recommended)' },
-        { code: 'ac3',  name: 'Dolby Digital 5.1 (older receivers)' }
-    ];
-    function surroundName(code) {
-        for (var i = 0; i < SURROUND_OPTIONS.length; i++)
-            if (SURROUND_OPTIONS[i].code === code) return SURROUND_OPTIONS[i].name;
-        return 'Off';
+    /* `format` is the product name, the same in every language; the picker
+     * and the settings row add the translated note around it. */
+    var SURROUND_FORMATS = { eac3: 'Dolby Digital Plus 5.1', ac3: 'Dolby Digital 5.1' };
+    function surroundOptions() {
+        return [
+            { code: 'off',  name: I18n.t('srv.surround.off') },
+            { code: 'eac3', name: I18n.t('srv.surround.eac3', SURROUND_FORMATS.eac3) },
+            { code: 'ac3',  name: I18n.t('srv.surround.ac3', SURROUND_FORMATS.ac3) }
+        ];
     }
     function paintSurround() {
         var el = document.getElementById('srv-surround-val');
         if (!el) return;
         if (!isPaired())  { el.textContent = '—'; return; }
         if (!serverCfg)   { el.textContent = '—'; return; }
-        el.textContent = surroundName(serverCfg.surround || 'off').split(' —')[0];
+        var code = serverCfg.surround || 'off';
+        el.textContent = code === 'eac3' ? I18n.t('srv.surround.eac3', SURROUND_FORMATS.eac3)
+                       : SURROUND_FORMATS[code] || I18n.t('common.off');
     }
 
     /* Finish a successful connect: get the share settings agreed between the two
@@ -669,11 +670,10 @@ var TranscodeServer = (function () {
                     // error says what to do about it, so pass it through rather
                     // than flattening it to "didn't work".
                     log('adopt skipped: ' + err.message);
-                    toast('Paired with ' + srv.name + ', but the share settings didn\u2019t come across: ' + err.message);
+                    toast(I18n.t('srv.pairedAdoptFailed', srv.name, err.message));
                     return;
                 }
-                toast('Paired with ' + srv.name + ' — share settings copied (' +
-                      smb.host + '/' + smb.share + ')');
+                toast(I18n.t('srv.pairedAdopted', srv.name, smb.host + '/' + smb.share));
             });
             return;
         }
@@ -681,29 +681,28 @@ var TranscodeServer = (function () {
             pushShare(function (err, c) {
                 if (err) {
                     log('push skipped: ' + err.message);
-                    toast('Paired with ' + srv.name + ' — now set its share up');
+                    toast(I18n.t('srv.pairedNoShare', srv.name));
                     return;
                 }
-                toast('Paired with ' + srv.name + ' — sent it your share (' +
-                      c.host + '/' + c.share + ')');
+                toast(I18n.t('srv.pairedPushed', srv.name, c.host + '/' + c.share));
             });
             return;
         }
-        toast('Paired with ' + srv.name);
+        toast(I18n.t('srv.pairedWith', srv.name));
     }
 
     function runDiscovery() {
         function toast(m) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(m); }
-        toast('Looking for a transcode server on your network…');
+        toast(I18n.t('srv.searching'));
         findServers(function (err, servers) {
-            if (err) { toast('Search failed: ' + err.message); return; }
+            if (err) { toast(I18n.t('srv.searchFailed', err.message)); return; }
             if (!servers.length) {
-                toast('Nothing found. Check the server is running, or enter its address below.');
+                toast(I18n.t('srv.nothingFound'));
                 return;
             }
             if (servers.length === 1) {
                 connectTo(servers[0].url, function (e2, srv) {
-                    if (e2) { toast('Could not connect: ' + e2.message); return; }
+                    if (e2) { toast(I18n.t('srv.connectFailed', e2.message)); return; }
                     afterConnect(srv);
                 });
                 return;
@@ -713,12 +712,12 @@ var TranscodeServer = (function () {
                 return { code: sv.url, name: sv.name + '  ·  ' + sv.host };
             });
             if (!window.VlcApp || !window.VlcApp.openPicker) {
-                toast('Found ' + servers.length + ' servers — enter the address below to pick one');
+                toast(I18n.t('srv.foundMany', servers.length));
                 return;
             }
-            window.VlcApp.openPicker('Choose a transcode server', opts, '', function (url) {
+            window.VlcApp.openPicker(I18n.t('srv.choose'), opts, '', function (url) {
                 connectTo(url, function (e2, srv) {
-                    if (e2) { toast('Could not connect: ' + e2.message); return; }
+                    if (e2) { toast(I18n.t('srv.connectFailed', e2.message)); return; }
                     afterConnect(srv);
                 });
             });
@@ -748,33 +747,32 @@ var TranscodeServer = (function () {
         function toast(m) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(m); }
 
         if (surroundBtn) surroundBtn.addEventListener('click', function () {
-            if (!isPaired()) { toast('Pair a transcode server first'); return; }
+            if (!isPaired()) { toast(I18n.t('srv.pairFirst')); return; }
             if (!window.VlcApp || !window.VlcApp.openPicker) return;
             var current = (serverCfg && serverCfg.surround) || 'off';
-            window.VlcApp.openPicker('Surround sound', SURROUND_OPTIONS, current, function (val) {
+            window.VlcApp.openPicker(I18n.t('srv.surround'), surroundOptions(), current, function (val) {
                 patchServerConfig({ surround: val }, function (err) {
-                    if (err) { toast('Could not change it: ' + err.message); return; }
+                    if (err) { toast(I18n.t('srv.changeFailed', err.message)); return; }
                     paintSurround();
-                    toast(val === 'off'
-                        ? 'Surround off — multichannel audio reaches the soundbar as stereo'
-                        : surroundName(val).split(' (')[0] + ' — start the next file to hear it');
+                    toast(val === 'off' ? I18n.t('srv.surroundOff')
+                                        : I18n.t('srv.surroundOn', SURROUND_FORMATS[val] || val));
                 });
             });
         });
 
         if (adoptBtn) adoptBtn.addEventListener('click', function () {
-            if (!isPaired()) { toast('Pair a transcode server first'); return; }
+            if (!isPaired()) { toast(I18n.t('srv.pairFirst')); return; }
             adoptShare(function (err, smb) {
                 if (err) { toast(err.message); return; }
-                toast('Copied ' + smb.host + '/' + smb.share + ' from the transcode server');
+                toast(I18n.t('srv.adopted', smb.host + '/' + smb.share));
             });
         });
 
         if (pushBtn) pushBtn.addEventListener('click', function () {
-            if (!isPaired()) { toast('Pair a transcode server first'); return; }
+            if (!isPaired()) { toast(I18n.t('srv.pairFirst')); return; }
             pushShare(function (err, c) {
-                if (err) { toast('Could not send them: ' + err.message); return; }
-                toast('Sent ' + c.host + '/' + c.share + ' to the transcode server');
+                if (err) { toast(I18n.t('srv.pushFailed', err.message)); return; }
+                toast(I18n.t('srv.pushed', c.host + '/' + c.share));
             });
         });
 
@@ -783,8 +781,8 @@ var TranscodeServer = (function () {
         if (connectBtn) connectBtn.addEventListener('click', function () {
             var toast = function (m) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(m); };
             var raw = addrInput ? addrInput.value : '';
-            if (!String(raw).trim()) { toast('Type the server\u2019s address first'); return; }
-            toast('Connecting…');
+            if (!String(raw).trim()) { toast(I18n.t('srv.typeAddress')); return; }
+            toast(I18n.t('common.connecting'));
             connectTo(raw, function (err, srv) {
                 if (err) { toast(err.message); return; }
                 afterConnect(srv);
@@ -795,9 +793,9 @@ var TranscodeServer = (function () {
             Settings.set('smartRouting', on);
             probeCache = {}; probeMissing = false;   // a server update may have added /api/probe
             paintSmart();
-            if (!on) { toast('Everything plays through the transcode server again'); return; }
-            if (!isPaired()) { toast('Pair a transcode server first — until then everything plays directly anyway'); return; }
-            toast('Files the TV can play itself now skip the transcode server');
+            if (!on) { toast(I18n.t('srv.smartOff')); return; }
+            if (!isPaired()) { toast(I18n.t('srv.smartUnpaired')); return; }
+            toast(I18n.t('srv.smartOn'));
         });
         if (localBtn) localBtn.addEventListener('click', function () {
             var on = !relayEnabled();
@@ -809,34 +807,33 @@ var TranscodeServer = (function () {
                 // only from the share rather than sitting there willing to
                 // accept files nobody is going to send.
                 if (isPaired()) patchServerConfig({ local_relay: false }, function () {});
-                toast('USB files will play directly again');
+                toast(I18n.t('srv.relayOff'));
                 return;
             }
-            if (!isPaired()) { toast('Pair a transcode server first'); return; }
+            if (!isPaired()) { toast(I18n.t('srv.pairFirst')); return; }
             // The box has to agree to accept files from us. Ask for that here
             // rather than making the user go and find the switch on its page.
             patchServerConfig({ local_relay: true }, function (err) {
-                if (err) { toast('The server refused: ' + err.message); return; }
+                if (err) { toast(I18n.t('srv.refused', err.message)); return; }
                 armRelay(function (r) {
-                    toast(r ? 'USB files will play through the transcode server'
-                            : 'Could not open the relay on this TV — USB files will play directly');
+                    toast(I18n.t(r ? 'srv.relayOn' : 'srv.relayFailed'));
                 });
             });
         });
         if (pairBtn) pairBtn.addEventListener('click', function () {
-            if (typeof UI !== 'undefined' && UI.toast) UI.toast('Looking for your transcode server…');
+            if (typeof UI !== 'undefined' && UI.toast) UI.toast(I18n.t('srv.pairSearching'));
             pair(function (err, ann) {
-                if (err) { if (UI && UI.toast) UI.toast('Pairing failed: ' + err.message); return; }
+                if (err) { if (UI && UI.toast) UI.toast(I18n.t('srv.pairFailed', err.message)); return; }
                 // Same follow-up as the LAN flow: the announcement doesn't say
                 // whether the server will share its share settings, so just ask
                 // — adoptShare reports a refusal as a footnote, not a failure.
-                afterConnect({ url: get().url, name: (ann && ann.name) || 'Transcode server', canAdopt: true });
+                afterConnect({ url: get().url, name: (ann && ann.name) || I18n.t('srv.section'), canAdopt: true });
             });
         });
         if (unpairBtn) unpairBtn.addEventListener('click', function () {
             clear(); disarmRelay(); paintStatus();
             probeCache = {}; probeMissing = false;
-            if (typeof UI !== 'undefined' && UI.toast) UI.toast('Transcode server removed');
+            if (typeof UI !== 'undefined' && UI.toast) UI.toast(I18n.t('srv.removed'));
         });
     }
 
