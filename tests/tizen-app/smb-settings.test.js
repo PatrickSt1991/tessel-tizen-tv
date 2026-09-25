@@ -5,6 +5,7 @@ var test   = require('node:test');
 var fs     = require('fs');
 var vm     = require('vm');
 var path   = require('path');
+var I18n   = require('./helpers/i18n.js');
 
 var SRC = fs.readFileSync(
     path.join(__dirname, '../../tizen-app/js/smb.js'), 'utf8');
@@ -29,6 +30,7 @@ function loadSmb(fields) {
     var sandbox = {
         module: { exports: {} },
         Debug:  { send: function (tag, msg) { lines.push('[' + tag + '] ' + msg); } },
+        I18n:   I18n,
         UI:     { toast: function (m) { toasts.push(m); } },
         localStorage: {
             getItem: function (k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },

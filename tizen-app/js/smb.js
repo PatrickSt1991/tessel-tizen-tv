@@ -262,10 +262,10 @@ var SMB = (function () {
 
     function render(path) {
         UI.showView('view-browse');
-        document.getElementById('browse-title').textContent = path ? path.split('/').pop() : 'SMB Share';
+        document.getElementById('browse-title').textContent = path ? path.split('/').pop() : I18n.t('smb.title');
         document.getElementById('browse-path').textContent = '\\\\' + (getCreds().host || '') + '\\' + (getCreds().share || '') + (path || '');
         var ul = document.getElementById('browse-list');
-        ul.innerHTML = '<li><span class="icon">…</span><span class="name">Loading…</span></li>';
+        ul.innerHTML = '<li><span class="icon">…</span><span class="name">' + esc(I18n.t('common.loading')) + '</span></li>';
 
         list(path, function (err, entries) {
             ul.innerHTML = '';
@@ -325,7 +325,7 @@ var SMB = (function () {
             });
 
             if (!ul.children.length)
-                ul.innerHTML = '<li><span class="icon">i</span><span class="name">Empty folder.</span></li>';
+                ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + esc(I18n.t('browse.empty')) + '</span></li>';
 
             UI.refreshFocusables();
             UI.focusOn(ul.firstElementChild);
@@ -360,15 +360,15 @@ var SMB = (function () {
             var c0 = getCreds();
             dbg('openBrowser: no usable server saved (host=' + JSON.stringify(c0.host || '') +
                 ' share=' + JSON.stringify(c0.share || '') + ') → sending to Settings');
-            UI.toast('Add your SMB server in Settings first');
+            UI.toast(I18n.t('smb.addFirst'));
             if (window.VlcApp && window.VlcApp.openSettings) window.VlcApp.openSettings();
             return;
         }
         UI.showView('view-browse');
-        document.getElementById('browse-title').textContent = 'SMB Share';
-        document.getElementById('browse-path').textContent = 'Connecting…';
+        document.getElementById('browse-title').textContent = I18n.t('smb.title');
+        document.getElementById('browse-path').textContent = I18n.t('common.connecting');
         document.getElementById('browse-list').innerHTML =
-            '<li><span class="icon">…</span><span class="name">Connecting…</span></li>';
+            '<li><span class="icon">…</span><span class="name">' + esc(I18n.t('common.connecting')) + '</span></li>';
 
         // Install Back BEFORE the async work so it works on the "connecting" and
         // error screens too — otherwise Back falls through to the app's global
@@ -382,7 +382,7 @@ var SMB = (function () {
             dumpServiceLogs('service start');
             connect(function (err2) {
                 if (err2) {
-                    showError('Could not connect: ' + err2.message + ' — press Back to return');
+                    showError(I18n.t('smb.connectFailed', err2.message));
                     dumpServiceLogs('connect failure');   // the service-side NEGOTIATE/auth/socket trail
                     return;
                 }
@@ -403,7 +403,7 @@ var SMB = (function () {
     var anonState = false;
     function paintAnon() {
         var anonVal = document.getElementById('smb-anon-val');
-        if (anonVal) anonVal.textContent = anonState ? 'On' : 'Off';
+        if (anonVal) anonVal.textContent = I18n.t(anonState ? 'common.on' : 'common.off');
     }
 
     /* Push a credentials object into the settings form. */
@@ -457,9 +457,9 @@ var SMB = (function () {
                 ' pass=' + (nc.pass ? nc.pass.length + ' chars' : 'none') +
                 (nc.domain ? ' domain=' + JSON.stringify(nc.domain) : '') +
                 (nc.host && nc.share ? '' : '  ** host and share are both required **'));
-            UI.toast('SMB server saved');
+            UI.toast(I18n.t('smb.saved'));
             if (!nc.host || !nc.share)
-                UI.toast(nc.host ? 'Share name is missing' : 'Server address is missing');
+                UI.toast(I18n.t(nc.host ? 'smb.shareMissing' : 'smb.hostMissing'));
         });
     }
 

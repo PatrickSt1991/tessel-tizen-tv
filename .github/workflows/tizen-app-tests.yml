@@ -5,12 +5,14 @@ on:
     paths:
       - 'tizen-app/**'
       - 'tests/tizen-app/**'
+      - 'transcode-server/internal/web/static/**'
       - '.github/workflows/tizen-app-tests.yml'
   push:
     branches: [main]
     paths:
       - 'tizen-app/**'
       - 'tests/tizen-app/**'
+      - 'transcode-server/internal/web/static/**'
       - '.github/workflows/tizen-app-tests.yml'
 
 jobs:
