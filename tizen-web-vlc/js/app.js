@@ -144,7 +144,11 @@
         originDir:  null,          // Tizen File of the browse folder when origin==='browse'
         // Ordered playable siblings + position, powering auto-play / next-prev.
         playlist:   [],            // [{ uri, title, subtitles }]
-        playlistIndex: -1
+        playlistIndex: -1,
+        // Set while smart routing plays a share file directly instead of
+        // through the transcode server: { uri, title, opts } to replay if the
+        // direct open never starts.  See retryThroughServer().
+        directFallback: null
     };
     // Latest progress sample, used to decide partial-watch → watched on exit.
     var lastProgress = { time: 0, duration: 0 };
@@ -240,6 +244,7 @@
             var text = typeof msg === 'string' ? msg
                        : (msg && msg.message ? msg.message : JSON.stringify(msg));
             if (typeof Debug !== 'undefined') Debug.error('player onerror: ' + text);
+            if (retryThroughServer('player error: ' + text)) return;
             // If the failing URL is an SMB proxy stream, drain the service's
             // ring-buffer log to the PC listener so we can diagnose what the
             // proxy was doing when AVPlay gave up.
@@ -674,6 +679,7 @@
 
         state.playingUri = uri;
         state.playingTitle = title || uri;
+        state.directFallback = null;
         updateNextPrevButtons();
         UI.showView('view-player'); state.view = 'player';
         if (typeof Debug !== 'undefined') Debug.view('player');
@@ -690,25 +696,32 @@
         // The proper setDisplayRect happens after prepareAsync succeeds.
         setTimeout(function () {
             // A USB / internal file may be routed through the paired transcode
-            // server (for surround, or a codec the TV can't decode).  That
-            // changes which URL AVPlay opens, not the identity of what's
+            // server (for surround, or a codec the TV can't decode), and with
+            // smart routing a share file the server would only remux skips it.
+            // That changes which URL AVPlay opens, not the identity of what's
             // playing — `uri` stays the key for recents, resume, watched and
             // subtitle lookup, and the resolver hands back `uri` unchanged
             // whenever routing isn't on or isn't available.
             var resolve = (typeof TranscodeServer !== 'undefined' && TranscodeServer.resolvePlaybackUri)
                 ? TranscodeServer.resolvePlaybackUri
                 : function (u, done) { done(u); };
-            resolve(uri, function (openUrl) {
-                // Arming the relay is async; the user may have backed out or
-                // started something else in the meantime.
+            resolve(uri, function (openUrl, route) {
+                // Arming the relay or probing is async; the user may have
+                // backed out or started something else in the meantime.
                 if (state.playingUri !== uri) return;
+                state.directFallback = (route && route.fallback)
+                    ? { uri: uri, title: title, opts: opts } : null;
                 if (openUrl !== uri && typeof Debug !== 'undefined')
-                    Debug.player('routing through transcode server → ' + openUrl);
+                    Debug.player((state.directFallback ? 'smart routing: playing directly → '
+                                                       : 'routing through transcode server → ') + openUrl);
                 Player.open(openUrl, {
                     title:     title,
                     subtitles: opts.subtitles || [],
                     file:      opts.file || null,
-                    sourceUri: uri
+                    // Where embedded subtitles are read from.  On the direct
+                    // route that's the file itself — `uri` would be the
+                    // server's /play URL, and reading it starts a transcode.
+                    sourceUri: state.directFallback ? openUrl : uri
                 });
             });
         }, 50);
@@ -731,12 +744,14 @@
 
             if (elapsed > 20000 && state !== 'PLAYING' && state !== 'PAUSED' && !bufferingRecent) {
                 clearInterval(openWatchdog);
+                if (retryThroughServer('stuck loading, AVPlay state ' + state)) return;
                 showError('Stuck loading after 20 s.  AVPlay state: ' + state +
                           '.  The codec, container, or source may not be supported.');
                 return;
             }
             if (elapsed > 10000 && state === 'PLAYING' && (!time || time === 0) && !bufferingRecent) {
                 clearInterval(openWatchdog);
+                if (retryThroughServer('playhead not advancing')) return;
                 showError('Playback stalled: AVPlay reports playing but the playhead ' +
                           'isn\'t advancing, and no buffering events are coming in.  ' +
                           'This usually means the codec inside the file isn\'t supported ' +
@@ -752,6 +767,29 @@
 
         pushRecent({ uri: uri, title: title || uri, subtitles: opts.subtitles });
         scheduleOSDHide();
+    }
+
+    /* Smart routing sent this share file straight to AVPlay and it never
+     * started: remember that, and replay it through the transcode server —
+     * where it would have gone without smart routing (issue #87).  Only
+     * before anything has played; past that an error is about the file or
+     * the network, not the route. */
+    function retryThroughServer(why) {
+        var fb = state.directFallback;
+        if (!fb || fb.uri !== state.playingUri || lastProgress.time > 0) return false;
+        state.directFallback = null;
+        clearInterval(openWatchdog);
+        if (typeof Debug !== 'undefined')
+            Debug.player('smart routing: direct play failed (' + why + ') — retrying through the transcode server');
+        if (typeof TranscodeServer !== 'undefined' && TranscodeServer.markDirectFailed)
+            TranscodeServer.markDirectFailed(fb.uri);
+        try { Player.stop(); } catch (e) {}
+        UI.toast('Playing through the transcode server instead');
+        var again = {};
+        for (var k in fb.opts) again[k] = fb.opts[k];
+        again.askResume = false;   // already answered for this open
+        playUri(fb.uri, fb.title, again);
+        return true;
     }
 
     /* ── Playlist navigation (auto-play + next/prev) ──────────────── */

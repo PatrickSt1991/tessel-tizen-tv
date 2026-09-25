@@ -141,6 +141,20 @@ var SMB = (function () {
         });
     }
 
+    /* Make /smb/stream usable without going through the browser first — a
+     * file opened from Recents after a restart finds the service down, or up
+     * but never told which share to read.  Leaves a live connection alone:
+     * /smb/connect drops and rebuilds it. */
+    function ensureConnected(cb) {
+        getJson(BASE + '/smb/ping', function (err, res) {
+            if (!err && res && res.connected) return cb(null);
+            ensureService(function (e2) {
+                if (e2) return cb(e2);
+                connect(function (e3) { cb(e3 || null); });
+            });
+        });
+    }
+
     function list(path, cb) {
         getJson(BASE + '/smb/list?path=' + encodeURIComponent(path || ''), function (err, res) {
             if (err) return cb(err);
@@ -465,6 +479,8 @@ var SMB = (function () {
         // transcode server instead of typed in on the remote.
         applyCreds:      applyCreds,
         streamUrl:       streamUrl,
+        // Used by server.js when smart routing plays a share file directly.
+        ensureConnected: ensureConnected,
         dumpServiceLogs: dumpServiceLogs,
         normalizeServer: normalizeServer,   // exposed for the Node tests
         siblingSubtitles: siblingSubtitles, // exposed for the Node tests
