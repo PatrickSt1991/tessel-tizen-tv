@@ -1,0 +1,29 @@
+name: Test Tessel TV app
+
+on:
+  pull_request:
+    paths:
+      - 'tizen-app/**'
+      - 'tests/tizen-app/**'
+      - '.github/workflows/tizen-app-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tizen-app/**'
+      - 'tests/tizen-app/**'
+      - '.github/workflows/tizen-app-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run subtitle tests
+        run: node --test tests/tizen-app/*.test.js

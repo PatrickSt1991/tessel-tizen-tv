@@ -3,9 +3,9 @@
 Every debug line the app writes goes to the browser console, tagged `[vlctv]`,
 and needs nothing switched on first. To see it live:
 
-1. In Apps2Samsung, open **Installed apps → VLC TV → Debug**. This starts the
+1. In Apps2Samsung, open **Installed apps → Tessel → Debug**. This starts the
    app in debug mode and opens `chrome://inspect` for you.
-2. Click **inspect** on the VLC TV entry. A DevTools window opens; type `vlctv`
+2. Click **inspect** on the Tessel entry. A DevTools window opens; type `vlctv`
    in the console's filter box to hide the TV's own noise.
 3. Reproduce the problem. Warnings and errors show in red, and the Errors
    filter picks them out.

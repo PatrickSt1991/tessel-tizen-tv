@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1e2a3d">
 <link rel="icon" href="icon.png">
-<title>Send URL to VLC TV</title>
+<title>Send URL to Tessel</title>
 <style>
-  /* Palette + type lifted straight from the app (tizen-web-vlc/css/style.css) */
+  /* Palette + type lifted straight from the app (tizen-app/css/style.css) */
   :root {
     --bg:        #1e2a3d;
     --bg-2:      #283549;
@@ -38,7 +38,7 @@
 
   /* Brand header — icon top-left, wordmark beside it (matches app .brand) */
   header { display: flex; align-items: center; gap: 16px; padding: 22px 2px 18px; }
-  .cone-img { width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0; box-shadow: var(--shadow); }
+  .app-icon { width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0; box-shadow: var(--shadow); }
   header h1 { margin: 0; font-size: 26px; font-weight: 200; letter-spacing: 1px; color: var(--fg); }
   header h1 span { color: var(--accent); font-weight: 600; margin-left: 6px; }
 
@@ -90,8 +90,8 @@
 </head>
 <body>
   <header>
-    <img class="cone-img" src="icon.png" alt="VLC TV">
-    <h1>Send to<span>VLC&nbsp;TV</span></h1>
+    <img class="app-icon" src="icon.png" alt="Tessel">
+    <h1>Send to<span>Tessel</span></h1>
   </header>
 
   <section class="card">
@@ -145,7 +145,7 @@
     if (!url)  { setStatus('Paste a URL first', 'bad'); $('url').focus(); return; }
     persist(code); setStatus('Sending\u2026', ''); $('send').disabled = true;
     fetch(NTFY + '/' + encodeURIComponent('vlctv-' + code), {
-      method: 'POST', body: url, headers: { 'Title': 'VLC TV URL' }
+      method: 'POST', body: url, headers: { 'Title': 'Tessel URL' }
     })
     .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status);
       setStatus('Sent \u2014 now press \u201CGet URL from device\u201D on the TV', 'ok'); })

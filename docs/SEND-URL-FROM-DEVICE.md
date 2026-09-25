@@ -13,7 +13,7 @@ when you press **📲 Get URL from device** on the TV, it does a single GET of
 that topic and plays the most recent URL.
 
 ```
- device page (GitHub Pages)  ──POST──▶  ntfy.sh/vlctv-<code>  ◀──GET──  VLC TV
+ device page (GitHub Pages)  ──POST──▶  ntfy.sh/vlctv-<code>  ◀──GET──  Tessel
 ```
 
 Pairing: each TV mints a long random code once. It's shown in **Settings →
@@ -42,7 +42,7 @@ via a `CNAME` file in `docs/`).
    field and plays.
 
 The QR encodes the page URL with the code in the hash
-(`…/vlc-tizen-tv/#<code>`), so scanning opens the page already paired. The QR
+(`…/tessel-tizen-tv/#<code>`), so scanning opens the page already paired. The QR
 is generated **on the TV, offline** (bundled `js/qrcode.js`, MIT) — the pairing
 code is never sent to a third-party QR service.
 
