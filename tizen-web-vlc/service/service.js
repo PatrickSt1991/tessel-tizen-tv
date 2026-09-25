@@ -218,8 +218,18 @@ function ntText(status) {
     return e ? e[1] + ' (' + e[0] + ' ' + ntHex(status) + ')' : ntHex(status);
 }
 
-/* NTLMSSP negotiate flags (Unicode + extended session security = NTLMv2). */
-var NTLM_F = 0x00000001 | 0x00000004 | 0x00000200 | 0x00008000 | 0x00080000;
+/* NTLMSSP negotiate flags: Unicode, NTLM with extended session security
+ * (NTLMv2), plus SIGN / 128 / 56 — the set every Windows client sends
+ * (github issue #83).
+ * `>>> 0` because 0x80000000 turns the OR negative, which writeUInt32LE rejects. */
+var NTLM_F = (0x00000001 |    // NEGOTIATE_UNICODE
+              0x00000004 |    // REQUEST_TARGET
+              0x00000010 |    // NEGOTIATE_SIGN
+              0x00000200 |    // NEGOTIATE_NTLM
+              0x00008000 |    // NEGOTIATE_ALWAYS_SIGN
+              0x00080000 |    // NEGOTIATE_EXTENDED_SESSIONSECURITY
+              0x20000000 |    // NEGOTIATE_128
+              0x80000000) >>> 0;  // NEGOTIATE_56
 var NTLM_ANON = 0x00000800;   // NTLMSSP_NEGOTIATE_ANONYMOUS
 
 /* ============================================================================
@@ -320,7 +330,13 @@ SmbConnection.prototype._header = function (command, creditCharge) {
 SmbConnection.prototype._send = function (command, body, creditCharge, cb) {
     if (this.dead) return cb(-1, null, null);
     var hdr = this._header(command, creditCharge);
-    if (this.signing && this.signKey) {
+    /* SESSION_SETUP requests are never signed: the server derives the session
+     * key from the very NTLM message the request carries, so it has nothing to
+     * check a signature against yet. Windows answers a signed one with
+     * STATUS_INVALID_PARAMETER (github issue #83) and Samba with
+     * `server signing = mandatory` drops the connection. Signing starts with
+     * the first request after the session is up. */
+    if (this.signing && this.signKey && command !== SMB2.SESSION_SETUP) {
         hdr.buf.writeUInt32LE(FLAGS_SIGNED, 16);
         var full = Buffer.concat([hdr.buf, body]);
         var sig = hmacSha256(this.signKey, full).slice(0, 16);
@@ -555,7 +571,7 @@ SmbConnection.prototype._buildAnonymousType3 = function () {
     field(userB.length, userOff).copy(hdr, 36);
     field(wsB.length,   wsOff).copy(hdr, 44);
     field(0,            cur).copy(hdr, 52);
-    hdr.writeUInt32LE(NTLM_F | NTLM_ANON, 60);
+    hdr.writeUInt32LE((NTLM_F | NTLM_ANON) >>> 0, 60);
     return { token: Buffer.concat([hdr, lmResp, ntResp, domB, userB, wsB]) };
 };
 
