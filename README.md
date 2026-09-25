@@ -4,7 +4,6 @@ A media player for Samsung Tizen TVs. Network streams, USB drives
 and SMB shares, with a remote-friendly UI and hardware-accelerated playback
 through Samsung's AVPlay.
 
-<img width="1457" height="834" alt="Tessel home screen" src="https://github.com/user-attachments/assets/5ea3ba2f-f797-44b2-8b72-e4760bca657a" />
 
 ## Features
 
@@ -49,18 +48,6 @@ GitHub Actions builds and publishes a release on every merge to `main`.
 ## Support
 
 If Tessel is useful to you, consider a coffee: [ko-fi.com/M4M71JOT9R](https://ko-fi.com/M4M71JOT9R)
-
-<details>
-<summary>More screenshots</summary>
-
-<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/947c1b3c-8e7b-4d4a-934a-f4c25ea12742" />
-<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/e13648e0-bcfe-4773-a817-9e5e10ee4629" />
-<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/a57dd4d1-8761-4101-abf0-c6f93048e9bf" />
-<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/5fe0422f-08e1-43eb-9c5a-ea855f755558" />
-<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/3ffc8365-c73a-4eba-b05b-63ed399ef33a" />
-<img width="1457" height="834" alt="Screenshot" src="https://github.com/user-attachments/assets/16e1d60a-8f3d-44de-b419-20e9bc8188ed" />
-
-</details>
 
 ## Acknowledgments
 
