@@ -79,5 +79,12 @@
   "smb.connectFailed": "Connessione non riuscita: {0}",
   "smb.loadingPath": "Caricamento di {0}…",
   "smb.loadingRoot": "Caricamento della condivisione…",
-  "smb.browseFailed": "Navigazione non riuscita: {0}"
+  "smb.browseFailed": "Navigazione non riuscita: {0}",
+  "smb.pick": "Condivisione da modificare",
+  "smb.remove": "Rimuovi",
+  "smb.removeConfirm": "Rimuovere {0}?",
+  "smb.removed": "{0} rimosso",
+  "smb.duplicate": "Questa condivisione è già nell'elenco",
+  "smb.addShare": "+ Aggiungi un'altra condivisione",
+  "smb.newShare": "Nuova condivisione"
 }

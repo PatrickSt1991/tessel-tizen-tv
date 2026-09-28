@@ -79,5 +79,12 @@
   "smb.connectFailed": "接続できませんでした：{0}",
   "smb.loadingPath": "{0}を読み込み中…",
   "smb.loadingRoot": "共有を読み込み中…",
-  "smb.browseFailed": "参照に失敗しました：{0}"
+  "smb.browseFailed": "参照に失敗しました：{0}",
+  "smb.pick": "編集する共有",
+  "smb.remove": "削除",
+  "smb.removeConfirm": "{0} を削除しますか？",
+  "smb.removed": "{0} を削除しました",
+  "smb.duplicate": "その共有はすでに一覧にあります",
+  "smb.addShare": "+ 共有を追加",
+  "smb.newShare": "新しい共有"
 }

@@ -10,14 +10,20 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
 
-// SMB holds the connection details for the one share we read media from.
+// SMB holds the connection details for one share we read media from.
 type SMB struct {
+	// ID tells the extra shares apart; the first share has none. It is only
+	// used by the setup page and /raw: the TV names a share by host and share
+	// name, which works for shares typed on the TV as well as copied from here.
+	ID        string `json:"id,omitempty"`
 	Host      string `json:"host"`      // e.g. "192.168.1.10"
 	Port      int    `json:"port"`      // usually 445
 	Share     string `json:"share"`     // e.g. "Media"
@@ -40,7 +46,14 @@ type LastPair struct {
 
 // Config is the whole persisted document.
 type Config struct {
+	// SMB is the first share. /play?path=… without a host and share reads from
+	// it, which is what TVs from before multiple shares send, and it stays in
+	// this field so an older server build still finds it after a downgrade.
 	SMB SMB `json:"smb"`
+
+	// Extra holds the shares added after the first, for people with more than
+	// one NAS or server. Older builds ignore the field.
+	Extra []SMB `json:"extra_smb,omitempty"`
 
 	// Encoder lets a user override the auto-detected ffmpeg encoder if the
 	// pick misbehaves on their box (e.g. "libx264", "h264_vaapi"). Empty =
@@ -86,10 +99,133 @@ type Config struct {
 	mu   sync.Mutex // guards Save against concurrent web writes
 }
 
-// Configured reports whether enough is set to attempt an SMB connection.
+// Set reports whether enough is filled in to attempt a connection.
+func (s *SMB) Set() bool { return s.Host != "" && s.Share != "" }
+
+// Configured reports whether any share is set up.
 func (c *Config) Configured() bool {
-	return c.SMB.Host != "" && c.SMB.Share != ""
+	return len(c.Shares()) > 0
 }
+
+// Shares lists the usable shares, the first share first.
+func (c *Config) Shares() []SMB {
+	var out []SMB
+	if c.SMB.Set() {
+		out = append(out, c.SMB)
+	}
+	for _, s := range c.Extra {
+		if s.Set() {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Share returns the share with the given ID ("" is the first share).
+func (c *Config) Share(id string) (SMB, bool) {
+	if id == "" {
+		return c.SMB, true
+	}
+	for _, s := range c.Extra {
+		if s.ID == id {
+			return s, true
+		}
+	}
+	return SMB{}, false
+}
+
+// Find returns the ID of the share at host with the given share name. Both
+// compare case-insensitively, since SMB share names are, and a host saved with
+// IPv6 brackets matches one given without.
+func (c *Config) Find(host, share string) (string, bool) {
+	for _, s := range c.Shares() {
+		if sameHost(s.Host, host) && strings.EqualFold(s.Share, share) {
+			return s.ID, true
+		}
+	}
+	return "", false
+}
+
+// Reaches reports whether other signs in to the same server as s: host, port
+// (blank meaning 445) and user.
+func (s *SMB) Reaches(other SMB) bool {
+	port := func(p int) int {
+		if p == 0 {
+			return 445
+		}
+		return p
+	}
+	return sameHost(s.Host, other.Host) && port(s.Port) == port(other.Port) && s.User == other.User
+}
+
+func sameHost(a, b string) bool {
+	return strings.EqualFold(strings.Trim(a, "[]"), strings.Trim(b, "[]"))
+}
+
+// NewShareID mints the ID of an extra share.
+func NewShareID() string {
+	b := make([]byte, 4)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// PutShare stores s under id. "" is the first share, "new" adds a share (as the
+// first one when that is empty), anything else replaces that extra share. It
+// returns the ID the share ended up with. A blank port becomes 445.
+func (c *Config) PutShare(id string, s SMB) (string, error) {
+	if s.Port == 0 {
+		s.Port = 445
+	}
+	if s.Set() {
+		if other, ok := c.Find(s.Host, s.Share); ok && (id == "new" || other != id) {
+			return "", ErrDuplicateShare
+		}
+	}
+	switch {
+	case id == "new" && !c.SMB.Set():
+		id = ""
+		fallthrough
+	case id == "":
+		s.ID = ""
+		c.SMB = s
+		return "", nil
+	case id == "new":
+		s.ID = NewShareID()
+		c.Extra = append(c.Extra, s)
+		return s.ID, nil
+	}
+	for i := range c.Extra {
+		if c.Extra[i].ID == id {
+			s.ID = id
+			c.Extra[i] = s
+			return id, nil
+		}
+	}
+	return "", ErrUnknownShare
+}
+
+// RemoveShare drops a share. Removing the first share empties it rather than
+// moving an extra share up: the extra share keeps its ID, and a TV from before
+// multiple shares, which only knows the first one, gets "not configured"
+// instead of files from a different server.
+func (c *Config) RemoveShare(id string) error {
+	if id == "" {
+		c.SMB = SMB{Port: 445}
+		return nil
+	}
+	for i := range c.Extra {
+		if c.Extra[i].ID == id {
+			c.Extra = append(c.Extra[:i], c.Extra[i+1:]...)
+			return nil
+		}
+	}
+	return ErrUnknownShare
+}
+
+var (
+	ErrUnknownShare   = errors.New("no such share")
+	ErrDuplicateShare = errors.New("that share is already in the list")
+)
 
 // EnsureToken mints the pairing secret on first run and persists it.
 func (c *Config) EnsureToken() error {
@@ -159,6 +295,7 @@ func (c *Config) Save() error {
 // View is the JSON shape sent to the web UI — no mutex, password masked.
 type View struct {
 	SMB              SMB    `json:"smb"`
+	Extra            []SMB  `json:"extra_smb"`
 	Encoder          string `json:"encoder,omitempty"`
 	Surround         string `json:"surround"`
 	LocalRelay       bool   `json:"local_relay"`
@@ -175,5 +312,10 @@ func (c *Config) Redacted() View {
 		v.Surround = "off"
 	}
 	v.SMB.Pass = "" // never leak the stored password
+	v.Extra = make([]SMB, len(c.Extra))
+	for i, s := range c.Extra {
+		s.Pass = ""
+		v.Extra[i] = s
+	}
 	return v
 }

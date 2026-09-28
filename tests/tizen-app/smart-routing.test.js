@@ -56,7 +56,7 @@ function loadServer(opts) {
         SMB: {
             ensureService: function (cb) { cb(null); },
             streamUrl: function (p) { return STREAM + encodeURIComponent(p); },
-            ensureConnected: function (cb) {
+            ensureConnected: function (srv, cb) {
                 connects++;
                 cb(opts.smbDown ? new Error('share unreachable') : null);
             }

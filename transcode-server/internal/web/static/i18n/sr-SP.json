@@ -79,5 +79,12 @@
   "smb.connectFailed": "Повезивање није успело: {0}",
   "smb.loadingPath": "Учитавање: {0}…",
   "smb.loadingRoot": "Учитавање фасцикле…",
-  "smb.browseFailed": "Прегледање није успело: {0}"
+  "smb.browseFailed": "Прегледање није успело: {0}",
+  "smb.pick": "Дељена фасцикла за измену",
+  "smb.remove": "Уклони",
+  "smb.removeConfirm": "Уклонити {0}?",
+  "smb.removed": "{0} је уклоњен",
+  "smb.duplicate": "Та дељена фасцикла је већ на листи",
+  "smb.addShare": "+ Додај још једну дељену фасциклу",
+  "smb.newShare": "Нова дељена фасцикла"
 }

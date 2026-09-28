@@ -79,5 +79,12 @@
   "smb.connectFailed": "Não foi possível conectar: {0}",
   "smb.loadingPath": "Carregando {0}…",
   "smb.loadingRoot": "Carregando o compartilhamento…",
-  "smb.browseFailed": "Falha ao navegar: {0}"
+  "smb.browseFailed": "Falha ao navegar: {0}",
+  "smb.pick": "Compartilhamento a editar",
+  "smb.remove": "Remover",
+  "smb.removeConfirm": "Remover {0}?",
+  "smb.removed": "{0} removido",
+  "smb.duplicate": "Esse compartilhamento já está na lista",
+  "smb.addShare": "+ Adicionar outro compartilhamento",
+  "smb.newShare": "Novo compartilhamento"
 }

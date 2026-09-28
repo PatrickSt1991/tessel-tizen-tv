@@ -79,5 +79,12 @@
   "smb.connectFailed": "לא ניתן להתחבר: {0}",
   "smb.loadingPath": "טוען את {0}…",
   "smb.loadingRoot": "טוען את התיקייה…",
-  "smb.browseFailed": "העיון נכשל: {0}"
+  "smb.browseFailed": "העיון נכשל: {0}",
+  "smb.pick": "השיתוף לעריכה",
+  "smb.remove": "הסרה",
+  "smb.removeConfirm": "להסיר את {0}?",
+  "smb.removed": "{0} הוסר",
+  "smb.duplicate": "השיתוף הזה כבר ברשימה",
+  "smb.addShare": "+ הוספת שיתוף נוסף",
+  "smb.newShare": "שיתוף חדש"
 }

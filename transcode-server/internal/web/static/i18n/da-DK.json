@@ -79,5 +79,12 @@
   "smb.connectFailed": "Kunne ikke forbinde: {0}",
   "smb.loadingPath": "Indlæser {0}…",
   "smb.loadingRoot": "Indlæser share’et…",
-  "smb.browseFailed": "Gennemsøgning mislykkedes: {0}"
+  "smb.browseFailed": "Gennemsøgning mislykkedes: {0}",
+  "smb.pick": "Deling, der redigeres",
+  "smb.remove": "Fjern",
+  "smb.removeConfirm": "Fjern {0}?",
+  "smb.removed": "{0} er fjernet",
+  "smb.duplicate": "Den deling er allerede på listen",
+  "smb.addShare": "+ Tilføj en deling mere",
+  "smb.newShare": "Ny deling"
 }

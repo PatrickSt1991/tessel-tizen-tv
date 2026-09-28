@@ -79,5 +79,12 @@
   "smb.connectFailed": "Kunde inte ansluta: {0}",
   "smb.loadingPath": "Läser in {0}…",
   "smb.loadingRoot": "Läser in resursen…",
-  "smb.browseFailed": "Bläddring misslyckades: {0}"
+  "smb.browseFailed": "Bläddring misslyckades: {0}",
+  "smb.pick": "Utdelning att redigera",
+  "smb.remove": "Ta bort",
+  "smb.removeConfirm": "Ta bort {0}?",
+  "smb.removed": "{0} har tagits bort",
+  "smb.duplicate": "Den utdelningen finns redan i listan",
+  "smb.addShare": "+ Lägg till en utdelning till",
+  "smb.newShare": "Ny utdelning"
 }

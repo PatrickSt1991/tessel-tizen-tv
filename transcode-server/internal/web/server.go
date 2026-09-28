@@ -45,7 +45,7 @@ const adoptWindow = 10 * time.Minute
 // Server bundles the dependencies the handlers need.
 type Server struct {
 	cfg  *config.Config
-	smb  *smb.Client
+	smb  *smb.Pool
 	mgr  *transcode.Manager
 	port int
 
@@ -58,8 +58,8 @@ type Server struct {
 //
 // The adopt window starts open: a box that has just been started is a box
 // someone is setting up, and that's the moment the TV pairs.
-func New(cfg *config.Config, smbc *smb.Client, mgr *transcode.Manager, port int) *Server {
-	return &Server{cfg: cfg, smb: smbc, mgr: mgr, port: port, adoptUntil: time.Now().Add(adoptWindow)}
+func New(cfg *config.Config, pool *smb.Pool, mgr *transcode.Manager, port int) *Server {
+	return &Server{cfg: cfg, smb: pool, mgr: mgr, port: port, adoptUntil: time.Now().Add(adoptWindow)}
 }
 
 // openAdoptWindow (re)starts the window. Called on the events that mean "a human
@@ -87,8 +87,12 @@ func (s *Server) SetManager(mgr *transcode.Manager) { s.mgr = mgr }
 
 // RawURL is the transcode.RawURLFunc: where ffmpeg reads an SMB file from.
 // 127.0.0.1 keeps the bridge off the LAN — only our own ffmpeg uses it.
-func (s *Server) RawURL(smbPath string) string {
-	return fmt.Sprintf("http://127.0.0.1:%d/raw?path=%s", s.port, urlEscape(smbPath))
+func (s *Server) RawURL(shareID, smbPath string) string {
+	u := fmt.Sprintf("http://127.0.0.1:%d/raw?path=%s", s.port, urlEscape(smbPath))
+	if shareID != "" {
+		u += "&share=" + url.QueryEscape(shareID)
+	}
+	return u
 }
 
 // Handler builds the routed mux.
@@ -138,7 +142,12 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing path", http.StatusBadRequest)
 		return
 	}
-	f, err := s.smb.Open(p)
+	c, err := s.smb.Get(r.URL.Query().Get("share"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	f, err := c.Open(p)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -231,7 +240,10 @@ func isLoopback(remoteAddr string) bool {
 
 // sourceFor turns the /play query into the thing ffmpeg should read.
 //
-//	?path=Movies/x.mkv   a file on the configured SMB share (the original mode)
+//	?path=Movies/x.mkv   a file on the first SMB share (the original mode)
+//	?path=…&host=nas&share=Media
+//	                     a file on whichever configured share that is — the
+//	                     TV names it the way it knows it, by host and share
 //	?src=http://<tv>/…   a file the TV is serving us — its USB drive or internal
 //	                     storage, relayed by the app's background service
 //
@@ -249,7 +261,21 @@ func (s *Server) sourceFor(r *http.Request) (transcode.Source, error) {
 		return transcode.HTTPSource(raw), nil
 	}
 	if p := q.Get("path"); p != "" {
-		return transcode.SMBSource(p), nil
+		host, share := q.Get("host"), q.Get("share")
+		if host == "" && share == "" {
+			// Only a TV from before multiple shares names none. With the first
+			// share removed it can't reach the others, so say that rather than
+			// letting ffprobe fail on a share that isn't there.
+			if !s.cfg.SMB.Set() && len(s.cfg.Extra) > 0 {
+				return transcode.Source{}, errors.New("the first share was removed on the setup page — update the TV app to play from the other shares")
+			}
+			return transcode.SMBSource("", p), nil
+		}
+		id, ok := s.cfg.Find(host, share)
+		if !ok {
+			return transcode.Source{}, fmt.Errorf("%s/%s is not set up on this server — add it on the setup page", host, share)
+		}
+		return transcode.SMBSource(id, p), nil
 	}
 	return transcode.Source{}, errors.New("missing path")
 }
@@ -354,7 +380,7 @@ func (s *Server) handleHLS(w http.ResponseWriter, r *http.Request) {
 // smbFields are the flat keys the setup page has always posted. Their presence
 // in the body is what tells handleConfig that the caller means to set the share
 // — see the partial-update note there.
-var smbFields = []string{"host", "port", "share", "user", "pass", "domain", "anonymous"}
+var smbFields = []string{"id", "host", "port", "share", "user", "pass", "domain", "anonymous"}
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if !s.guard(w, r) {
@@ -385,6 +411,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		// about them can't reset them by omission.
 		var in struct {
 			config.SMB
+			RemoveShare      *string `json:"remove_share"`
 			Surround         *string `json:"surround"`
 			LocalRelay       *bool   `json:"local_relay"`
 			ShareCredentials *bool   `json:"share_credentials"`
@@ -400,16 +427,32 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
+		// The share fields apply to the share named by "id": none or "" is
+		// the first share (all a client from before multiple shares knows),
+		// "new" adds one.
+		savedID := ""
 		if hasSMB {
+			id := in.ID
 			// An empty password on save means "keep the stored one" so the
 			// masked form round-trips without wiping credentials.
-			if in.Pass == "" {
-				in.Pass = s.cfg.SMB.Pass
+			if old, ok := s.cfg.Share(id); ok && in.Pass == "" {
+				in.Pass = old.Pass
 			}
-			if in.Port == 0 {
-				in.Port = 445
+			savedID, err = s.cfg.PutShare(id, in.SMB)
+			if err != nil {
+				code := http.StatusConflict
+				if errors.Is(err, config.ErrUnknownShare) {
+					code = http.StatusNotFound
+				}
+				http.Error(w, err.Error(), code)
+				return
 			}
-			s.cfg.SMB = in.SMB
+		}
+		if in.RemoveShare != nil {
+			if err := s.cfg.RemoveShare(*in.RemoveShare); err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
 		}
 		if in.Surround != nil {
 			s.cfg.Surround = transcode.NormaliseSurround(*in.Surround)
@@ -430,7 +473,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		if hasSMB && s.cfg.Configured() {
 			s.openAdoptWindow()
 		}
-		writeJSON(w, map[string]bool{"ok": true})
+		writeJSON(w, map[string]any{"ok": true, "id": savedID})
 	default:
 		http.Error(w, "method", http.StatusMethodNotAllowed)
 	}
@@ -440,7 +483,11 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 	if !s.guard(w, r) {
 		return
 	}
-	if err := s.smb.Probe(); err != nil {
+	c, err := s.smb.Get(r.URL.Query().Get("id"))
+	if err == nil {
+		err = c.Probe()
+	}
+	if err != nil {
 		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
@@ -454,7 +501,8 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 // retyping it — but only for the saved host and user. Anything on the LAN can
 // learn the token (see guard), so honouring a blank password for any host
 // would let it point us at itself and collect a sign-in made with the stored
-// password.
+// password. With several shares saved it is the one on the same host, port and
+// user.
 func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 	if !s.guard(w, r) {
 		return
@@ -468,8 +516,13 @@ func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if in.Pass == "" && strings.EqualFold(in.Host, s.cfg.SMB.Host) && in.User == s.cfg.SMB.User {
-		in.Pass = s.cfg.SMB.Pass
+	if in.Pass == "" {
+		for _, saved := range s.cfg.Shares() {
+			if saved.Reaches(in) {
+				in.Pass = saved.Pass
+				break
+			}
+		}
 	}
 	shares, err := smb.ListShares(&in)
 	if err != nil {
@@ -483,7 +536,11 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	if !s.guard(w, r) {
 		return
 	}
-	entries, err := s.smb.List(r.URL.Query().Get("path"))
+	c, err := s.smb.Get(r.URL.Query().Get("id"))
+	var entries []smb.Entry
+	if err == nil {
+		entries, err = c.List(r.URL.Query().Get("path"))
+	}
 	if err != nil {
 		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
 		return
@@ -499,6 +556,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"encoder":    caps.VideoEncoder,
 		"hwaccel":    caps.HWAccel,
 		"share":      s.cfg.SMB.Host + "/" + s.cfg.SMB.Share,
+		"shares":     shareNames(s.cfg.Shares()),
 		"surround":   transcode.NormaliseSurround(s.cfg.Surround),
 		"localRelay": s.cfg.LocalRelay,
 		"canAdopt":   s.cfg.CanShareCredentials(),
@@ -520,7 +578,9 @@ const AppID = "vlc-tv-transcode"
 //
 //	1  pairing, discovery, config, adopt
 //	2  /api/probe (smart routing)
-const APIVersion = 2
+//	3  more than one share: /play and /api/probe take host+share, /api/adopt
+//	   also returns extra_smb
+const APIVersion = 3
 
 // handleHello is the discovery probe: unauthenticated, cheap, and carrying no
 // secrets — just enough for a scanning TV to recognise us and show a name.
@@ -561,7 +621,16 @@ func (s *Server) handleAdopt(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": false, "error": "the pairing window has closed — press \"Allow pairing\" on the server's setup page, or restart the box, then try again"})
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true, "smb": s.cfg.SMB})
+	// smb stays the first share, which is all an older TV reads; extra_smb
+	// carries the rest.
+	shares := s.cfg.Shares()
+	extra := []config.SMB{}
+	for _, sh := range shares {
+		if sh.ID != "" {
+			extra = append(extra, sh)
+		}
+	}
+	writeJSON(w, map[string]any{"ok": true, "smb": s.cfg.SMB, "extra_smb": extra})
 }
 
 // handleAllowAdopt reopens the window from the setup page. Token-gated like
@@ -613,6 +682,15 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+// shareNames is the host/share form the status box shows.
+func shareNames(shares []config.SMB) []string {
+	out := make([]string, len(shares))
+	for i, sh := range shares {
+		out[i] = sh.Host + "/" + sh.Share
+	}
+	return out
+}
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")

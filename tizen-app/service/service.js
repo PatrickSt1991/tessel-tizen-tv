@@ -1025,9 +1025,12 @@ function getConn(creds, cb) {
     });
 }
 
-/* The credentials of the most recent /smb/connect, so list/stream can omit
- * them. (Single active share for v1; multi-share is a small extension.) */
-var lastCreds = null;
+/* The credentials each server last connected with, keyed by the app's server
+ * id ('' is the first server), so list/stream only have to name the server:
+ * ?srv=<id>, or nothing for the first one — which is all an app from before
+ * multiple servers ever sends. */
+var credsById = {};
+function credsFor(query) { return credsById[(query && query.srv) || ''] || null; }
 
 /* ============================================================================
  * HTTP surface
@@ -1083,7 +1086,7 @@ function handleConnect(req, res) {
         try {
             getConn(creds, function (err, c) {
                 if (err) { log('CONNECT_FAIL', err.message); return sendJson(res, 502, { ok: false, error: err.message }); }
-                lastCreds = creds;
+                credsById[creds.id || ''] = creds;
                 log('CONNECT_OK', { dialect: '0x' + c.dialect.toString(16), signing: c.signing });
                 sendJson(res, 200, { ok: true, dialect: '0x' + c.dialect.toString(16), signing: c.signing });
             });
@@ -1129,9 +1132,10 @@ function handleShares(req, res) {
 }
 
 function handleList(req, res, query) {
-    if (!lastCreds) return sendJson(res, 409, { ok: false, error: 'not connected' });
+    var creds = credsFor(query);
+    if (!creds) return sendJson(res, 409, { ok: false, error: 'not connected' });
     var path = query.path || '';
-    getConn(lastCreds, function (err, c) {
+    getConn(creds, function (err, c) {
         if (err) return sendJson(res, 502, { ok: false, error: err.message });
         c.list(path, function (e2, entries) {
             if (e2) return sendJson(res, 502, { ok: false, error: e2.message });
@@ -1153,9 +1157,10 @@ var READ_CHUNK = 256 * 1024;   // per SMB2 READ; CreditCharge ≤ 4
  * can be diagnosed properly.  See task #12. */
 
 function handleStream(req, res, query) {
-    if (!lastCreds) { cors(res, 409, 'text/plain'); return res.end('not connected'); }
+    var creds = credsFor(query);
+    if (!creds) { cors(res, 409, 'text/plain'); return res.end('not connected'); }
     var path = query.path || '';
-    getConn(lastCreds, function (err, c) {
+    getConn(creds, function (err, c) {
         if (err) { cors(res, 502, 'text/plain'); return res.end(err.message); }
         c.open(path, false, function (e2, file) {
             if (e2) { cors(res, 404, 'text/plain'); return res.end(e2.message); }
@@ -1565,7 +1570,7 @@ var server = http.createServer(function (req, res) {
     var u = require('url').parse(req.url, true);
     if (req.method === 'OPTIONS') { cors(res, 204, 'text/plain'); return res.end(); }
 
-    if (u.pathname === '/smb/ping')        return sendJson(res, 200, { ok: true, connected: !!lastCreds });
+    if (u.pathname === '/smb/ping')        return sendJson(res, 200, { ok: true, connected: !!credsById[''], servers: Object.keys(credsById) });
     if (u.pathname === '/smb/debug/logs')  return sendJson(res, 200, { logs: LOGS });
     if (u.pathname === '/smb/connect' && req.method === 'POST') return handleConnect(req, res);
     if (u.pathname === '/smb/shares' && req.method === 'POST')  return handleShares(req, res);

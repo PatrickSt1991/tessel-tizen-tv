@@ -79,5 +79,12 @@
   "smb.connectFailed": "Não foi possível ligar: {0}",
   "smb.loadingPath": "A carregar {0}…",
   "smb.loadingRoot": "A carregar a partilha…",
-  "smb.browseFailed": "Falha ao explorar: {0}"
+  "smb.browseFailed": "Falha ao explorar: {0}",
+  "smb.pick": "Partilha a editar",
+  "smb.remove": "Remover",
+  "smb.removeConfirm": "Remover {0}?",
+  "smb.removed": "{0} removido",
+  "smb.duplicate": "Essa partilha já está na lista",
+  "smb.addShare": "+ Adicionar outra partilha",
+  "smb.newShare": "Nova partilha"
 }

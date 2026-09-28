@@ -79,5 +79,12 @@
   "smb.connectFailed": "تعذر الاتصال: {0}",
   "smb.loadingPath": "جارٍ تحميل {0}…",
   "smb.loadingRoot": "جارٍ تحميل المجلد…",
-  "smb.browseFailed": "فشل التصفح: {0}"
+  "smb.browseFailed": "فشل التصفح: {0}",
+  "smb.pick": "المجلد المشترك المراد تعديله",
+  "smb.remove": "إزالة",
+  "smb.removeConfirm": "إزالة {0}؟",
+  "smb.removed": "تمت إزالة {0}",
+  "smb.duplicate": "هذا المجلد المشترك موجود في القائمة بالفعل",
+  "smb.addShare": "+ إضافة مجلد مشترك آخر",
+  "smb.newShare": "مجلد مشترك جديد"
 }

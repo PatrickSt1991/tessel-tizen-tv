@@ -283,6 +283,7 @@
             <span class="settings-section-chev" aria-hidden="true">▸</span>
         </button>
         <div class="settings-group is-collapsed" id="grp-smb">
+            <button class="settings-row" id="smb-server"><div class="settings-label" data-i18n="smb.server">Server to edit</div><div class="settings-value" id="smb-server-val"></div></button>
             <label class="settings-row settings-row-input"><span class="settings-label" data-i18n="smb.host">Server (IP/host)</span><input id="smb-host"   type="text"     placeholder="192.168.1.10"></label>
             <label class="settings-row settings-row-input"><span class="settings-label" data-i18n="smb.port">Port</span><input id="smb-port"   type="text"     inputmode="numeric" placeholder="445"></label>
             <label class="settings-row settings-row-input"><span class="settings-label" data-i18n="smb.share">Share</span><input id="smb-share"  type="text"     placeholder="Media"></label>
@@ -292,6 +293,7 @@
             <label class="settings-row settings-row-input"><span class="settings-label" data-i18n="smb.pass">Password</span><input id="smb-pass"   type="password"></label>
             <label class="settings-row settings-row-input"><span class="settings-label" data-i18n="smb.domain">Domain (optional)</span><input id="smb-domain" type="text"></label>
             <button id="smb-save" class="settings-row"><span class="settings-label" data-i18n="smb.save">Save SMB server</span></button>
+            <button id="smb-remove" class="settings-row"><span class="settings-label" data-i18n="smb.removeServer">Remove this server</span></button>
         </div>
 
         <button class="settings-section-toggle" data-toggle="grp-srv" aria-expanded="false">

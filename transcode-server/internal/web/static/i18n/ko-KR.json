@@ -79,5 +79,12 @@
   "smb.connectFailed": "연결할 수 없음: {0}",
   "smb.loadingPath": "{0} 불러오는 중…",
   "smb.loadingRoot": "공유 불러오는 중…",
-  "smb.browseFailed": "탐색 실패: {0}"
+  "smb.browseFailed": "탐색 실패: {0}",
+  "smb.pick": "편집할 공유",
+  "smb.remove": "제거",
+  "smb.removeConfirm": "{0}을(를) 제거할까요?",
+  "smb.removed": "{0}을(를) 제거했습니다",
+  "smb.duplicate": "이 공유는 이미 목록에 있습니다",
+  "smb.addShare": "+ 공유 추가",
+  "smb.newShare": "새 공유"
 }

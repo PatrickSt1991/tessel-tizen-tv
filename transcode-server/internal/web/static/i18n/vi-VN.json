@@ -79,5 +79,12 @@
   "smb.connectFailed": "Không thể kết nối: {0}",
   "smb.loadingPath": "Đang tải {0}…",
   "smb.loadingRoot": "Đang tải thư mục chia sẻ…",
-  "smb.browseFailed": "Duyệt thất bại: {0}"
+  "smb.browseFailed": "Duyệt thất bại: {0}",
+  "smb.pick": "Thư mục chia sẻ cần sửa",
+  "smb.remove": "Xóa",
+  "smb.removeConfirm": "Xóa {0}?",
+  "smb.removed": "Đã xóa {0}",
+  "smb.duplicate": "Thư mục chia sẻ đó đã có trong danh sách",
+  "smb.addShare": "+ Thêm thư mục chia sẻ khác",
+  "smb.newShare": "Thư mục chia sẻ mới"
 }

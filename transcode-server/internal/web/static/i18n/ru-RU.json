@@ -79,5 +79,12 @@
   "smb.connectFailed": "Не удалось подключиться: {0}",
   "smb.loadingPath": "Загрузка: {0}…",
   "smb.loadingRoot": "Загрузка папки…",
-  "smb.browseFailed": "Ошибка обзора: {0}"
+  "smb.browseFailed": "Ошибка обзора: {0}",
+  "smb.pick": "Редактируемая общая папка",
+  "smb.remove": "Удалить",
+  "smb.removeConfirm": "Удалить {0}?",
+  "smb.removed": "{0} удалён",
+  "smb.duplicate": "Эта общая папка уже есть в списке",
+  "smb.addShare": "+ Добавить ещё общую папку",
+  "smb.newShare": "Новая общая папка"
 }

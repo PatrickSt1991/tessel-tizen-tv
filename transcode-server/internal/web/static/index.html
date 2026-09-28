@@ -34,6 +34,8 @@
   label { display:block; font-size:13px; color:var(--mut); margin:12px 0 4px; }
   input[type=text], input[type=password] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg-2); color:var(--fg); font-size:14px; }
   input[type=text]:focus, input[type=password]:focus { outline:none; border-color:var(--acc); }
+  select { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg-2); color:var(--fg); font:inherit; font-size:14px; }
+  select:focus { outline:none; border-color:var(--acc); }
   .row { display:flex; gap:12px; } .row > div { flex:1; }
   .toggle { display:flex; align-items:center; justify-content:space-between; margin-top:14px; }
   button { font:inherit; border:0; border-radius:8px; padding:10px 16px; cursor:pointer; }
@@ -78,6 +80,11 @@
 
   <div class="card">
     <h2 data-i18n="smb.title">SMB Share</h2>
+    <label for="share-pick" data-i18n="smb.pick">Share to edit</label>
+    <div class="row" style="align-items:center">
+      <div><select id="share-pick"></select></div>
+      <div style="flex:0 0 auto"><button class="ghost" id="remove-share" data-i18n="smb.remove">Remove</button></div>
+    </div>
     <div class="row">
       <div><label data-i18n="smb.host">Host / IP</label><input type="text" id="host" placeholder="192.168.1.10"></div>
       <div style="max-width:110px"><label data-i18n="smb.port">Port</label><input type="text" id="port" placeholder="445"></div>

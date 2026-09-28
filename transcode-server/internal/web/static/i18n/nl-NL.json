@@ -79,5 +79,12 @@
   "smb.connectFailed": "Kan geen verbinding maken: {0}",
   "smb.loadingPath": "{0} laden…",
   "smb.loadingRoot": "De share laden…",
-  "smb.browseFailed": "Bladeren mislukt: {0}"
+  "smb.browseFailed": "Bladeren mislukt: {0}",
+  "smb.pick": "Te bewerken share",
+  "smb.remove": "Verwijderen",
+  "smb.removeConfirm": "{0} verwijderen?",
+  "smb.removed": "{0} verwijderd",
+  "smb.duplicate": "Die share staat al in de lijst",
+  "smb.addShare": "+ Nog een share toevoegen",
+  "smb.newShare": "Nieuwe share"
 }

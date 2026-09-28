@@ -54,11 +54,11 @@ func main() {
 	}
 	log.Printf("ffmpeg=%s encoder=%s (%s)", caps.FFmpeg, caps.VideoEncoder, caps.HWAccel)
 
-	smbClient := smb.New(&cfg.SMB)
+	pool := smb.NewPool(cfg.Share)
 
 	// The manager needs to know how to build the localhost raw-bridge URL, which
 	// lives in the web layer — wire it after constructing the server.
-	srv := web.New(cfg, smbClient, nil, port)
+	srv := web.New(cfg, pool, nil, port)
 	mgr, err := transcode.NewManager(caps, workDir, srv.RawURL, func() string { return cfg.Surround })
 	if err != nil {
 		log.Fatalf("manager: %v", err)
@@ -73,7 +73,9 @@ func main() {
 	}
 
 	if cfg.Configured() {
-		log.Printf("SMB target: %s/%s", cfg.SMB.Host, cfg.SMB.Share)
+		for _, sh := range cfg.Shares() {
+			log.Printf("SMB share: %s/%s", sh.Host, sh.Share)
+		}
 	} else {
 		log.Printf("not configured yet — open http://<this-box>%s to set your SMB share", addr)
 	}
