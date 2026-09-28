@@ -1,6 +1,7 @@
 // Package smb wraps go-smb2 with the few operations this server needs: list a
-// folder (for the web UI's "test browse") and open a file as a seekable reader
-// (so ffmpeg/HTTP can range-read it). A single share is mounted and kept open;
+// server's shares and a folder (for the web UI's "find shares" and "test
+// browse") and open a file as a seekable reader (so ffmpeg/HTTP can range-read
+// it). A single share is mounted and kept open;
 // if the session drops we transparently re-dial on the next call.
 package smb
 
@@ -10,6 +11,7 @@ import (
 	"io"
 	"net"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -59,6 +61,73 @@ func normalise(p string) (string, error) {
 	return strings.TrimPrefix(clean, "/"), nil
 }
 
+// dial opens a TCP connection and signs in; the caller mounts what it needs.
+func dial(cfg *config.SMB) (net.Conn, *smb2.Session, error) {
+	port := cfg.Port
+	if port == 0 {
+		port = 445
+	}
+	d := net.Dialer{Timeout: 10 * time.Second}
+	// JoinHostPort brackets a bare IPv6 address; one saved with brackets
+	// already is unwrapped first so it isn't bracketed twice.
+	addr := net.JoinHostPort(strings.Trim(cfg.Host, "[]"), fmt.Sprint(port))
+	conn, err := d.Dial("tcp", addr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial %s: %w", cfg.Host, err)
+	}
+	init := &smb2.NTLMInitiator{Domain: cfg.Domain}
+	if !cfg.Anonymous {
+		init.User = cfg.User
+		init.Password = cfg.Pass
+	} else {
+		// A guest/null session: many NAS boxes accept an empty user.
+		init.User = cfg.User // often "" or "Guest"
+	}
+	dialer := &smb2.Dialer{Initiator: init}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	sess, err := dialer.DialContext(ctx, conn)
+	if err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("smb auth: %w", err)
+	}
+	return conn, sess, nil
+}
+
+// ListShares asks a server which shares it offers, so the setup page can offer
+// a pick list instead of making the user guess the name. It dials on its own
+// connection with the settings given — the form's, which may not be saved yet —
+// and leaves the client's mount alone. Hidden and administrative shares (IPC$,
+// C$, ADMIN$, print$ …) are left out: nobody keeps films there.
+func ListShares(cfg *config.SMB) ([]string, error) {
+	if cfg.Host == "" {
+		return nil, fmt.Errorf("SMB host not set")
+	}
+	conn, sess, err := dial(cfg)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	defer sess.Logoff()
+	names, err := sess.ListSharenames()
+	if err != nil {
+		return nil, fmt.Errorf("list shares: %w", err)
+	}
+	return visibleShares(names), nil
+}
+
+// visibleShares drops the $-suffixed shares and sorts the rest by name.
+func visibleShares(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if n != "" && !strings.HasSuffix(n, "$") {
+			out = append(out, n)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i]) < strings.ToLower(out[j]) })
+	return out
+}
+
 // ensure (re)establishes the mount if needed. Caller holds c.mu.
 func (c *Client) ensure() error {
 	if c.share != nil {
@@ -67,30 +136,9 @@ func (c *Client) ensure() error {
 	if c.cfg.Host == "" || c.cfg.Share == "" {
 		return fmt.Errorf("SMB not configured")
 	}
-	port := c.cfg.Port
-	if port == 0 {
-		port = 445
-	}
-	d := net.Dialer{Timeout: 10 * time.Second}
-	conn, err := d.Dial("tcp", fmt.Sprintf("%s:%d", c.cfg.Host, port))
+	conn, sess, err := dial(c.cfg)
 	if err != nil {
-		return fmt.Errorf("dial %s: %w", c.cfg.Host, err)
-	}
-	init := &smb2.NTLMInitiator{Domain: c.cfg.Domain}
-	if !c.cfg.Anonymous {
-		init.User = c.cfg.User
-		init.Password = c.cfg.Pass
-	} else {
-		// A guest/null session: many NAS boxes accept an empty user.
-		init.User = c.cfg.User // often "" or "Guest"
-	}
-	dialer := &smb2.Dialer{Initiator: init}
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-	defer cancel()
-	sess, err := dialer.DialContext(ctx, conn)
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("smb auth: %w", err)
+		return err
 	}
 	share, err := sess.Mount(c.cfg.Share)
 	if err != nil {

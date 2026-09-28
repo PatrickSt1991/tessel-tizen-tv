@@ -82,7 +82,11 @@
       <div><label data-i18n="smb.host">Host / IP</label><input type="text" id="host" placeholder="192.168.1.10"></div>
       <div style="max-width:110px"><label data-i18n="smb.port">Port</label><input type="text" id="port" placeholder="445"></div>
     </div>
-    <label data-i18n="smb.share">Share name</label><input type="text" id="share" placeholder="Media">
+    <label data-i18n="smb.share">Share name</label>
+    <div class="row" style="align-items:center">
+      <div><input type="text" id="share" placeholder="Media"></div>
+      <div style="flex:0 0 auto"><button class="ghost" id="find-shares" data-i18n="smb.findShares">Find shares</button></div>
+    </div>
     <div class="toggle">
       <span data-i18n="smb.guest">Guest / anonymous</span>
       <div class="switch" id="anon"><i></i></div>

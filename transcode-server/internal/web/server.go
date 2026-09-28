@@ -102,6 +102,7 @@ func (s *Server) Handler() http.Handler {
 	// JSON API for the setup page.
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/test", s.handleTest)
+	mux.HandleFunc("/api/shares", s.handleShares) // which shares the form's server offers
 	mux.HandleFunc("/api/browse", s.handleBrowse)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/pair", s.handlePair)
@@ -444,6 +445,38 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// handleShares lists the shares on the server the setup form points at, with
+// the form's credentials rather than the saved ones — the point is to find the
+// share name before there is one to save. A blank password means the stored
+// one, the same as on save, so a configured box can be asked again without
+// retyping it — but only for the saved host and user. Anything on the LAN can
+// learn the token (see guard), so honouring a blank password for any host
+// would let it point us at itself and collect a sign-in made with the stored
+// password.
+func (s *Server) handleShares(w http.ResponseWriter, r *http.Request) {
+	if !s.guard(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method", http.StatusMethodNotAllowed)
+		return
+	}
+	var in config.SMB
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if in.Pass == "" && strings.EqualFold(in.Host, s.cfg.SMB.Host) && in.User == s.cfg.SMB.User {
+		in.Pass = s.cfg.SMB.Pass
+	}
+	shares, err := smb.ListShares(&in)
+	if err != nil {
+		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "shares": shares})
 }
 
 func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {

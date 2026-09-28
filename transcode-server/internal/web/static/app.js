@@ -204,6 +204,31 @@ async function test() {
   else setMsg(I18n.t('smb.connectFailed', res.error || I18n.t('common.unknown')), 'err');
 }
 
+// Ask the server in the form which shares it offers and list them to pick
+// from — with the form's settings, so it works before anything is saved.
+async function findShares() {
+  const f = readForm();
+  if (!f.host) { setMsg(I18n.t('smb.hostFirst'), 'err'); return; }
+  setMsg(I18n.t('smb.findingShares'));
+  const ul = $('list');
+  ul.innerHTML = '';
+  const res = await (await fetch(api('/api/shares'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(f),
+  })).json();
+  if (!res.ok) { setMsg(I18n.t('smb.sharesFailed', res.error || I18n.t('common.unknown')), 'err'); return; }
+  const shares = res.shares || [];
+  if (!shares.length) { setMsg(I18n.t('smb.noShares'), 'err'); return; }
+  setMsg(I18n.t('smb.pickShare'), 'ok');
+  shares.forEach((name) => {
+    const li = document.createElement('li');
+    li.style.cursor = 'pointer'; li.style.padding = '4px 0';
+    li.textContent = '📂 ' + name;
+    li.onclick = () => { $('share').value = name; ul.innerHTML = ''; setMsg(''); };
+    ul.appendChild(li);
+  });
+}
+
 async function browse(path) {
   setMsg(path ? I18n.t('smb.loadingPath', path) : I18n.t('smb.loadingRoot'));
   const res = await (await fetch(api('/api/browse?path=' + encodeURIComponent(path || '')))).json();
@@ -239,6 +264,7 @@ $('allow-adopt').onclick = allowAdopt;
 $('save-playback').onclick = savePlayback;
 $('save').onclick = save;
 $('test').onclick = test;
+$('find-shares').onclick = findShares;
 $('browse').onclick = async () => { await save(); browse(''); };
 $('pair').onclick = pair;
 
