@@ -79,5 +79,12 @@
   "smb.connectFailed": "无法连接：{0}",
   "smb.loadingPath": "正在加载 {0}…",
   "smb.loadingRoot": "正在加载共享…",
-  "smb.browseFailed": "浏览失败：{0}"
+  "smb.browseFailed": "浏览失败：{0}",
+  "smb.pick": "要编辑的共享",
+  "smb.remove": "删除",
+  "smb.removeConfirm": "删除 {0}？",
+  "smb.removed": "已删除 {0}",
+  "smb.duplicate": "该共享已在列表中",
+  "smb.addShare": "+ 添加其他共享",
+  "smb.newShare": "新共享"
 }

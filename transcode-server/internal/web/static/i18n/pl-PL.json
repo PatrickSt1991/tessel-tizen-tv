@@ -79,5 +79,12 @@
   "smb.connectFailed": "Nie można połączyć: {0}",
   "smb.loadingPath": "Wczytywanie: {0}…",
   "smb.loadingRoot": "Wczytywanie udziału…",
-  "smb.browseFailed": "Przeglądanie nie powiodło się: {0}"
+  "smb.browseFailed": "Przeglądanie nie powiodło się: {0}",
+  "smb.pick": "Edytowany udział",
+  "smb.remove": "Usuń",
+  "smb.removeConfirm": "Usunąć {0}?",
+  "smb.removed": "Usunięto {0}",
+  "smb.duplicate": "Ten udział jest już na liście",
+  "smb.addShare": "+ Dodaj kolejny udział",
+  "smb.newShare": "Nowy udział"
 }

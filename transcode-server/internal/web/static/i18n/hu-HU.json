@@ -79,5 +79,12 @@
   "smb.connectFailed": "Nem sikerült csatlakozni: {0}",
   "smb.loadingPath": "Betöltés: {0}…",
   "smb.loadingRoot": "A megosztás betöltése…",
-  "smb.browseFailed": "A böngészés sikertelen: {0}"
+  "smb.browseFailed": "A böngészés sikertelen: {0}",
+  "smb.pick": "Szerkesztendő megosztás",
+  "smb.remove": "Eltávolítás",
+  "smb.removeConfirm": "Eltávolítja: {0}?",
+  "smb.removed": "Eltávolítva: {0}",
+  "smb.duplicate": "Ez a megosztás már szerepel a listában",
+  "smb.addShare": "+ Másik megosztás hozzáadása",
+  "smb.newShare": "Új megosztás"
 }

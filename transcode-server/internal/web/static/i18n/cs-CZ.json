@@ -79,5 +79,12 @@
   "smb.connectFailed": "Nelze se připojit: {0}",
   "smb.loadingPath": "Načítání: {0}…",
   "smb.loadingRoot": "Načítání sdílení…",
-  "smb.browseFailed": "Procházení selhalo: {0}"
+  "smb.browseFailed": "Procházení selhalo: {0}",
+  "smb.pick": "Upravovaná sdílená složka",
+  "smb.remove": "Odebrat",
+  "smb.removeConfirm": "Odebrat {0}?",
+  "smb.removed": "{0} odebráno",
+  "smb.duplicate": "Tato sdílená složka už v seznamu je",
+  "smb.addShare": "+ Přidat další sdílenou složku",
+  "smb.newShare": "Nová sdílená složka"
 }

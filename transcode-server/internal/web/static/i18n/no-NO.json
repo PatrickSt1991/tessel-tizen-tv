@@ -79,5 +79,12 @@
   "smb.connectFailed": "Kunne ikke koble til: {0}",
   "smb.loadingPath": "Laster inn {0}…",
   "smb.loadingRoot": "Laster inn delingen…",
-  "smb.browseFailed": "Kunne ikke bla gjennom: {0}"
+  "smb.browseFailed": "Kunne ikke bla gjennom: {0}",
+  "smb.pick": "Delt mappe som redigeres",
+  "smb.remove": "Fjern",
+  "smb.removeConfirm": "Vil du fjerne {0}?",
+  "smb.removed": "{0} er fjernet",
+  "smb.duplicate": "Den delte mappen er allerede i listen",
+  "smb.addShare": "+ Legg til en delt mappe til",
+  "smb.newShare": "Ny delt mappe"
 }

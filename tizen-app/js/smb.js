@@ -10,12 +10,20 @@
  *
  * Credentials live in their own localStorage blob (Settings only persists its
  * fixed key set, so we don't try to smuggle SMB creds through it).
+ *
+ * More than one server (#101): the first stays in CREDS_KEY exactly as before,
+ * and servers added after it go in EXTRA_KEY, each with a short random id.
+ * Files on the first server keep the URLs they always had, so recents, resume
+ * positions and smart-routing memory saved before stay valid; files on an
+ * added server carry &srv=<id> (smbproxy) or &host=…&share=… (transcode box).
+ * An older app build just goes on seeing the first server.
  * ==========================================================================*/
 
 var SMB = (function () {
 
     var BASE = 'http://127.0.0.1:8127';
     var CREDS_KEY = 'vlctv_smb_v1';
+    var EXTRA_KEY = 'vlctv_smb_extra_v1';
 
     /* All SMB-side activity goes out through Debug under one tag, so it lands
      * in the DevTools console (and the PC listener, if one is configured) and
@@ -75,6 +83,46 @@ var SMB = (function () {
     }
     function haveCreds() { var c = getCreds(); return !!(c.host && c.share); }
 
+    /* ── more than one server ──────────────────────────────────────────── */
+    function getExtra() {
+        try {
+            var l = JSON.parse(localStorage.getItem(EXTRA_KEY) || '[]');
+            return Array.isArray(l) ? l : [];
+        } catch (e) { return []; }
+    }
+    function setExtra(l) {
+        try { localStorage.setItem(EXTRA_KEY, JSON.stringify(l || [])); } catch (e) {}
+    }
+    function newId() { return Math.random().toString(36).slice(2, 10); }
+
+    /* Every usable server, the first one (id '') first. */
+    function servers() {
+        var out = [];
+        if (haveCreds()) { var c = getCreds(); c.id = ''; out.push(c); }
+        getExtra().forEach(function (x) { if (x.host && x.share) out.push(x); });
+        return out;
+    }
+    function serverById(id) {
+        if (!id) { var c = getCreds(); c.id = ''; return c; }
+        var l = getExtra();
+        for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i];
+        return null;
+    }
+    function sameHost(a, b) {
+        return String(a || '').replace(/^\[|\]$/g, '').toLowerCase() ===
+               String(b || '').replace(/^\[|\]$/g, '').toLowerCase();
+    }
+    /* The id of the saved server at host with that share, or null.  Share
+     * names compare case-insensitively, as SMB does. */
+    function findServer(host, share) {
+        var l = servers();
+        for (var i = 0; i < l.length; i++)
+            if (sameHost(l[i].host, host) && String(l[i].share).toLowerCase() === String(share || '').toLowerCase())
+                return l[i].id;
+        return null;
+    }
+    function serverLabel(c) { return '\\\\' + c.host + '\\' + c.share; }
+
     /* ── tiny XHR helpers (the service sets permissive CORS) ───────────────*/
     function getJson(url, cb) {
         var x = new XMLHttpRequest();
@@ -125,11 +173,12 @@ var SMB = (function () {
         })();
     }
 
-    function connect(cb) {
-        var c = getCreds();
-        dbg('connect -> ' + (c.host || '?') + '\\' + (c.share || '?') +
+    function connect(id, cb) {
+        var c = serverById(id) || {};
+        dbg('connect -> ' + (c.host || '?') + '\\' + (c.share || '?') + (id ? ' [' + id + ']' : '') +
             ' user=' + (c.anonymous ? '(guest)' : (c.user || '(none)')));
         postJson(BASE + '/smb/connect', {
+            id: id || '',
             host: c.host, share: c.share, user: c.user || '',
             pass: c.pass || '', domain: c.domain || '', port: c.port || 445,
             anonymous: !!c.anonymous
@@ -144,13 +193,14 @@ var SMB = (function () {
     /* Make /smb/stream usable without going through the browser first — a
      * file opened from Recents after a restart finds the service down, or up
      * but never told which share to read.  Leaves a live connection alone:
-     * /smb/connect drops and rebuilds it. */
-    function ensureConnected(cb) {
+     * /smb/connect drops and rebuilds it.  id picks the server ('' = first). */
+    function ensureConnected(id, cb) {
+        id = id || '';
         getJson(BASE + '/smb/ping', function (err, res) {
-            if (!err && res && res.connected) return cb(null);
+            if (!err && res && (res.servers || []).indexOf(id) >= 0) return cb(null);
             ensureService(function (e2) {
                 if (e2) return cb(e2);
-                connect(function (e3) { cb(e3 || null); });
+                connect(id, function (e3) { cb(e3 || null); });
             });
         });
     }
@@ -172,34 +222,51 @@ var SMB = (function () {
     }
 
     function list(path, cb) {
-        getJson(BASE + '/smb/list?path=' + encodeURIComponent(path || ''), function (err, res) {
+        getJson(BASE + '/smb/list?path=' + encodeURIComponent(path || '') + srvParam(current), function (err, res) {
             if (err) return cb(err);
             if (!res.ok) return cb(new Error(res.error || 'list failed'));
             cb(null, res.entries || []);
         });
     }
 
+    function srvParam(id) { return id ? '&srv=' + encodeURIComponent(id) : ''; }
+
     /* The URL handed to AVPlay. The service streams the file with Range
-     * support, so seeking works. */
-    function streamUrl(path) {
-        return BASE + '/smb/stream?path=' + encodeURIComponent(path);
+     * support, so seeking works.  srv names an added server; the first
+     * server's URLs carry nothing, as they always have. */
+    function streamUrl(path, srv) {
+        return BASE + '/smb/stream?path=' + encodeURIComponent(path) + srvParam(srv);
     }
+
+    /* The server a stream URL reads from ('' = first), or null when it isn't
+     * one of ours. */
+    function streamServerOf(u) {
+        if (!isStreamUrl(u)) return null;
+        var m = /[?&]srv=([^&]*)/.exec(u);
+        return m ? decodeURIComponent(m[1]) : '';
+    }
+    function isStreamUrl(u) { return typeof u === 'string' && u.indexOf(BASE + '/smb/stream') === 0; }
 
     /* The URL we actually play. If a transcode server is paired, route through
      * it (HLS, server-side decode of DTS/TrueHD and codecs the TV can't handle);
      * otherwise stream the file straight from the localhost smbproxy as before.
      * Browsing is identical either way — only the bytes' origin changes. */
-    function playableUrl(path) {
+    function playableUrl(path, srv) {
         if (typeof TranscodeServer !== 'undefined' && TranscodeServer.isPaired()) {
-            var u = TranscodeServer.playUrl(path);
+            // An added server is named to the box by host and share; the first
+            // one isn't, so its URLs stay what they were.  playUrl says null
+            // when the box is too old to know more than one share.
+            var u = TranscodeServer.playUrl(path, srv ? serverById(srv) : null);
             if (u) return u;
         }
-        return streamUrl(path);
+        return streamUrl(path, srv);
     }
 
     /* ── browsing UI (reuses #view-browse, like the USB browser) ───────────*/
     var pathStack = [];     // breadcrumb of folder paths, '' === share root
     var backHandler = null;
+    var current = '';       // id of the server being browsed ('' = first)
+    var pickingServer = false;  // showing the server list rather than a share
 
     function humanSize(n) {
         if (!n) return '';
@@ -244,7 +311,7 @@ var SMB = (function () {
      * Returns { "Movie.mp4": [ { name, lang, ext, uri } ] }.  The uri always
      * goes through the smbproxy — a paired transcode server changes where the
      * video bytes come from, not where the .srt lives. */
-    function siblingSubtitles(entries, dir) {
+    function siblingSubtitles(entries, dir, srv) {
         var subsByStem = {};
         entries.forEach(function (e) {
             if (e.isDir || !isSubtitle(e.name)) return;
@@ -253,7 +320,7 @@ var SMB = (function () {
                 name: e.name,
                 lang: langTag(e.name),
                 ext:  ext(e.name),
-                uri:  streamUrl(join(dir, e.name))
+                uri:  streamUrl(join(dir, e.name), srv)
             });
         });
         var stems = Object.keys(subsByStem);
@@ -279,7 +346,8 @@ var SMB = (function () {
     function render(path) {
         UI.showView('view-browse');
         document.getElementById('browse-title').textContent = path ? path.split('/').pop() : I18n.t('smb.title');
-        document.getElementById('browse-path').textContent = '\\\\' + (getCreds().host || '') + '\\' + (getCreds().share || '') + (path || '');
+        var srv = serverById(current) || {};
+        document.getElementById('browse-path').textContent = '\\\\' + (srv.host || '') + '\\' + (srv.share || '') + (path || '');
         var ul = document.getElementById('browse-list');
         ul.innerHTML = '<li><span class="icon">…</span><span class="name">' + esc(I18n.t('common.loading')) + '</span></li>';
 
@@ -294,18 +362,19 @@ var SMB = (function () {
 
             // Playable files in this folder → the playlist for next/prev/auto-play,
             // each carrying the sidecar subtitles found next to it.
-            var sidecars = siblingSubtitles(entries, path);
+            var sidecars = siblingSubtitles(entries, path, current);
             var sidecarCount = Object.keys(sidecars).reduce(function (n, k) { return n + sidecars[k].length; }, 0);
             dbg('list ' + JSON.stringify(path || '/') + ': ' + entries.length + ' entries, ' +
                 sidecarCount + ' sidecar subtitle(s) matched to ' + Object.keys(sidecars).length + ' video(s)');
             var playlist = entries
                 .filter(function (e) { return !e.isDir && isPlayable(e.name); })
                 .map(function (e) {
-                    return { uri: playableUrl(join(path, e.name)), title: e.name, subtitles: sidecars[e.name] || [] };
+                    return { uri: playableUrl(join(path, e.name), current), title: e.name, subtitles: sidecars[e.name] || [] };
                 });
 
-            // ".." row to go up (except at root).
-            if (pathStack.length > 0) {
+            // ".." row to go up (except at root, unless that leads back to the
+            // server list).
+            if (pathStack.length > 0 || servers().length > 1) {
                 var up = document.createElement('li');
                 up.dataset.dir = '1';
                 up.innerHTML = '<span class="icon">↩</span><span class="name">..</span>';
@@ -329,7 +398,7 @@ var SMB = (function () {
                         render(join(path, e.name));
                         return;
                     }
-                    var uri = playableUrl(join(path, e.name));
+                    var uri = playableUrl(join(path, e.name), current);
                     var idx = 0;
                     for (var i = 0; i < playlist.length; i++) if (playlist[i].uri === uri) { idx = i; break; }
                     // Hand off to the player; release our Back handler so the
@@ -349,7 +418,12 @@ var SMB = (function () {
     }
 
     function goUp() {
-        if (!pathStack.length) { exit(); return; }
+        if (pickingServer) { exit(); return; }
+        if (!pathStack.length) {
+            if (servers().length > 1) { showServers(); return; }
+            exit();
+            return;
+        }
         var parent = pathStack.pop();
         render(parent);
     }
@@ -370,9 +444,11 @@ var SMB = (function () {
         if (backHandler) { Remote.pop(backHandler); backHandler = null; }
     }
 
-    /* Entry point from the home tile. */
+    /* Entry point from the home tile: straight into the share when there is
+     * one server, a list to pick from when there are more. */
     function openBrowser() {
-        if (!haveCreds()) {
+        var list = servers();
+        if (!list.length) {
             var c0 = getCreds();
             dbg('openBrowser: no usable server saved (host=' + JSON.stringify(c0.host || '') +
                 ' share=' + JSON.stringify(c0.share || '') + ') → sending to Settings');
@@ -380,23 +456,53 @@ var SMB = (function () {
             if (window.VlcApp && window.VlcApp.openSettings) window.VlcApp.openSettings();
             return;
         }
+        pathStack = [];
+        setupBack();
+        if (list.length > 1) { showServers(); return; }
+        openServer(list[0].id);
+    }
+
+    function showServers() {
+        pickingServer = true;
+        pathStack = [];
+        UI.showView('view-browse');
+        document.getElementById('browse-title').textContent = I18n.t('smb.title');
+        document.getElementById('browse-path').textContent = I18n.t('smb.pickServer');
+        var ul = document.getElementById('browse-list');
+        ul.innerHTML = '';
+        var focus = null;
+        servers().forEach(function (c) {
+            var li = document.createElement('li');
+            li.dataset.dir = '1';
+            li.innerHTML = '<span class="icon">📁</span><span class="name">' + esc(serverLabel(c)) + '</span>';
+            li.addEventListener('click', function () { openServer(c.id); });
+            ul.appendChild(li);
+            if (c.id === current) focus = li;
+        });
+        UI.refreshFocusables();
+        UI.focusOn(focus || ul.firstElementChild);
+    }
+
+    function openServer(id) {
+        pickingServer = false;
+        current = id;
         UI.showView('view-browse');
         document.getElementById('browse-title').textContent = I18n.t('smb.title');
         document.getElementById('browse-path').textContent = I18n.t('common.connecting');
         document.getElementById('browse-list').innerHTML =
             '<li><span class="icon">…</span><span class="name">' + esc(I18n.t('common.connecting')) + '</span></li>';
 
-        // Install Back BEFORE the async work so it works on the "connecting" and
-        // error screens too — otherwise Back falls through to the app's global
-        // handler, which still thinks we're on the home view and can't exit here.
+        // Back is installed (by openBrowser) BEFORE the async work so it works
+        // on the "connecting" and error screens too — otherwise Back falls
+        // through to the app's global handler, which still thinks we're on the
+        // home view and can't exit here.
         pathStack = [];
-        setupBack();
 
-        dbg('openBrowser');
+        dbg('openBrowser' + (id ? ' [' + id + ']' : ''));
         ensureService(function (err) {
             if (err) { dbg('ensureService failed: ' + err.message); showError(err.message); return; }
             dumpServiceLogs('service start');
-            connect(function (err2) {
+            connect(id, function (err2) {
                 if (err2) {
                     showError(I18n.t('smb.connectFailed', err2.message));
                     dumpServiceLogs('connect failure');   // the service-side NEGOTIATE/auth/socket trail
@@ -422,6 +528,10 @@ var SMB = (function () {
         if (anonVal) anonVal.textContent = I18n.t(anonState ? 'common.on' : 'common.off');
     }
 
+    /* Which server the form edits: '' the first, an added server's id, or
+     * 'new' for one not saved yet. */
+    var editing = '';
+
     /* Push a credentials object into the settings form. */
     function fillSettingsForm(c) {
         c = c || {};
@@ -431,13 +541,130 @@ var SMB = (function () {
         });
         anonState = !!c.anonymous;
         paintAnon();
+        paintEditing();
+    }
+
+    /* The "Server" row says which one the form holds; Remove only shows for a
+     * saved one. */
+    function paintEditing() {
+        var val = document.getElementById('smb-server-val');
+        var c = editing === 'new' ? null : serverById(editing);
+        var saved = !!(c && c.host && c.share);
+        if (val) val.textContent = saved ? serverLabel(c) : I18n.t('smb.newServer');
+        var rm = document.getElementById('smb-remove');
+        if (rm) rm.style.display = saved ? '' : 'none';
+    }
+
+    /* Every field is set, so nothing from the server shown before lingers. */
+    function editServer(id) {
+        editing = id;
+        var c = (id === 'new' ? null : serverById(id)) || {};
+        var full = { anonymous: !!c.anonymous };
+        FORM_IDS.forEach(function (k) { full[k] = c[k] != null ? c[k] : ''; });
+        fillSettingsForm(full);
     }
 
     /* Store credentials that came from elsewhere and reflect them in the form,
-     * so the user can see what was filled in and correct it if needed. */
+     * so the user can see what was filled in and correct it if needed.  They
+     * are the first server's: that's what the transcode box's first share is,
+     * and a copy of it among the added servers would be a duplicate. */
     function applyCreds(c) {
         setCreds(c);
-        fillSettingsForm(c);
+        setExtra(getExtra().filter(function (x) {
+            return !(sameHost(x.host, c.host) && String(x.share).toLowerCase() === String(c.share).toLowerCase());
+        }));
+        editServer('');
+    }
+
+    /* The transcode box's other shares: update the added server that matches
+     * each one, or add it.  Returns how many were new. */
+    function mergeServers(list) {
+        var extra = getExtra(), added = 0;
+        (list || []).forEach(function (c) {
+            if (!c.host || !c.share) return;
+            var id = findServer(c.host, c.share);
+            if (id === '') return;   // that's the first server already
+            var entry = {
+                host: c.host, port: c.port || 445, share: c.share,
+                user: c.user || '', pass: c.pass || '',
+                domain: c.domain || '', anonymous: !!c.anonymous
+            };
+            for (var i = 0; i < extra.length; i++) {
+                if (extra[i].id === id) { entry.id = id; extra[i] = entry; return; }
+            }
+            entry.id = newId();
+            extra.push(entry);
+            added++;
+        });
+        setExtra(extra);
+        paintEditing();
+        return added;
+    }
+
+    /* Store what the form holds as the server being edited.  A new server
+     * becomes the first one while that slot is empty, so a single-server
+     * setup looks exactly like it did before multiple servers.  cb-free:
+     * returns the id it was saved under, or null for a duplicate. */
+    function saveServer(nc) {
+        var other = nc.host && nc.share ? findServer(nc.host, nc.share) : null;
+        var target = editing === 'new' ? (haveCreds() ? 'new' : '') : editing;
+        if (other !== null && other !== target) return null;
+        if (target === '') { setCreds(nc); return ''; }
+        // An added server without a host or share would be invisible
+        // everywhere; keep what it had, and let Save say what's missing.
+        if (!nc.host || !nc.share) return target;
+        var extra = getExtra();
+        if (target === 'new') {
+            nc.id = newId();
+            extra.push(nc);
+        } else {
+            nc.id = target;
+            for (var i = 0; i < extra.length; i++) if (extra[i].id === target) extra[i] = nc;
+        }
+        setExtra(extra);
+        return nc.id;
+    }
+
+    function removeServer(id) {
+        if (id === '') setCreds({});
+        else setExtra(getExtra().filter(function (x) { return x.id !== id; }));
+        var left = servers();
+        editServer(left.length ? left[0].id : '');
+    }
+
+    function pickServer() {
+        if (!window.VlcApp || !window.VlcApp.openPicker) return;
+        var items = servers().map(function (c) { return { code: c.id, name: serverLabel(c) }; });
+        items.push({ code: 'new', name: I18n.t('smb.addServer') });
+        window.VlcApp.openPicker(I18n.t('smb.pickServer'), items, editing, function (code) {
+            editServer(code);
+            refocus('smb-server');
+        });
+    }
+
+    function confirmRemove() {
+        var c = serverById(editing);
+        if (!c || !c.host || !window.VlcApp || !window.VlcApp.openPicker) return;
+        window.VlcApp.openPicker(I18n.t('smb.removeConfirm', serverLabel(c)), [
+            { code: 'remove', name: I18n.t('smb.removeServer') },
+            { code: 'keep',   name: I18n.t('common.cancel') }
+        ], 'keep', function (code) {
+            if (code === 'remove') {
+                dbg('server removed: ' + serverLabel(c));
+                removeServer(editing);
+                UI.toast(I18n.t('smb.removed', serverLabel(c)));
+            }
+            refocus('smb-server');
+        });
+    }
+
+    /* Back on the form once a picker has closed, rather than wherever the
+     * D-pad focus was left. */
+    function refocus(id) {
+        setTimeout(function () {
+            var el = document.getElementById(id);
+            if (el) UI.focusOn(el);
+        }, 0);
     }
 
     /* What the form holds right now, normalised the way Save stores it. */
@@ -483,12 +710,7 @@ var SMB = (function () {
                 }), c.share, function (name) {
                     var el = document.getElementById('smb-share');
                     if (el) el.value = name;
-                    // Back on the form once the picker has closed, rather
-                    // than wherever the D-pad focus was left.
-                    setTimeout(function () {
-                        var shareBtn = document.getElementById('smb-find-shares');
-                        if (shareBtn) UI.focusOn(shareBtn);
-                    }, 0);
+                    refocus('smb-find-shares');
                 });
             });
         });
@@ -497,7 +719,13 @@ var SMB = (function () {
     function wireSettingsForm() {
         var btn = document.getElementById('smb-save');
         if (!btn) return;
-        fillSettingsForm(getCreds());
+        editing = servers().length ? servers()[0].id : '';
+        fillSettingsForm(serverById(editing));
+
+        var serverBtn = document.getElementById('smb-server');
+        if (serverBtn) serverBtn.addEventListener('click', pickServer);
+        var removeBtn = document.getElementById('smb-remove');
+        if (removeBtn) removeBtn.addEventListener('click', confirmRemove);
 
         var findBtn = document.getElementById('smb-find-shares');
         if (findBtn) findBtn.addEventListener('click', findShares);
@@ -509,8 +737,11 @@ var SMB = (function () {
             var hostEl = document.getElementById('smb-host');
             var typedHost = hostEl ? hostEl.value.trim() : '';
             var nc = readSettingsForm();
-            setCreds(nc);
-            dbg('settings saved: typed host=' + JSON.stringify(typedHost) +
+            var id = saveServer(nc);
+            if (id === null) { UI.toast(I18n.t('smb.duplicate')); return; }
+            editing = id;
+            paintEditing();
+            dbg('settings saved' + (id ? ' [' + id + ']' : '') + ': typed host=' + JSON.stringify(typedHost) +
                 ' → host=' + JSON.stringify(nc.host) + ' port=' + nc.port +
                 ' share=' + JSON.stringify(nc.share) +
                 ' user=' + (nc.anonymous ? '(guest)' : JSON.stringify(nc.user || '')) +
@@ -544,7 +775,16 @@ var SMB = (function () {
         dumpServiceLogs: dumpServiceLogs,
         normalizeServer: normalizeServer,   // exposed for the Node tests
         siblingSubtitles: siblingSubtitles, // exposed for the Node tests
-        isStreamUrl:     function (u) { return typeof u === 'string' && u.indexOf(BASE + '/smb/stream') === 0; }
+        isStreamUrl:     isStreamUrl,
+        // Used by server.js to tell the servers apart: which one a stream
+        // URL reads from, which saved server a host and share are, and what
+        // an added server's settings are.
+        streamServerOf:  streamServerOf,
+        findServer:      findServer,
+        serverById:      serverById,
+        servers:         servers,
+        // Used by server.js to copy the transcode box's other shares down.
+        mergeServers:    mergeServers
     };
 })();
 

@@ -79,5 +79,12 @@
   "smb.connectFailed": "Yhteys epäonnistui: {0}",
   "smb.loadingPath": "Ladataan: {0}…",
   "smb.loadingRoot": "Ladataan jakoa…",
-  "smb.browseFailed": "Selaus epäonnistui: {0}"
+  "smb.browseFailed": "Selaus epäonnistui: {0}",
+  "smb.pick": "Muokattava jako",
+  "smb.remove": "Poista",
+  "smb.removeConfirm": "Poistetaanko {0}?",
+  "smb.removed": "{0} poistettu",
+  "smb.duplicate": "Tämä jako on jo luettelossa",
+  "smb.addShare": "+ Lisää toinen jako",
+  "smb.newShare": "Uusi jako"
 }

@@ -79,5 +79,12 @@
   "smb.connectFailed": "Conectare eșuată: {0}",
   "smb.loadingPath": "Se încarcă {0}…",
   "smb.loadingRoot": "Se încarcă partajarea…",
-  "smb.browseFailed": "Răsfoire eșuată: {0}"
+  "smb.browseFailed": "Răsfoire eșuată: {0}",
+  "smb.pick": "Partajare de editat",
+  "smb.remove": "Elimină",
+  "smb.removeConfirm": "Elimini {0}?",
+  "smb.removed": "{0} a fost eliminat",
+  "smb.duplicate": "Această partajare este deja în listă",
+  "smb.addShare": "+ Adaugă altă partajare",
+  "smb.newShare": "Partajare nouă"
 }

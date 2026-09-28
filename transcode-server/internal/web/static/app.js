@@ -5,6 +5,10 @@ const $ = (id) => document.getElementById(id);
 let anon = false;
 let localRelay = false;
 let adopt = true;
+// The shares on this box: the first one has id "", added ones a short random
+// id. `editing` is the one the form shows; "new" is a share not saved yet.
+let shares = [];
+let editing = '';
 
 // Every /api endpoint except /api/hello and /api/status needs the pairing
 // token. This page is served by the same box, so it just reads the token off
@@ -86,7 +90,8 @@ async function loadStatus() {
     token = s.token || '';
     $('st-enc').textContent = s.encoder || '—';
     $('st-hw').textContent = s.hwaccel === 'none' ? I18n.t('status.software') : (s.hwaccel || '—');
-    $('st-share').textContent = s.configured ? s.share : I18n.t('status.notConfigured');
+    $('st-share').textContent = !s.configured ? I18n.t('status.notConfigured')
+      : (s.shares && s.shares.length ? s.shares.join(', ') : s.share);
     $('pb-surround').textContent = (SURROUND_LABEL[s.surround] || SURROUND_LABEL.off)();
     $('pb-relay').textContent = I18n.t(s.localRelay ? 'pb.accepted' : 'pb.notAccepted');
     lastAdoptLeft = s.adoptLeft || 0;
@@ -131,16 +136,43 @@ async function pair() {
   }
 }
 
-async function loadConfig() {
-  const c = await (await fetch(api('/api/config'))).json();
-  const smb = c.smb || c.SMB || {};
+function shareLabel(s) { return s.host + '/' + s.share; }
+
+// Fill the share picker and show `want` in the form (or the first share when
+// `want` has gone, e.g. after removing it).
+function paintShares(want) {
+  const pick = $('share-pick');
+  pick.innerHTML = '';
+  const add = (value, text) => {
+    const o = document.createElement('option');
+    o.value = value; o.textContent = text;
+    pick.appendChild(o);
+  };
+  shares.forEach((s) => add(s.id || '', shareLabel(s)));
+  // With nothing saved yet the form simply is the first share.
+  add(shares.length ? 'new' : '', I18n.t(shares.length ? 'smb.addShare' : 'smb.newShare'));
+  editing = [...pick.options].some((o) => o.value === want) ? want : pick.options[0].value;
+  pick.value = editing;
+  fillForm(shares.find((s) => (s.id || '') === editing && editing !== 'new') || {});
+  $('remove-share').style.display = shares.some((s) => (s.id || '') === editing) ? '' : 'none';
+}
+
+function fillForm(smb) {
   $('host').value = smb.host || '';
   $('port').value = smb.port || 445;
   $('share').value = smb.share || '';
   $('user').value = smb.user || '';
   $('domain').value = smb.domain || '';
+  $('pass').value = '';
   anon = !!smb.anonymous;
   paintAnon();
+}
+
+async function loadConfig(want) {
+  const c = await (await fetch(api('/api/config'))).json();
+  const first = c.smb || c.SMB || {};
+  shares = [first, ...(c.extra_smb || [])].filter((s) => s.host && s.share);
+  paintShares(want === undefined ? editing : want);
   localRelay = !!c.local_relay;
   paintLocalRelay();
   adopt = c.share_credentials !== false;
@@ -157,6 +189,7 @@ async function boot() {
 
 function readForm() {
   return {
+    id: editing,
     host: $('host').value.trim(),
     port: parseInt($('port').value, 10) || 445,
     share: $('share').value.trim(),
@@ -175,10 +208,29 @@ async function postConfig(body) {
   });
 }
 
+// Resolves true once the share is saved, so Test and Browse can go on to use it.
 async function save() {
   const r = await postConfig(readForm());
-  if (r.ok) { setMsg(I18n.t('common.saved'), 'ok'); $('pass').value = ''; loadStatus(); }
-  else setMsg(I18n.t('common.saveFailed'), 'err');
+  if (!r.ok) {
+    setMsg(r.status === 409 ? I18n.t('smb.duplicate') : I18n.t('common.saveFailed'), 'err');
+    return false;
+  }
+  const j = await r.json();
+  setMsg(I18n.t('common.saved'), 'ok');
+  await loadConfig(j.id || '');
+  loadStatus();
+  return true;
+}
+
+async function removeShare() {
+  const s = shares.find((x) => (x.id || '') === editing);
+  if (!s || !confirm(I18n.t('smb.removeConfirm', shareLabel(s)))) return;
+  const r = await postConfig({ remove_share: editing });
+  if (!r.ok) { setMsg(I18n.t('common.saveFailed'), 'err'); return; }
+  setMsg(I18n.t('smb.removed', shareLabel(s)), 'ok');
+  $('list').innerHTML = '';
+  await loadConfig('');
+  loadStatus();
 }
 
 // Posts only the relay permission — the server applies just the keys it's sent,
@@ -198,8 +250,8 @@ async function savePlayback() {
 
 async function test() {
   setMsg(I18n.t('smb.testing'));
-  await save();
-  const res = await (await fetch(api('/api/test'), { method: 'POST' })).json();
+  if (!await save()) return;
+  const res = await (await fetch(api('/api/test?id=' + encodeURIComponent(editing)), { method: 'POST' })).json();
   if (res.ok) setMsg(I18n.t('smb.connected'), 'ok');
   else setMsg(I18n.t('smb.connectFailed', res.error || I18n.t('common.unknown')), 'err');
 }
@@ -231,7 +283,8 @@ async function findShares() {
 
 async function browse(path) {
   setMsg(path ? I18n.t('smb.loadingPath', path) : I18n.t('smb.loadingRoot'));
-  const res = await (await fetch(api('/api/browse?path=' + encodeURIComponent(path || '')))).json();
+  const res = await (await fetch(api('/api/browse?id=' + encodeURIComponent(editing) +
+    '&path=' + encodeURIComponent(path || '')))).json();
   const ul = $('list');
   ul.innerHTML = '';
   if (!res.ok) { setMsg(I18n.t('smb.browseFailed', res.error || I18n.t('common.unknown')), 'err'); return; }
@@ -265,7 +318,9 @@ $('save-playback').onclick = savePlayback;
 $('save').onclick = save;
 $('test').onclick = test;
 $('find-shares').onclick = findShares;
-$('browse').onclick = async () => { await save(); browse(''); };
+$('browse').onclick = async () => { if (await save()) browse(''); };
+$('share-pick').onchange = () => { $('list').innerHTML = ''; setMsg(''); paintShares($('share-pick').value); };
+$('remove-share').onclick = removeShare;
 $('pair').onclick = pair;
 
 boot();

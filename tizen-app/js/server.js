@@ -38,14 +38,48 @@ var TranscodeServer = (function () {
     function clear() { try { localStorage.removeItem(STORE_KEY); } catch (e) {} }
     function isPaired() { var s = get(); return !!(s && s.url); }
 
+    /* The API version at which /play and /api/probe take host+share, so a
+     * file on a server other than the first can be named to the box. */
+    var MULTI_SHARE_API = 3;
+
     /* Build the URL AVPlay should open for an SMB-relative path. The server
-     * serves a live HLS manifest here (after transcoding/​remuxing as needed). */
-    function playUrl(path) {
+     * serves a live HLS manifest here (after transcoding/​remuxing as needed).
+     * srv is an added SMB server's settings, or null for the first one, whose
+     * URLs name no share — as they did before, so what recents and resume
+     * positions saved stays valid.  null back means the box can't serve the
+     * file: it's too old to know more than one share, and would read the
+     * path off its first share instead. */
+    function playUrl(path, srv) {
         var s = get();
         if (!s || !s.url) return null;
-        var u = s.url.replace(/\/+$/, '') + '/play?path=' + encodeURIComponent(path);
+        if (srv && (s.api || 0) < MULTI_SHARE_API) return null;
+        var u = s.url.replace(/\/+$/, '') + '/play?' + shareQuery(path, srv);
         if (s.token) u += '&token=' + encodeURIComponent(s.token);
         return u;
+    }
+
+    function shareQuery(path, srv) {
+        var q = 'path=' + encodeURIComponent(path);
+        if (srv) q += '&host=' + encodeURIComponent(srv.host) + '&share=' + encodeURIComponent(srv.share);
+        return q;
+    }
+
+    /* The cached API version goes stale when the box is updated, and an old
+     * number keeps files on added servers off it.  Ask again once per launch
+     * and after pairing. */
+    function refreshApiVersion() {
+        var s = get();
+        if (!s || !s.url) return;
+        getJson(s.url + '/api/hello', function (err, hello) {
+            if (err || !hello || hello.app !== 'vlc-tv-transcode') return;
+            var now = get();
+            var v = hello.api || 1;
+            if (now && now.url === s.url && now.api !== v) {
+                now.api = v;
+                set(now);
+                log('server API ' + v);
+            }
+        });
     }
 
     /* ── local (USB / internal storage) relay ───────────────────────────────
@@ -220,19 +254,27 @@ var TranscodeServer = (function () {
         return typeof Settings !== 'undefined' && !!Settings.get('smartRouting');
     }
 
-    /* The share path inside one of our /play?path=… URLs; null for anything
-     * else, including the USB relay's /play?src=… form. */
-    function sharePathOf(u) {
-        if (!isPlayUrl(u)) return null;
-        var m = /[?&]path=([^&]*)/.exec(u);
+    function queryParam(u, name) {
+        var m = new RegExp('[?&]' + name + '=([^&]*)').exec(u);
         if (!m) return null;
         try { return decodeURIComponent(m[1]); } catch (e) { return null; }
     }
 
-    /* The key smart routing remembers a file by, for the URI app.js plays. */
+    /* The share file inside one of our /play?path=… URLs: { path, host,
+     * share }, host and share empty for the first server.  null for anything
+     * else, including the USB relay's /play?src=… form. */
+    function shareRefOf(u) {
+        if (!isPlayUrl(u)) return null;
+        var path = queryParam(u, 'path');
+        if (path === null) return null;
+        return { path: path, host: queryParam(u, 'host') || '', share: queryParam(u, 'share') || '' };
+    }
+
+    /* The key smart routing remembers a file by, for the URI app.js plays: the
+     * bare path on the first server, as it always was. */
     function smartKeyOf(uri) {
-        var path = sharePathOf(uri);
-        if (path !== null) return path;
+        var ref = shareRefOf(uri);
+        if (ref !== null) return ref.host ? '//' + ref.host + '/' + ref.share + ':' + ref.path : ref.path;
         return isLocalFileUri(uri) ? uri : null;
     }
 
@@ -296,19 +338,27 @@ var TranscodeServer = (function () {
         });
     }
 
-    /* A share file: direct means the local smbproxy stream. */
-    function resolveShare(uri, path, cb) {
+    /* A share file: direct means the local smbproxy stream, from the saved
+     * server the URL names. */
+    function resolveShare(uri, ref, cb) {
+        var key = smartKeyOf(uri);
         if (typeof SMB === 'undefined' || !SMB.streamUrl || !SMB.ensureConnected) {
-            log('smart: ' + path + ' → server (no local SMB stream)');
+            log('smart: ' + key + ' → server (no local SMB stream)');
             return cb(uri, null);
         }
+        var srv = ref.host ? (SMB.findServer ? SMB.findServer(ref.host, ref.share) : null) : '';
+        if (srv === null) {
+            log('smart: ' + key + ' → server (that SMB server is no longer saved on the TV)');
+            return cb(uri, null);
+        }
+        var srvCreds = srv && SMB.serverById ? SMB.serverById(srv) : null;
         resolveSmart({
-            key: path,
-            query: 'path=' + encodeURIComponent(path),
+            key: key,
+            query: shareQuery(ref.path, srvCreds),
             serverUrl: uri,
-            directUrl: SMB.streamUrl(path),
+            directUrl: SMB.streamUrl(ref.path, srv),
             ready: function (done) {
-                SMB.ensureConnected(function (e) {
+                SMB.ensureConnected(srv, function (e) {
                     done(e ? new Error('local SMB not ready: ' + e.message) : null);
                 });
             }
@@ -320,8 +370,18 @@ var TranscodeServer = (function () {
      * original on every failure path, so this can only change which bytes
      * AVPlay reads — never whether it gets any. */
     function resolvePlaybackUri(uri, cb) {
-        var sharePath = smartEnabled() ? sharePathOf(uri) : null;
-        if (sharePath !== null) return resolveShare(uri, sharePath, cb);
+        var ref = smartEnabled() ? shareRefOf(uri) : null;
+        if (ref !== null) return resolveShare(uri, ref, cb);
+        // A direct share stream, opened from Recents say, needs the service to
+        // hold a connection to the server it names — after a restart, or for
+        // a server other than the one browsed last, it may not.
+        var streamSrv = typeof SMB !== 'undefined' && SMB.streamServerOf ? SMB.streamServerOf(uri) : null;
+        if (streamSrv !== null && SMB.ensureConnected) {
+            return SMB.ensureConnected(streamSrv, function (e) {
+                if (e) log('SMB connect before play failed: ' + e.message);
+                cb(uri);
+            });
+        }
         if (!isLocalFileUri(uri) || !relayEnabled() || !isPaired()) return cb(uri);
         armRelay(function (r) {
             if (!r) return cb(uri);
@@ -538,8 +598,13 @@ var TranscodeServer = (function () {
                     user: smb.user || '', pass: smb.pass || '',
                     domain: smb.domain || '', anonymous: !!smb.anonymous
                 });
+                // A box with more than one share (API 3) lists the rest too.
+                if (SMB.mergeServers) SMB.mergeServers(res.extra_smb || []);
             }
-            cb(null, smb);
+            // What the toast names: every share copied, not only the first.
+            var names = [smb.host + '/' + smb.share];
+            (res.extra_smb || []).forEach(function (x) { if (x.host && x.share) names.push(x.host + '/' + x.share); });
+            cb(null, { host: smb.host, share: smb.share, label: names.join(', ') });
         });
     }
 
@@ -604,6 +669,7 @@ var TranscodeServer = (function () {
             // first thing that needs to drive this server will probe for it.
             set({ url: ann.url, token: ann.token || '', name: ann.name || I18n.t('srv.section') });
             log('paired with ' + ann.name + ' @ ' + ann.url);
+            refreshApiVersion();
             cb(null, ann);
         });
     }
@@ -673,7 +739,7 @@ var TranscodeServer = (function () {
                     toast(I18n.t('srv.pairedAdoptFailed', srv.name, err.message));
                     return;
                 }
-                toast(I18n.t('srv.pairedAdopted', srv.name, smb.host + '/' + smb.share));
+                toast(I18n.t('srv.pairedAdopted', srv.name, smb.label));
             });
             return;
         }
@@ -764,7 +830,7 @@ var TranscodeServer = (function () {
             if (!isPaired()) { toast(I18n.t('srv.pairFirst')); return; }
             adoptShare(function (err, smb) {
                 if (err) { toast(err.message); return; }
-                toast(I18n.t('srv.adopted', smb.host + '/' + smb.share));
+                toast(I18n.t('srv.adopted', smb.label));
             });
         });
 
@@ -841,6 +907,8 @@ var TranscodeServer = (function () {
         document.addEventListener('DOMContentLoaded', wireSettings);
     else
         wireSettings();
+
+    refreshApiVersion();
 
     return {
         get: get, set: set, clear: clear, isPaired: isPaired,

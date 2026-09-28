@@ -79,5 +79,12 @@
   "smb.connectFailed": "No se pudo conectar: {0}",
   "smb.loadingPath": "Cargando {0}…",
   "smb.loadingRoot": "Cargando el recurso…",
-  "smb.browseFailed": "Error al explorar: {0}"
+  "smb.browseFailed": "Error al explorar: {0}",
+  "smb.pick": "Carpeta compartida que editar",
+  "smb.remove": "Quitar",
+  "smb.removeConfirm": "¿Quitar {0}?",
+  "smb.removed": "Se ha quitado {0}",
+  "smb.duplicate": "Esa carpeta compartida ya está en la lista",
+  "smb.addShare": "+ Añadir otra carpeta compartida",
+  "smb.newShare": "Carpeta compartida nueva"
 }

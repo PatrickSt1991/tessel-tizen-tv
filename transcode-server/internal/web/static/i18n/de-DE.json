@@ -79,5 +79,12 @@
   "smb.connectFailed": "Verbindung fehlgeschlagen: {0}",
   "smb.loadingPath": "{0} wird geladen…",
   "smb.loadingRoot": "Freigabe wird geladen…",
-  "smb.browseFailed": "Durchsuchen fehlgeschlagen: {0}"
+  "smb.browseFailed": "Durchsuchen fehlgeschlagen: {0}",
+  "smb.pick": "Zu bearbeitende Freigabe",
+  "smb.remove": "Entfernen",
+  "smb.removeConfirm": "{0} entfernen?",
+  "smb.removed": "{0} entfernt",
+  "smb.duplicate": "Diese Freigabe ist bereits in der Liste",
+  "smb.addShare": "+ Weitere Freigabe hinzufügen",
+  "smb.newShare": "Neue Freigabe"
 }

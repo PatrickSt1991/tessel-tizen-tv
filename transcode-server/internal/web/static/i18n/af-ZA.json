@@ -79,5 +79,12 @@
   "smb.connectFailed": "Kon nie koppel nie: {0}",
   "smb.loadingPath": "Laai tans {0}…",
   "smb.loadingRoot": "Laai tans die deelmap…",
-  "smb.browseFailed": "Blaai het misluk: {0}"
+  "smb.browseFailed": "Blaai het misluk: {0}",
+  "smb.pick": "Deelmap om te wysig",
+  "smb.remove": "Verwyder",
+  "smb.removeConfirm": "Verwyder {0}?",
+  "smb.removed": "{0} verwyder",
+  "smb.duplicate": "Daardie deelmap is reeds in die lys",
+  "smb.addShare": "+ Voeg nog 'n deelmap by",
+  "smb.newShare": "Nuwe deelmap"
 }

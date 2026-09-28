@@ -79,5 +79,12 @@
   "smb.connectFailed": "Bağlanılamadı: {0}",
   "smb.loadingPath": "Yükleniyor: {0}…",
   "smb.loadingRoot": "Paylaşım yükleniyor…",
-  "smb.browseFailed": "Gezinme başarısız: {0}"
+  "smb.browseFailed": "Gezinme başarısız: {0}",
+  "smb.pick": "Düzenlenecek paylaşım",
+  "smb.remove": "Kaldır",
+  "smb.removeConfirm": "{0} kaldırılsın mı?",
+  "smb.removed": "{0} kaldırıldı",
+  "smb.duplicate": "Bu paylaşım zaten listede",
+  "smb.addShare": "+ Başka bir paylaşım ekle",
+  "smb.newShare": "Yeni paylaşım"
 }

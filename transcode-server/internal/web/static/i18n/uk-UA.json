@@ -79,5 +79,12 @@
   "smb.connectFailed": "Не вдалося підключитися: {0}",
   "smb.loadingPath": "Завантаження: {0}…",
   "smb.loadingRoot": "Завантаження папки…",
-  "smb.browseFailed": "Помилка огляду: {0}"
+  "smb.browseFailed": "Помилка огляду: {0}",
+  "smb.pick": "Спільна папка для редагування",
+  "smb.remove": "Видалити",
+  "smb.removeConfirm": "Видалити {0}?",
+  "smb.removed": "{0} видалено",
+  "smb.duplicate": "Ця спільна папка вже є у списку",
+  "smb.addShare": "+ Додати ще спільну папку",
+  "smb.newShare": "Нова спільна папка"
 }

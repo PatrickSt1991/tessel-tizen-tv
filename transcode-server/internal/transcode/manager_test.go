@@ -45,7 +45,7 @@ func countCalls(t *testing.T, calls string) int {
 func newTestManager(t *testing.T, ffprobe string, surround string) *Manager {
 	t.Helper()
 	m, err := NewManager(&Caps{FFprobe: ffprobe}, t.TempDir(),
-		func(p string) string { return "http://127.0.0.1:1/raw?path=" + p },
+		func(_, p string) string { return "http://127.0.0.1:1/raw?path=" + p },
 		func() string { return surround })
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func newTestManager(t *testing.T, ffprobe string, surround string) *Manager {
 func TestProbeReportsThePlanPlayWouldUse(t *testing.T) {
 	bin, _ := fakeFFprobe(t, "h264", "dts", 6)
 	m := newTestManager(t, bin, SurroundOff)
-	mi, plan, err := m.Probe(context.Background(), SMBSource("Movies/x.mkv"))
+	mi, plan, err := m.Probe(context.Background(), SMBSource("", "Movies/x.mkv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestProbeIsCachedPerSource(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
-		if _, _, err := m.Probe(ctx, SMBSource("Movies/x.mkv")); err != nil {
+		if _, _, err := m.Probe(ctx, SMBSource("", "Movies/x.mkv")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -84,7 +84,7 @@ func TestProbeIsCachedPerSource(t *testing.T) {
 		t.Fatalf("ffprobe ran %d times for one file, want 1", n)
 	}
 
-	if _, _, err := m.Probe(ctx, SMBSource("Movies/other.mkv")); err != nil {
+	if _, _, err := m.Probe(ctx, SMBSource("", "Movies/other.mkv")); err != nil {
 		t.Fatal(err)
 	}
 	if n := countCalls(t, calls); n != 2 {
@@ -94,7 +94,7 @@ func TestProbeIsCachedPerSource(t *testing.T) {
 	real := nowFn
 	defer func() { nowFn = real }()
 	nowFn = func() time.Time { return real().Add(probeTTL + time.Second) }
-	if _, _, err := m.Probe(ctx, SMBSource("Movies/x.mkv")); err != nil {
+	if _, _, err := m.Probe(ctx, SMBSource("", "Movies/x.mkv")); err != nil {
 		t.Fatal(err)
 	}
 	if n := countCalls(t, calls); n != 3 {
@@ -107,16 +107,22 @@ func TestProbeFollowsLiveSurroundSetting(t *testing.T) {
 	bin, _ := fakeFFprobe(t, "h264", "aac", 6)
 	mode := SurroundOff
 	m, err := NewManager(&Caps{FFprobe: bin}, t.TempDir(),
-		func(p string) string { return p }, func() string { return mode })
+		func(_, p string) string { return p }, func() string { return mode })
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, plan, _ := m.Probe(ctx, SMBSource("x.mkv")); !plan.DirectPlayable() {
+	if _, plan, _ := m.Probe(ctx, SMBSource("", "x.mkv")); !plan.DirectPlayable() {
 		t.Fatalf("5.1 AAC with surround off should play directly: %s", plan.Reason)
 	}
 	mode = SurroundEAC3
-	if _, plan, _ := m.Probe(ctx, SMBSource("x.mkv")); plan.DirectPlayable() {
+	if _, plan, _ := m.Probe(ctx, SMBSource("", "x.mkv")); plan.DirectPlayable() {
 		t.Fatalf("5.1 AAC with surround on must go through the server: %s", plan.Reason)
+	}
+}
+
+func TestSameFileNameOnTwoSharesIsTwoSources(t *testing.T) {
+	if SMBSource("", "Movies/x.mkv").key() == SMBSource("ab12", "Movies/x.mkv").key() {
+		t.Fatal("a file on an extra share shares a session key with the first share's file")
 	}
 }

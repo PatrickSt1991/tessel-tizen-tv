@@ -41,6 +41,11 @@ Then open **`http://<box-ip>:8200`** in any browser and fill in your SMB share
 (host, share name, username/password — or toggle Guest). Use **Test connection**
 and **Browse share** to confirm it can see your files.
 
+Media on more than one NAS or server? Pick **+ Add another share** in the
+*Share to edit* list and fill that one in the same way. A paired TV copies every
+share, and plays each file through the box from the share it came from (Tessel
+1.10.0 or later; older TV apps only use the first share).
+
 ## Run it natively (Windows / macOS / no-Docker Linux)
 
 Docker is the recommended path on a server / NAS / Proxmox box that's going to

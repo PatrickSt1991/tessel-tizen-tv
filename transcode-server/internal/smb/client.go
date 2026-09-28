@@ -1,7 +1,7 @@
 // Package smb wraps go-smb2 with the few operations this server needs: list a
 // server's shares and a folder (for the web UI's "find shares" and "test
 // browse") and open a file as a seekable reader (so ffmpeg/HTTP can range-read
-// it). A single share is mounted and kept open;
+// it). Each configured share gets its own Client, whose mount is kept open;
 // if the session drops we transparently re-dial on the next call.
 package smb
 
@@ -47,6 +47,49 @@ type Client struct {
 // New returns a client bound to the given SMB settings. Nothing connects until
 // the first call.
 func New(cfg *config.SMB) *Client { return &Client{cfg: cfg} }
+
+// Pool hands out one Client per configured share, keyed by share ID. The
+// settings are looked up on every call, so a share edited or removed on the
+// setup page takes effect on the next request without a restart.
+type Pool struct {
+	lookup func(id string) (config.SMB, bool)
+
+	mu      sync.Mutex
+	clients map[string]*Client
+}
+
+// NewPool returns a pool that reads share settings through lookup.
+func NewPool(lookup func(id string) (config.SMB, bool)) *Pool {
+	return &Pool{lookup: lookup, clients: map[string]*Client{}}
+}
+
+// Get returns the client for a share, re-dialling if its settings changed
+// since the last call.
+func (p *Pool) Get(id string) (*Client, error) {
+	cfg, ok := p.lookup(id)
+	if !ok {
+		return nil, fmt.Errorf("unknown share %q", id)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if c := p.clients[id]; c != nil {
+		if *c.cfg == cfg {
+			return c, nil
+		}
+		// Off the lock: a read in flight holds the old client's mutex.
+		go c.Close()
+	}
+	c := New(&cfg)
+	p.clients[id] = c
+	return c, nil
+}
+
+// Close drops the client's session.
+func (c *Client) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.reset()
+}
 
 // normalise converts an incoming "/Movies/x.mkv" into the backslash-free,
 // leading-slash-free form go-smb2 expects, and blocks ".." traversal so a

@@ -79,5 +79,12 @@
   "smb.connectFailed": "無法連線：{0}",
   "smb.loadingPath": "正在載入 {0}…",
   "smb.loadingRoot": "正在載入共用資料夾…",
-  "smb.browseFailed": "瀏覽失敗：{0}"
+  "smb.browseFailed": "瀏覽失敗：{0}",
+  "smb.pick": "要編輯的共用資料夾",
+  "smb.remove": "移除",
+  "smb.removeConfirm": "移除 {0}？",
+  "smb.removed": "已移除 {0}",
+  "smb.duplicate": "該共用資料夾已在清單中",
+  "smb.addShare": "+ 新增其他共用資料夾",
+  "smb.newShare": "新共用資料夾"
 }

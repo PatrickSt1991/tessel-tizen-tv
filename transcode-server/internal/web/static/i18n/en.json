@@ -79,5 +79,12 @@
   "smb.connectFailed": "Could not connect: {0}",
   "smb.loadingPath": "Loading {0}…",
   "smb.loadingRoot": "Loading the share…",
-  "smb.browseFailed": "Browse failed: {0}"
+  "smb.browseFailed": "Browse failed: {0}",
+  "smb.pick": "Share to edit",
+  "smb.remove": "Remove",
+  "smb.removeConfirm": "Remove {0}?",
+  "smb.removed": "Removed {0}",
+  "smb.duplicate": "That share is already in the list",
+  "smb.addShare": "+ Add another share",
+  "smb.newShare": "New share"
 }

@@ -7,7 +7,7 @@ through Samsung's AVPlay.
 ## Features
 
 - **Plays almost anything the TV can decode** — H.264 / HEVC / VP9, AAC / MP3 / AC3 / EAC3, HLS / DASH / RTSP / RTMP
-- **USB, internal storage and SMB shares** — browse and stream from a NAS, Windows or Samba
+- **USB, internal storage and SMB shares** — browse and stream from a NAS, Windows or Samba, with as many servers as you like
 - **Cast a URL from your phone** — scan a QR once, paste a link, it plays. No account, no app
 - **Subtitles that actually show** — SRT / VTT / ASS / SAMI sidecars and embedded MP4 / MKV tracks, painted by the app with adjustable size, font, position and background
 - **Every embedded track selectable**, even past the TV demuxer's 32-track limit
