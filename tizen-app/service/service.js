@@ -9,6 +9,9 @@
  *                       → NEGOTIATE + NTLMv2 SESSION_SETUP + TREE_CONNECT
  *   GET  /smb/list?path=/sub          → JSON [{ name, isDir, size }]
  *   GET  /smb/stream?path=/a/b.mkv    → byte stream, honours HTTP Range
+ *   POST /smb/shares  { host, user, pass, domain?, port? }
+ *                       → { ok:true, shares:[{ name, remark }] }, the disk
+ *                         shares the server lists (see listShares)
  *   GET  /smb/ping                    → { ok:true, connected } liveness check
  *
  * It also hosts the optional *local relay* (see the block near the bottom):
@@ -26,7 +29,8 @@
  * Scope of the embedded SMB2 client: SMB 2.0.2 / 2.1, NTLMv2 auth, optional
  * HMAC-SHA256 signing (used only when the server marks it required), read-only
  * (NEGOTIATE / SESSION_SETUP / TREE_CONNECT / CREATE / QUERY_DIRECTORY / READ /
- * CLOSE).  Enough to browse a share and stream files.
+ * CLOSE).  Enough to browse a share and stream files — plus IOCTL on the
+ * srvsvc pipe, which is how /smb/shares lists what a server offers.
  * ==========================================================================*/
 
 var http   = require('http');
@@ -169,18 +173,19 @@ function readU64LE(b, off)     { return b.readUInt32LE(off) + b.readUInt32LE(off
 var SMB2 = {
     NEGOTIATE: 0x0000, SESSION_SETUP: 0x0001, LOGOFF: 0x0002,
     TREE_CONNECT: 0x0003, TREE_DISCONNECT: 0x0004, CREATE: 0x0005,
-    CLOSE: 0x0006, READ: 0x0008, QUERY_DIRECTORY: 0x000E
+    CLOSE: 0x0006, READ: 0x0008, IOCTL: 0x000B, QUERY_DIRECTORY: 0x000E
 };
 var SMB2_NAME = {
     0x0000: 'NEGOTIATE', 0x0001: 'SESSION_SETUP', 0x0002: 'LOGOFF',
     0x0003: 'TREE_CONNECT', 0x0004: 'TREE_DISCONNECT', 0x0005: 'CREATE',
-    0x0006: 'CLOSE', 0x0008: 'READ', 0x000E: 'QUERY_DIRECTORY'
+    0x0006: 'CLOSE', 0x0008: 'READ', 0x000B: 'IOCTL', 0x000E: 'QUERY_DIRECTORY'
 };
 var ST = {
     SUCCESS:               0x00000000,
     MORE_PROCESSING:       0xC0000016,
     NO_MORE_FILES:         0x80000006,
     END_OF_FILE:           0xC0000011,
+    BUFFER_OVERFLOW:       0x80000005,
     PENDING:               0x00000103
 };
 var FLAGS_SIGNED = 0x00000008;
@@ -663,8 +668,9 @@ function smbName(path) {
     return p;
 }
 
-/* CREATE (open) — returns { fileId(Buffer16), size }. isDir picks the option. */
-SmbConnection.prototype.open = function (path, isDir, cb) {
+/* CREATE (open) — returns { fileId(Buffer16), size }. isDir picks the option;
+ * access overrides the read-only DesiredAccess (a named pipe is written to). */
+SmbConnection.prototype.open = function (path, isDir, cb, access) {
     var name = utf16le(smbName(path));
     var body = Buffer.alloc(56 + Math.max(name.length, 1));
     body.writeUInt16LE(57, 0);            // StructureSize (fixed 56 + 1 var)
@@ -673,7 +679,7 @@ SmbConnection.prototype.open = function (path, isDir, cb) {
     body.writeUInt32LE(2, 4);             // ImpersonationLevel = Impersonation
     writeU64LE(body, 8, 0);               // SmbCreateFlags
     writeU64LE(body, 16, 0);              // Reserved
-    body.writeUInt32LE(0x00100081, 24);   // DesiredAccess: READ_DATA|READ_ATTR|SYNCHRONIZE
+    body.writeUInt32LE(access || 0x00100081, 24); // DesiredAccess: READ_DATA|READ_ATTR|SYNCHRONIZE
     body.writeUInt32LE(0, 28);            // FileAttributes
     body.writeUInt32LE(0x00000007, 32);   // ShareAccess: READ|WRITE|DELETE
     body.writeUInt32LE(1, 36);            // CreateDisposition = FILE_OPEN
@@ -779,6 +785,227 @@ SmbConnection.prototype.read = function (fileId, offset, length, cb) {
     });
 };
 
+/* ── share list: NetrShareEnum over the srvsvc pipe ─────────────────────────
+ *
+ * SMB itself has no "list shares" command.  A client asks the server's
+ * Server Service instead: tree-connect to IPC$, open the \srvsvc named pipe,
+ * and speak DCE/RPC through it — a bind to the SRVSVC interface, then one
+ * NetrShareEnum call (MS-SRVS 3.1.4.8).  Each RPC PDU goes out as an SMB2
+ * IOCTL with FSCTL_PIPE_TRANSCEIVE, which writes the request and reads the
+ * reply in one round trip; a reply that doesn't fit comes back with
+ * STATUS_BUFFER_OVERFLOW or as several RPC fragments, and the rest is READ
+ * off the pipe.  The request and reply are NDR-encoded by hand below. */
+var FSCTL_PIPE_TRANSCEIVE = 0x0011C017;
+var RPC_MAX_FRAG = 4280;              // what Windows and Samba both settle on
+
+/* 16-byte DCE/RPC UUID + version: the first three fields are little-endian. */
+function rpcSyntax(uuid, major, minor) {
+    var h = uuid.replace(/-/g, '');
+    var b = Buffer.alloc(20);
+    b.writeUInt32LE(parseInt(h.slice(0, 8), 16), 0);
+    b.writeUInt16LE(parseInt(h.slice(8, 12), 16), 4);
+    b.writeUInt16LE(parseInt(h.slice(12, 16), 16), 6);
+    for (var i = 0; i < 8; i++) b[8 + i] = parseInt(h.slice(16 + i * 2, 18 + i * 2), 16);
+    b.writeUInt16LE(major, 16);
+    b.writeUInt16LE(minor, 18);
+    return b;
+}
+var SRVSVC_SYNTAX = rpcSyntax('4b324fc8-1670-01d3-1278-5a47bf6ee188', 3, 0);
+var NDR_SYNTAX    = rpcSyntax('8a885d04-1ceb-11c9-9fe8-08002b104860', 2, 0);
+
+/* Common 16-byte RPC header; frag_length is filled in from the body. */
+function rpcPdu(ptype, callId, body) {
+    var h = Buffer.alloc(16);
+    h[0] = 5; h[1] = 0;                  // rpc_vers 5.0
+    h[2] = ptype;
+    h[3] = 0x03;                         // PFC_FIRST_FRAG | PFC_LAST_FRAG
+    h[4] = 0x10;                         // data rep: little-endian, ASCII, IEEE
+    h.writeUInt16LE(16 + body.length, 8);
+    h.writeUInt16LE(0, 10);              // auth_length
+    h.writeUInt32LE(callId, 12);
+    return Buffer.concat([h, body]);
+}
+
+function rpcBind() {
+    var b = Buffer.alloc(12 + 44);
+    b.writeUInt16LE(RPC_MAX_FRAG, 0);    // max_xmit_frag
+    b.writeUInt16LE(RPC_MAX_FRAG, 2);    // max_recv_frag
+    b.writeUInt32LE(0, 4);               // assoc_group_id
+    b[8] = 1;                            // one presentation context
+    b.writeUInt16LE(0, 12);              // p_cont_id
+    b[14] = 1;                           // one transfer syntax
+    SRVSVC_SYNTAX.copy(b, 16);
+    NDR_SYNTAX.copy(b, 36);
+    return rpcPdu(11, 1, b);             // 11 = bind
+}
+
+/* NDR conformant varying string (wchar_t*), padded to 4 bytes. */
+function ndrString(str) {
+    var chars = utf16le(str + '\0');
+    var n = chars.length / 2;
+    var pad = (4 - (chars.length % 4)) % 4;
+    var b = Buffer.alloc(12 + chars.length + pad);
+    b.writeUInt32LE(n, 0);               // max_count
+    b.writeUInt32LE(0, 4);               // offset
+    b.writeUInt32LE(n, 8);               // actual_count
+    chars.copy(b, 12);
+    return b;
+}
+
+/* NetrShareEnum(ServerName, InfoStruct{ Level 1, empty container },
+ * PreferedMaximumLength = MAX, ResumeHandle = 0). */
+function rpcShareEnumRequest(host) {
+    var stub = Buffer.concat([
+        u32s(0x00020000),                // ServerName: unique pointer referent
+        ndrString('\\\\' + host),
+        u32s(1, 1,                       // Level, union switch
+             0x00020004,                 // -> SHARE_INFO_1_CONTAINER
+             0, 0,                       //    EntriesRead, Buffer = NULL
+             0xFFFFFFFF,                 // PreferedMaximumLength
+             0x00020008, 0)              // ResumeHandle -> 0
+    ]);
+    var hdr = Buffer.alloc(8);
+    hdr.writeUInt32LE(stub.length, 0);   // alloc_hint
+    hdr.writeUInt16LE(0, 4);             // p_cont_id
+    hdr.writeUInt16LE(15, 6);            // opnum 15 = NetrShareEnum
+    return rpcPdu(0, 2, Buffer.concat([hdr, stub]));   // 0 = request
+}
+function u32s() {
+    var b = Buffer.alloc(arguments.length * 4);
+    for (var i = 0; i < arguments.length; i++) b.writeUInt32LE(arguments[i] >>> 0, i * 4);
+    return b;
+}
+
+/* Split a byte stream of RPC PDUs into them.  Returns { pdus, rest, last }:
+ * last is true once a PDU carrying PFC_LAST_FRAG has arrived. */
+function rpcSplit(buf) {
+    var pdus = [], p = 0, last = false;
+    while (buf.length - p >= 16) {
+        var len = buf.readUInt16LE(p + 8);
+        if (len < 16 || buf.length - p < len) break;
+        var pdu = buf.slice(p, p + len);
+        pdus.push(pdu);
+        if (pdu[3] & 0x02) last = true;
+        p += len;
+    }
+    return { pdus: pdus, rest: buf.slice(p), last: last };
+}
+
+/* Pull the SHARE_INFO_1 array out of a NetrShareEnum reply's stub data. */
+function parseShareEnum(stub) {
+    var p = 0;
+    function u32() { var v = stub.readUInt32LE(p); p += 4; return v; }
+    function str() {
+        var max = u32(); u32(); var n = u32();
+        if (n > max || p + n * 2 > stub.length) throw new Error('bad NDR string');
+        var s = fromUtf16le(stub, p, p + n * 2).replace(/\0+$/, '');
+        p += n * 2;
+        p += (4 - (p % 4)) % 4;
+        return s;
+    }
+    u32(); u32();                        // Level, union switch
+    if (!u32()) return [];               // container pointer
+    var count = u32();
+    if (!u32() || !count) return [];     // Buffer pointer
+    if (u32() !== count) throw new Error('bad share array');
+    var rows = [];
+    for (var i = 0; i < count; i++) rows.push({ namePtr: u32(), type: u32(), remarkPtr: u32() });
+    for (var j = 0; j < count; j++) {
+        rows[j].name   = rows[j].namePtr   ? str() : '';
+        rows[j].remark = rows[j].remarkPtr ? str() : '';
+    }
+    return rows;
+}
+
+/* FSCTL_PIPE_TRANSCEIVE: write `input` to the pipe, read up to maxOut back.
+ * cb(err, data, more) — more is true on STATUS_BUFFER_OVERFLOW, meaning the
+ * pipe holds more of the reply than fitted. */
+SmbConnection.prototype.transceive = function (fileId, input, maxOut, cb) {
+    var body = Buffer.alloc(56 + input.length);
+    body.writeUInt16LE(57, 0);            // StructureSize
+    body.writeUInt32LE(FSCTL_PIPE_TRANSCEIVE, 4);
+    fileId.copy(body, 8);
+    body.writeUInt32LE(64 + 56, 24);      // InputOffset
+    body.writeUInt32LE(input.length, 28); // InputCount
+    body.writeUInt32LE(0, 32);            // MaxInputResponse
+    body.writeUInt32LE(0, 36);            // OutputOffset
+    body.writeUInt32LE(0, 40);            // OutputCount
+    body.writeUInt32LE(maxOut, 44);       // MaxOutputResponse
+    body.writeUInt32LE(0x00000001, 48);   // Flags: SMB2_0_IOCTL_IS_FSCTL
+    input.copy(body, 56);
+    this._send(SMB2.IOCTL, body, 1, function (status, hdr, resp) {
+        if (status !== ST.SUCCESS && status !== ST.BUFFER_OVERFLOW)
+            return cb(new Error('srvsvc: ' + ntText(status)));
+        // IOCTL response: OutputOffset(4)@32, OutputCount(4)@36, from header start.
+        var off = resp.readUInt32LE(32) - 64, len = resp.readUInt32LE(36);
+        cb(null, resp.slice(off, off + len), status === ST.BUFFER_OVERFLOW);
+    });
+};
+
+/* One RPC call on the open pipe → the reply's PDUs, however many fragments
+ * and SMB round trips it took. */
+SmbConnection.prototype.rpcCall = function (fileId, pdu, cb) {
+    var self = this;
+    this.transceive(fileId, pdu, RPC_MAX_FRAG * 2, function (err, data, more) {
+        if (err) return cb(err);
+        var got = [], buf = data;
+        (function drain() {
+            var sp = rpcSplit(buf);
+            got = got.concat(sp.pdus);
+            buf = sp.rest;
+            if (sp.last && !more) return cb(null, got);
+            self.read(fileId, 0, RPC_MAX_FRAG * 2, function (e2, chunk) {
+                if (e2) return cb(e2);
+                if (!chunk.length) return cb(new Error('srvsvc: reply cut short'));
+                // A READ that filled the buffer may still leave bytes behind.
+                more = chunk.length >= RPC_MAX_FRAG * 2;
+                buf = Buffer.concat([buf, chunk]);
+                drain();
+            });
+        })();
+    });
+};
+
+/* The disk shares this server lists: [{ name, remark }], sorted by name.
+ * Needs a connection whose tree is IPC$.  Hidden and administrative shares
+ * (C$, ADMIN$, print$ …) are left out — they aren't where anyone keeps
+ * films, and a TV remote shouldn't be offered them. */
+SmbConnection.prototype.listShares = function (done) {
+    var self = this;
+    this.open('srvsvc', false, function (err, pipe) {
+        if (err) return done(new Error('srvsvc: ' + err.message));
+        function finish(e, v) { self.close(pipe.fileId); done(e, v); }
+        self.rpcCall(pipe.fileId, rpcBind(), function (e1, ack) {
+            if (e1) return finish(e1);
+            if (!ack.length || ack[0][2] !== 12) return finish(new Error('srvsvc: bind refused'));
+            self.rpcCall(pipe.fileId, rpcShareEnumRequest(self.host), function (e2, pdus) {
+                if (e2) return finish(e2);
+                var stubs = [];
+                for (var i = 0; i < pdus.length; i++) {
+                    var pdu = pdus[i];
+                    if (pdu[2] === 3) return finish(new Error('srvsvc: call rejected (0x' +
+                        pdu.readUInt32LE(24).toString(16) + ')'));          // fault
+                    if (pdu[2] !== 2) return finish(new Error('srvsvc: unexpected reply'));
+                    stubs.push(pdu.slice(24, pdu.readUInt16LE(8) - pdu.readUInt16LE(10)));
+                }
+                var stub = Buffer.concat(stubs);
+                var werr = stub.length >= 4 ? stub.readUInt32LE(stub.length - 4) : 0;
+                if (werr) return finish(new Error('srvsvc: server error 0x' + werr.toString(16)));
+                var rows;
+                try { rows = parseShareEnum(stub); }
+                catch (e3) { return finish(new Error('srvsvc: ' + e3.message)); }
+                var shares = rows.filter(function (r) {
+                    // STYPE_DISKTREE only, and not STYPE_SPECIAL / a $ name.
+                    return (r.type & 0x0FFFFFFF) === 0 && !(r.type & 0x80000000) &&
+                           r.name && !/\$$/.test(r.name);
+                }).map(function (r) { return { name: r.name, remark: r.remark }; });
+                shares.sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
+                finish(null, shares);
+            });
+        });
+    }, 0x0012019F);   // GENERIC read + write on the pipe
+};
+
 /* ============================================================================
  * Connection registry — one live connection keyed by host|share. Re-used
  * across list/stream so we pay the negotiate/auth cost once.
@@ -862,6 +1089,40 @@ function handleConnect(req, res) {
             });
         } catch (e) {
             log('CONNECT_THREW', e && e.message);
+            sendJson(res, 500, { ok: false, error: 'service error: ' + (e && e.message) });
+        }
+    });
+}
+
+/* List the shares on a server, for the Settings form.  A connection of its
+ * own, to IPC$, closed again straight after: it must not replace the one the
+ * browser streams from, and the share it would be keyed by isn't known yet —
+ * that's the point of asking. */
+function handleShares(req, res) {
+    var raw = '';
+    req.on('data', function (c) { raw += c; });
+    req.on('end', function () {
+        var creds;
+        try { creds = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { ok: false, error: 'bad json' }); }
+        if (!creds.host) return sendJson(res, 400, { ok: false, error: 'host required' });
+        log('SHARES_REQ', { host: creds.host, port: creds.port || 445,
+                            user: creds.anonymous ? '(guest)' : (creds.user || '') });
+        var opts = {};
+        for (var k in creds) opts[k] = creds[k];
+        opts.share = 'IPC$';
+        var c = new SmbConnection(opts);
+        try {
+            c.connect(function (err) {
+                if (err) { log('SHARES_FAIL', err.message); c._die('done'); return sendJson(res, 502, { ok: false, error: err.message }); }
+                c.listShares(function (e2, shares) {
+                    c._die('done');
+                    if (e2) { log('SHARES_FAIL', e2.message); return sendJson(res, 502, { ok: false, error: e2.message }); }
+                    log('SHARES_OK', { count: shares.length });
+                    sendJson(res, 200, { ok: true, shares: shares });
+                });
+            });
+        } catch (e) {
+            log('SHARES_THREW', e && e.message);
             sendJson(res, 500, { ok: false, error: 'service error: ' + (e && e.message) });
         }
     });
@@ -1307,6 +1568,7 @@ var server = http.createServer(function (req, res) {
     if (u.pathname === '/smb/ping')        return sendJson(res, 200, { ok: true, connected: !!lastCreds });
     if (u.pathname === '/smb/debug/logs')  return sendJson(res, 200, { logs: LOGS });
     if (u.pathname === '/smb/connect' && req.method === 'POST') return handleConnect(req, res);
+    if (u.pathname === '/smb/shares' && req.method === 'POST')  return handleShares(req, res);
     if (u.pathname === '/smb/list')        return handleList(req, res, u.query);
     if (u.pathname === '/smb/stream')      return handleStream(req, res, u.query);
 

@@ -155,6 +155,22 @@ var SMB = (function () {
         });
     }
 
+    /* The disk shares a server offers, asked of it with the credentials
+     * given — not the saved ones, so the form can look before saving. */
+    function listShares(c, cb) {
+        dbg('list shares on ' + (c.host || '?') + ':' + (c.port || 445) +
+            ' user=' + (c.anonymous ? '(guest)' : (c.user || '(none)')));
+        postJson(BASE + '/smb/shares', {
+            host: c.host, user: c.user || '', pass: c.pass || '',
+            domain: c.domain || '', port: c.port || 445, anonymous: !!c.anonymous
+        }, function (err, res) {
+            if (err) return cb(err);
+            if (!res.ok) return cb(new Error(res.error || 'share list failed'));
+            dbg('server lists ' + (res.shares || []).length + ' share(s)');
+            cb(null, res.shares || []);
+        });
+    }
+
     function list(path, cb) {
         getJson(BASE + '/smb/list?path=' + encodeURIComponent(path || ''), function (err, res) {
             if (err) return cb(err);
@@ -424,31 +440,75 @@ var SMB = (function () {
         fillSettingsForm(c);
     }
 
+    /* What the form holds right now, normalised the way Save stores it. */
+    function readSettingsForm() {
+        var nc = {};
+        FORM_IDS.forEach(function (k) {
+            var el = document.getElementById('smb-' + k);
+            nc[k] = el ? el.value.trim() : '';
+        });
+        nc.anonymous = anonState;
+        var sv = normalizeServer(nc.host);
+        nc.host = sv.host;
+        // Share precedence: explicit Share field > the path typed after the
+        // host (smb://nas/Media, \\nas\Media) > nothing.
+        if (!nc.share && sv.share) nc.share = sv.share;
+        // Port precedence: explicit Port field > inline host:port > default.
+        nc.port = parseInt(nc.port, 10) || sv.port || 445;
+        return nc;
+    }
+
+    /* "Find shares": ask the server what it offers and let the user pick,
+     * instead of guessing a share name on a TV remote. */
+    var findingShares = false;
+    function findShares() {
+        if (findingShares) return;
+        var c = readSettingsForm();
+        if (!c.host) { UI.toast(I18n.t('smb.hostMissing')); return; }
+        findingShares = true;
+        UI.toast(I18n.t('smb.findingShares'));
+        ensureService(function (err) {
+            if (err) { findingShares = false; UI.toast(I18n.t('smb.sharesFailed', err.message)); return; }
+            listShares(c, function (e2, shares) {
+                findingShares = false;
+                if (e2) {
+                    UI.toast(I18n.t('smb.sharesFailed', e2.message));
+                    dumpServiceLogs('share list failure');
+                    return;
+                }
+                if (!shares.length) { UI.toast(I18n.t('smb.noShares')); return; }
+                if (!window.VlcApp || !window.VlcApp.openPicker) return;
+                window.VlcApp.openPicker(I18n.t('smb.pickShare'), shares.map(function (s) {
+                    return { code: s.name, name: s.remark ? s.name + ' — ' + s.remark : s.name };
+                }), c.share, function (name) {
+                    var el = document.getElementById('smb-share');
+                    if (el) el.value = name;
+                    // Back on the form once the picker has closed, rather
+                    // than wherever the D-pad focus was left.
+                    setTimeout(function () {
+                        var shareBtn = document.getElementById('smb-find-shares');
+                        if (shareBtn) UI.focusOn(shareBtn);
+                    }, 0);
+                });
+            });
+        });
+    }
+
     function wireSettingsForm() {
         var btn = document.getElementById('smb-save');
         if (!btn) return;
-        var ids = FORM_IDS;
         fillSettingsForm(getCreds());
+
+        var findBtn = document.getElementById('smb-find-shares');
+        if (findBtn) findBtn.addEventListener('click', findShares);
 
         var anonBtn = document.getElementById('smb-anon');
         if (anonBtn) anonBtn.addEventListener('click', function () { anonState = !anonState; paintAnon(); });
 
         btn.addEventListener('click', function () {
-            var nc = {};
-            ids.forEach(function (k) {
-                var el = document.getElementById('smb-' + k);
-                nc[k] = el ? el.value.trim() : '';
-            });
-            nc.anonymous = anonState;
-            var typedHost = nc.host;
-            var sv = normalizeServer(nc.host);
-            nc.host = sv.host;
-            // Share precedence: explicit Share field > the path typed after the
-            // host (smb://nas/Media, \\nas\Media) > nothing.
-            if (!nc.share && sv.share) nc.share = sv.share;
-            // Port precedence: explicit Port field > inline host:port > default.
-            var typedPort = parseInt(nc.port, 10);
-            nc.port = typedPort || sv.port || 445;
+            var hostEl = document.getElementById('smb-host');
+            var typedHost = hostEl ? hostEl.value.trim() : '';
+            var nc = readSettingsForm();
             setCreds(nc);
             dbg('settings saved: typed host=' + JSON.stringify(typedHost) +
                 ' → host=' + JSON.stringify(nc.host) + ' port=' + nc.port +
