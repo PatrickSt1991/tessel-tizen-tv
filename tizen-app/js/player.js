@@ -843,8 +843,9 @@ var Player = (function () {
 
     /* Label for a track read out of the MKV header: the muxer's own name
      * ('SDH', 'Latin America'), the language tag, and whichever flags tell
-     * two same-language tracks apart. */
-    function containerSubLabel(t, beyondAvplay) {
+     * two same-language tracks apart.  Bare: the "(embedded)" tag and the
+     * ⚠ mark are added when the row is shown (embeddedRowName). */
+    function containerSubLabel(t) {
         var tag  = (t.lang || '').toUpperCase();
         var bits = [];
         if (t.name) bits.push(t.name);
@@ -857,30 +858,60 @@ var Player = (function () {
             var human = LanguageList.nameFor(t.lang.split('-')[0]);
             if (human && human.toLowerCase() !== t.lang.toLowerCase()) bits.push(human);
         }
-        var label = ('(embedded) ' + (tag ? '[' + tag + '] ' : '') +
-                     bits.join(' · ')).replace(/\s+$/, '');
-        /* Marks a track nothing can reach: AVPlay never listed it, so it
-         * can't select it, and its subs are bitmaps, so we can't extract
-         * them either.  Text tracks past AVPlay's list are fine — they get
-         * read out of the container on demand. */
-        if (beyondAvplay && !containerSubExtractable(t)) label += ' ⚠';
-        return label;
+        return ((tag ? '[' + tag + '] ' : '') + bits.join(' · ')).replace(/\s+$/, '');
     }
 
     /* Two tracks can carry the same language and no distinguishing metadata —
      * a muxer that names one 'SDH' and only flags the other hearing-impaired
      * produces two identical rows.  Fall back to the container's track number
-     * so the menu never offers the same label twice. */
+     * so the menu never offers the same label twice.  Works on the bare
+     * baseName, before any tag or status is put around it. */
     function disambiguateLabels(rows, tracks) {
         var seen = {};
         var i;
         for (i = 0; i < rows.length; i++)
-            seen[rows[i].name] = (seen[rows[i].name] || 0) + 1;
+            seen[rows[i].baseName] = (seen[rows[i].baseName] || 0) + 1;
         for (i = 0; i < rows.length; i++) {
-            if (seen[rows[i].name] < 2) continue;
+            if (seen[rows[i].baseName] < 2) continue;
             var num = tracks[i] && tracks[i].number;
-            if (num) rows[i].name = rows[i].name.replace(/( ⚠)?$/, ' · track ' + num + '$1');
+            if (num) rows[i].baseName += ' · track ' + num;
         }
+    }
+
+    /* ── Subtitle labels ─────────────────────────────────────────────
+     *
+     * A track's state (still scanning, being extracted, cut short) is kept
+     * in fields on its entry, never in its name, and put into words only
+     * here, when the menu is built.  The name therefore stays what the
+     * track is called — safe to match a language preference against — and
+     * the status follows the UI language without anything having to parse
+     * a label back apart.
+     *
+     *   status    'scanning' | 'extracting' | 'partial' | null
+     *   progress  extraction percentage, for 'extracting'
+     *   _ordinal  set on tracks named "Embedded subtitle N (MP4)", whose
+     *             status reads inside the brackets */
+    function subEntryName(e) {
+        if (e._ordinal) {
+            var key = e.status === 'scanning' ? 'subs.embeddedScanning'
+                    : e.status === 'partial'  ? 'subs.embeddedPartial'
+                    : 'subs.embedded';
+            return I18n.t(key, e._ordinal, e._containerLabel);
+        }
+        var name = e._onDemand ? I18n.t('subs.embeddedTag', e.name) : e.name;
+        if (e.status === 'extracting') return I18n.t('subs.extracting', name, e.progress || 0);
+        if (e.status === 'partial')    return I18n.t('subs.partial', name, e.cues.length);
+        return name;
+    }
+
+    /* An embedded row the player hasn't read anything out of.  The ⚠ marks
+     * a track nothing can reach: AVPlay never listed it, so it can't select
+     * it, and its subs are bitmaps, so we can't extract them either.  Text
+     * tracks past AVPlay's list are fine — they get read out of the
+     * container on demand. */
+    function embeddedRowName(row) {
+        var name = I18n.t('subs.embeddedTag', row.baseName);
+        return (row.beyondAvplay && !row.extractable) ? name + ' ⚠' : name;
     }
     /* ── Tracks AVPlay lists but cannot select ────────────────────────
      *
@@ -913,9 +944,7 @@ var Player = (function () {
          * row in the menu. */
         if (activeTrackEntry) {
             if (activeTrackEntry.cues && activeTrackEntry.cues.length) {
-                activeTrackEntry._partial = true;
-                activeTrackEntry.name = trackRowBaseName(activeTrackEntry) +
-                    ' — partial (' + activeTrackEntry.cues.length + ' cues)';
+                activeTrackEntry.status = 'partial';
             } else {
                 dropOnDemandEntry(activeTrackEntry);
             }
@@ -938,13 +967,6 @@ var Player = (function () {
             if (playerSubtitles[i] === entry) { playerSubtitles.splice(i, 1); break; }
         }
         h5Subtitles = playerSubtitles;
-    }
-
-    /* Menu-row label without the state suffix this function appends. */
-    function trackRowBaseName(row) {
-        return String((row && row.name) || 'Embedded subtitle')
-            .replace(/ ⚠$/, '')
-            .replace(/ — (extracting.*|partial.*)$/, '');
     }
 
     /* Which TEXT track AVPlay says it is rendering right now.  -1 when it
@@ -1004,14 +1026,14 @@ var Player = (function () {
 
         var existing = onDemandEntryFor(num);
         /* Already read once: nothing to do but point the poller at it. */
-        if (existing && !existing._partial) {
+        if (existing && existing.status !== 'partial') {
             avNativeSubsAllowed = false;
             applyExternalSubtitleLive(existing);
             return 'cached';
         }
         if (typeof MkvSubs === 'undefined' || !MkvSubs.extractTrack || !subsSource) return null;
 
-        var base  = trackRowBaseName(row);
+        var base  = row.baseName || I18n.t('subs.numbered', num);
         var entry;
         if (existing) {
             /* Abandoned half-read when another track was picked.  Start it
@@ -1019,10 +1041,9 @@ var Player = (function () {
              * rather than leaving the gaps in place. */
             entry = existing;
             entry.cues.length = 0;
-            entry.name = base + ' — extracting 0%';
         } else {
             entry = {
-                name:            base + ' — extracting 0%',
+                name:            base,
                 lang:            row.lang || '',
                 ext:             'srt',
                 cues:            [],
@@ -1036,7 +1057,8 @@ var Player = (function () {
             playerSubtitles.push(entry);
             h5Subtitles = playerSubtitles;
         }
-        entry._partial = false;
+        entry.status   = 'extracting';
+        entry.progress = 0;
 
         /* Selected before a single cue has arrived: the poller holds this
          * array and paints whatever lands in it, so the track starts showing
@@ -1044,7 +1066,7 @@ var Player = (function () {
         avNativeSubsAllowed = false;
         applyExternalSubtitleLive(entry);
         emit('onsubsupdated');
-        emit('onsubnotice', I18n.t('subs.reading', base.replace(/^\(embedded\) /, '')));
+        emit('onsubnotice', I18n.t('subs.reading', base));
 
         cancelTrackExtraction('another track picked');
         var token    = ++trackExtractToken;
@@ -1057,8 +1079,7 @@ var Player = (function () {
             onCues: function (have, total) {
                 if (token !== trackExtractToken) return;
                 entry._cueCount = have;
-                entry.name = base + ' — extracting ' +
-                             (total ? Math.round(have * 100 / total) : 0) + '%';
+                entry.progress  = total ? Math.round(have * 100 / total) : 0;
                 /* The CC menu re-renders on this event and takes focus with
                  * it, so it fires at a pace a user can live with. */
                 var now = Date.now();
@@ -1082,11 +1103,10 @@ var Player = (function () {
                     currentExternalSub = null;
                 }
                 emit('onsubsupdated');
-                emit('onsubnotice', I18n.t('subs.cantRead', base.replace(/^\(embedded\) /, ''), subExtractReason(err)));
+                emit('onsubnotice', I18n.t('subs.cantRead', base, subExtractReason(err)));
                 return;
             }
-            entry._partial = !!err;
-            entry.name = base + (err ? ' — partial (' + entry.cues.length + ' cues)' : '');
+            entry.status = err ? 'partial' : null;
             emit('onsubsupdated');
             if (typeof Debug !== 'undefined')
                 Debug.player('on-demand sub track ' + num + ': ' + entry.cues.length + ' cues' +
@@ -1250,12 +1270,14 @@ var Player = (function () {
                         var s = tracks[i];
                         var hintedLang = languageHints[i] && languageHints[i].lang;
                         var entry = {
-                            name: 'Embedded subtitle ' + (i + 1) + ' (' + label + ', scanning)',
+                            name: I18n.t('subs.embedded', i + 1, label),
                             lang: hintedLang || s.lang || '',
                             ext: 'srt',
                             _extracted: true,
                             _incremental: true,
                             _containerLabel: label,
+                            _ordinal: i + 1,
+                            status: 'scanning',
                             _trackId: s.id,
                             _nativeTextIndex: languageHints[i] && languageHints[i].index,
                             _cueCount: 0,
@@ -1280,7 +1302,7 @@ var Player = (function () {
                     activeEmbeddedSubExtraction = null;
                     for (var key in entriesByTrack) {
                         var entry = entriesByTrack[key];
-                        entry.name = entry.name.replace(/, scanning(?: \d+%)?/, '');
+                        entry.status = null;
                         entry._cueCount = entry.cues.length;
                     }
                     emit('onsubsupdated');
@@ -1289,7 +1311,7 @@ var Player = (function () {
                     if (token !== lastExtractToken) return;
                     activeEmbeddedSubExtraction = null;
                     for (var key in entriesByTrack)
-                        entriesByTrack[key].name = entriesByTrack[key].name.replace(/, scanning(?: \d+%)?/, ', partial');
+                        entriesByTrack[key].status = 'partial';
                     emit('onsubsupdated');
                     if (typeof Debug !== 'undefined') Debug.warn(label + ' incremental sub extract failed: ' + (err.message || err));
                 }
@@ -1326,6 +1348,7 @@ var Player = (function () {
                             fullPath:   rec.fullPath,
                             _extracted: true,
                             _containerLabel: label,
+                            _ordinal:   i + 1,
                             _cueCount:  s.cues.length
                         });
                         if (typeof Debug !== 'undefined')
@@ -1783,16 +1806,18 @@ var Player = (function () {
                                  ' — extrapolating indices from ' + firstIdx + ' step ' + step);
 
                 var containerRows = [];
+                var containerGot  = [];
                 for (var mi = 0; mi < containerSubTracks.length; mi++) {
                     var ct    = containerSubTracks[mi];
                     var known = avTextTracks[mi];
                     var cIdx  = known ? known.index : (firstIdx + mi * step);
-                    /* A track already read out of the container keeps the
-                     * entry's name — it carries the extraction's progress. */
+                    /* A track already read out of the container is named
+                     * from its entry — that carries the extraction's state. */
                     var got   = onDemandEntryFor(ct.number);
+                    containerGot.push(got);
                     containerRows.push({
                         index:  'embed:' + cIdx,
-                        name:   got ? got.name : containerSubLabel(ct, !known),
+                        baseName: containerSubLabel(ct),
                         lang:   ct.lang || (known && known.lang) || '',
                         type:   'AVPLAY_EMBED',
                         /* The container's own track number, which is what
@@ -1813,8 +1838,11 @@ var Player = (function () {
                     });
                 }
                 disambiguateLabels(containerRows, containerSubTracks);
-                for (var ri = 0; ri < containerRows.length; ri++)
+                for (var ri = 0; ri < containerRows.length; ri++) {
+                    containerRows[ri].name = containerGot[ri] ? subEntryName(containerGot[ri])
+                                                              : embeddedRowName(containerRows[ri]);
                     out.subtitle.push(containerRows[ri]);
+                }
             } else if (showEmbed) {
                 for (var ni = 0; ni < avTextTracks.length; ni++) {
                     var nt  = avTextTracks[ni];
@@ -1825,7 +1853,8 @@ var Player = (function () {
                     var ext = cnt ? onDemandEntryFor(cnt.number) : null;
                     out.subtitle.push({
                         index:  'embed:' + nt.index,
-                        name:   ext ? ext.name : ('(embedded) ' + nt.label),
+                        name:   ext ? subEntryName(ext) : I18n.t('subs.embeddedTag', nt.label),
+                        baseName: nt.label,
                         lang:   nt.lang || (cnt && cnt.lang) || '',
                         type:   'AVPLAY_EMBED',
                         mkvTrack:    cnt ? cnt.number : 0,
@@ -1848,7 +1877,7 @@ var Player = (function () {
             for (var k = 0; k < playerSubtitles.length; k++) {
                 var s = playerSubtitles[k];
                 if (s._onDemand) continue;      // shown as its embedded row
-                var label = (s.lang ? '[' + s.lang.toUpperCase() + '] ' : '') + s.name;
+                var label = (s.lang ? '[' + s.lang.toUpperCase() + '] ' : '') + subEntryName(s);
                 out.subtitle.push({
                     index:  'ext:' + k,
                     name:   label,
@@ -1906,7 +1935,7 @@ var Player = (function () {
                 var s = h5Subtitles[k];
                 out.subtitle.push({
                     index:  k,
-                    name:   (s.lang ? '[' + s.lang.toUpperCase() + '] ' : '') + s.name,
+                    name:   (s.lang ? '[' + s.lang.toUpperCase() + '] ' : '') + subEntryName(s),
                     type:   'HTML5_EXTERNAL',
                     active: false  // set when activated
                 });
