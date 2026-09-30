@@ -79,7 +79,9 @@ func (c *Caps) buildArgs(in string, p Plan, dir string) []string {
 	a = append(a, "-i", in)
 
 	// One video + one audio track; subtitles are handled by the app, not muxed.
-	a = append(a, "-map", "0:v:0?", "-map", "0:a:0?", "-sn")
+	// Capital V skips cover art: mapped, its single frame would be the only
+	// keyframe, and the HLS muxer would cut the whole file into one segment.
+	a = append(a, "-map", "0:V:0?", "-map", "0:a:0?", "-sn")
 
 	// ── video ──────────────────────────────────────────────────────────
 	if p.CopyVideo {
