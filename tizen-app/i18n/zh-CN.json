@@ -293,5 +293,11 @@
   "text.truncated": "显示前 {0}，共 {1}",
   "playlist.reading": "正在读取播放列表…",
   "playlist.empty": "此播放列表中没有 Tessel 可以播放的内容。",
-  "playlist.ungrouped": "其他"
+  "playlist.ungrouped": "其他",
+  "repeat.all": "全部循环",
+  "repeat.allOption": "循环整个文件夹",
+  "mini.stopped": "已停止",
+  "mini.skipped": "无法播放 {0}，已跳过",
+  "hint.openPlayer": "打开播放器",
+  "hint.stop": "停止"
 }

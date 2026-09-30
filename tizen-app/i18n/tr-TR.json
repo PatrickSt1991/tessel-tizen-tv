@@ -293,5 +293,11 @@
   "text.truncated": "{1} içinden ilk {0} gösteriliyor",
   "playlist.reading": "Oynatma listesi okunuyor…",
   "playlist.empty": "Bu listede Tessel’in oynatabileceği bir şey yok.",
-  "playlist.ungrouped": "Diğer"
+  "playlist.ungrouped": "Diğer",
+  "repeat.all": "Tümünü tekrarla",
+  "repeat.allOption": "Tüm klasörü tekrarla",
+  "mini.stopped": "Durduruldu",
+  "mini.skipped": "{0} oynatılamadı — atlanıyor",
+  "hint.openPlayer": "oynatıcıyı aç",
+  "hint.stop": "durdur"
 }

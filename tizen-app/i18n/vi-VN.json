@@ -293,5 +293,11 @@
   "text.truncated": "đang hiển thị {0} đầu tiên trong {1}",
   "playlist.reading": "Đang đọc danh sách phát…",
   "playlist.empty": "Danh sách phát này không có gì Tessel phát được.",
-  "playlist.ungrouped": "Khác"
+  "playlist.ungrouped": "Khác",
+  "repeat.all": "Lặp lại tất cả",
+  "repeat.allOption": "Lặp lại cả thư mục",
+  "mini.stopped": "Đã dừng",
+  "mini.skipped": "Không phát được {0} — bỏ qua",
+  "hint.openPlayer": "mở trình phát",
+  "hint.stop": "dừng"
 }

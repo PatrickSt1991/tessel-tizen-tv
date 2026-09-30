@@ -293,5 +293,11 @@
   "text.truncated": "showing the first {0} of {1}",
   "playlist.reading": "Reading the playlist…",
   "playlist.empty": "This playlist has nothing Tessel can play.",
-  "playlist.ungrouped": "Other"
+  "playlist.ungrouped": "Other",
+  "repeat.all": "Repeat all",
+  "repeat.allOption": "Repeat the whole folder",
+  "mini.stopped": "Stopped",
+  "mini.skipped": "Couldn’t play {0} — skipping",
+  "hint.openPlayer": "open player",
+  "hint.stop": "stop"
 }

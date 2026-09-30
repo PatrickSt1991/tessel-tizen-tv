@@ -293,5 +293,11 @@
   "text.truncated": "viser de første {0} av {1}",
   "playlist.reading": "Leser spillelisten…",
   "playlist.empty": "Spillelisten har ingenting Tessel kan spille av.",
-  "playlist.ungrouped": "Andre"
+  "playlist.ungrouped": "Andre",
+  "repeat.all": "Gjenta alle",
+  "repeat.allOption": "Gjenta hele mappen",
+  "mini.stopped": "Stoppet",
+  "mini.skipped": "Kunne ikke spille av {0} — hopper over",
+  "hint.openPlayer": "åpne spilleren",
+  "hint.stop": "stopp"
 }

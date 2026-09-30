@@ -293,5 +293,11 @@
   "text.truncated": "se afișează primii {0} din {1}",
   "playlist.reading": "Se citește lista de redare…",
   "playlist.empty": "Această listă nu conține nimic ce poate reda Tessel.",
-  "playlist.ungrouped": "Altele"
+  "playlist.ungrouped": "Altele",
+  "repeat.all": "Repetă tot",
+  "repeat.allOption": "Repetă tot dosarul",
+  "mini.stopped": "Oprit",
+  "mini.skipped": "{0} nu a putut fi redat — se sare",
+  "hint.openPlayer": "deschide playerul",
+  "hint.stop": "oprește"
 }

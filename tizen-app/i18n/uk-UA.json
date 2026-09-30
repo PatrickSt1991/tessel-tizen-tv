@@ -293,5 +293,11 @@
   "text.truncated": "показано перші {0} з {1}",
   "playlist.reading": "Читання плейлиста…",
   "playlist.empty": "У цьому плейлисті немає нічого, що Tessel може відтворити.",
-  "playlist.ungrouped": "Інше"
+  "playlist.ungrouped": "Інше",
+  "repeat.all": "Повторювати все",
+  "repeat.allOption": "Повторювати всю теку",
+  "mini.stopped": "Зупинено",
+  "mini.skipped": "Не вдалося відтворити {0} — пропуск",
+  "hint.openPlayer": "відкрити плеєр",
+  "hint.stop": "стоп"
 }

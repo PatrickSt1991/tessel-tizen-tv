@@ -293,5 +293,11 @@
   "text.truncated": "показаны первые {0} из {1}",
   "playlist.reading": "Чтение плейлиста…",
   "playlist.empty": "В этом плейлисте нет ничего, что Tessel может воспроизвести.",
-  "playlist.ungrouped": "Другое"
+  "playlist.ungrouped": "Другое",
+  "repeat.all": "Повторять все",
+  "repeat.allOption": "Повторять всю папку",
+  "mini.stopped": "Остановлено",
+  "mini.skipped": "Не удалось воспроизвести {0} — пропуск",
+  "hint.openPlayer": "открыть плеер",
+  "hint.stop": "стоп"
 }

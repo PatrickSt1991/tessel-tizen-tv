@@ -293,5 +293,11 @@
   "text.truncated": "zobrazeno prvních {0} z {1}",
   "playlist.reading": "Načítání playlistu…",
   "playlist.empty": "Tento playlist neobsahuje nic, co by Tessel přehrál.",
-  "playlist.ungrouped": "Ostatní"
+  "playlist.ungrouped": "Ostatní",
+  "repeat.all": "Opakovat vše",
+  "repeat.allOption": "Opakovat celou složku",
+  "mini.stopped": "Zastaveno",
+  "mini.skipped": "{0} nelze přehrát — přeskakuji",
+  "hint.openPlayer": "otevřít přehrávač",
+  "hint.stop": "zastavit"
 }

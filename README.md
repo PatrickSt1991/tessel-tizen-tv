@@ -8,7 +8,7 @@ through Samsung's AVPlay.
 
 - **Plays almost anything the TV can decode** — H.264 / HEVC / VP9, AAC / MP3 / AC3 / EAC3, HLS / DASH / RTSP / RTMP
 - **USB, internal storage and SMB shares** — browse and stream from a NAS, Windows or Samba, with as many servers as you like
-- **Now playing with tags** — title, artist, album and cover art from ID3, FLAC, Ogg/Opus and M4A files
+- **Music that plays on while you browse** — title, artist, album and cover art from ID3, FLAC, Ogg/Opus and M4A tags, a mini-player, repeat one / all, CH± to skip
 - **Pictures, text and playlists too** — a photo viewer with slideshow, a text viewer that reads Cyrillic and Western legacy encodings, and M3U / PLS lists (IPTV channels grouped by category) off a URL, USB or a share
 - **Cast a URL from your phone** — scan a QR once, paste a link, it plays. No account, no app
 - **Subtitles that actually show** — SRT / VTT / ASS / SAMI sidecars and embedded MP4 / MKV tracks, painted by the app with adjustable size, font, position and background

@@ -293,5 +293,11 @@
   "text.truncated": "عرض أول {0} من {1}",
   "playlist.reading": "جارٍ قراءة قائمة التشغيل…",
   "playlist.empty": "لا تحتوي قائمة التشغيل هذه على شيء يمكن لـ Tessel تشغيله.",
-  "playlist.ungrouped": "أخرى"
+  "playlist.ungrouped": "أخرى",
+  "repeat.all": "تكرار الكل",
+  "repeat.allOption": "تكرار المجلد بأكمله",
+  "mini.stopped": "تم الإيقاف",
+  "mini.skipped": "تعذّر تشغيل {0} — تخطٍّ",
+  "hint.openPlayer": "فتح المشغّل",
+  "hint.stop": "إيقاف"
 }

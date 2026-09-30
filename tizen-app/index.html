@@ -383,6 +383,23 @@
     <button class="btn ghost" data-action="close-picker" data-i18n="common.cancel">Cancel</button>
 </div>
 
+<!-- ── Mini-player: music playing on while browsing (issue #105) ───── -->
+<div class="mini-player hidden" id="mini-player">
+    <img class="mini-art hidden" id="mini-art" alt="">
+    <div class="mini-note" id="mini-note">♪</div>
+    <div class="mini-text">
+        <div class="mini-title" id="mini-title"></div>
+        <div class="mini-sub" id="mini-sub"></div>
+        <div class="mini-track"><div class="mini-fill" id="mini-fill"></div></div>
+        <div class="mini-keys">
+            <span class="key">INFO</span> <span data-i18n="hint.openPlayer">open player</span>
+            <span class="key">CH ±</span> <span data-i18n="hint.prevNext">previous / next</span>
+            <span class="key">■</span> <span data-i18n="hint.stop">stop</span>
+        </div>
+    </div>
+    <div class="mini-state" id="mini-state">▶</div>
+</div>
+
 <!-- ── Toast / status flash ──────────────────────────────────────────── -->
 <div id="toast" class="toast hidden"></div>
 

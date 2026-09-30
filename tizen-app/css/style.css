@@ -669,7 +669,7 @@ button:focus { outline: none; }
     color: var(--accent);
     background: var(--accent-soft);
 }
-.ctrl.repeat-on::after {
+.ctrl.repeat-one::after {
     content: '1';
     position: absolute;
     top: -2px; right: -2px;
@@ -1068,3 +1068,40 @@ button:focus { outline: none; }
 /* Listed, but nothing in the app opens it. */
 .browse-list li.unopenable .name,
 .browse-list li.unopenable .icon { opacity: .55; }
+
+/* ── Mini-player ──────────────────────────────────────────────────── */
+.mini-player {
+    position: fixed; right: 36px; bottom: 36px;
+    width: 600px;
+    display: flex; align-items: center;
+    padding: 16px 20px;
+    background: rgba(20, 30, 46, .96);
+    border: 2px solid var(--accent);
+    border-radius: var(--r);
+    box-shadow: var(--shadow);
+    z-index: 90;               /* above the views, below the toast */
+    text-align: left;
+}
+.mini-art, .mini-note {
+    width: 96px; height: 96px; flex: 0 0 96px;
+    border-radius: var(--r-sm);
+    object-fit: cover;
+}
+.mini-note {
+    background: var(--bg-card);
+    color: var(--accent);
+    font-size: 52px; line-height: 96px; text-align: center;
+}
+.mini-text { flex: 1; min-width: 0; margin-left: 20px; }
+.mini-title, .mini-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-title { font-size: 24px; }
+.mini-sub { font-size: 18px; color: var(--fg-mute); margin-top: 2px; }
+.mini-track { height: 6px; margin: 10px 0 8px; background: var(--bg-3); border-radius: 3px; overflow: hidden; }
+.mini-fill { height: 100%; width: 0; background: var(--accent); }
+.mini-keys { font-size: 14px; color: var(--fg-mute); }
+.mini-keys .key { font-size: 12px; padding: 2px 6px; margin: 0 2px; }
+.mini-state { font-size: 32px; color: var(--accent); margin-left: 16px; flex-shrink: 0; }
+.browse-list li.now-playing .name { color: var(--accent); }
+.browse-list li.now-playing::after { content: '♪'; color: var(--accent); margin-left: 24px; font-size: 24px; }
+/* Room under the last row, so it can scroll clear of the mini-player. */
+.mini-on .browse-list { padding-bottom: 120px; }

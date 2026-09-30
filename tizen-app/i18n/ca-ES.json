@@ -293,5 +293,11 @@
   "text.truncated": "es mostren els primers {0} de {1}",
   "playlist.reading": "S’està llegint la llista de reproducció…",
   "playlist.empty": "Aquesta llista no té res que el Tessel pugui reproduir.",
-  "playlist.ungrouped": "Altres"
+  "playlist.ungrouped": "Altres",
+  "repeat.all": "Repeteix-ho tot",
+  "repeat.allOption": "Repeteix tota la carpeta",
+  "mini.stopped": "Aturat",
+  "mini.skipped": "No s’ha pogut reproduir {0}: s’omet",
+  "hint.openPlayer": "obre el reproductor",
+  "hint.stop": "atura"
 }
