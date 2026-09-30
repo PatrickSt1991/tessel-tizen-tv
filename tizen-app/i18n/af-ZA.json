@@ -293,5 +293,11 @@
   "text.truncated": "wys die eerste {0} van {1}",
   "playlist.reading": "Lees die snitlys…",
   "playlist.empty": "Hierdie snitlys het niks wat Tessel kan speel nie.",
-  "playlist.ungrouped": "Ander"
+  "playlist.ungrouped": "Ander",
+  "repeat.all": "Herhaal alles",
+  "repeat.allOption": "Herhaal die hele vouer",
+  "mini.stopped": "Gestop",
+  "mini.skipped": "Kon {0} nie speel nie — oorgeslaan",
+  "hint.openPlayer": "maak speler oop",
+  "hint.stop": "stop"
 }

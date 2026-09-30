@@ -293,5 +293,11 @@
   "text.truncated": "pokazano pierwsze {0} z {1}",
   "playlist.reading": "Odczytywanie playlisty…",
   "playlist.empty": "Ta playlista nie zawiera nic, co Tessel może odtworzyć.",
-  "playlist.ungrouped": "Inne"
+  "playlist.ungrouped": "Inne",
+  "repeat.all": "Powtarzaj wszystko",
+  "repeat.allOption": "Powtarzaj cały folder",
+  "mini.stopped": "Zatrzymano",
+  "mini.skipped": "Nie można odtworzyć {0} — pomijam",
+  "hint.openPlayer": "otwórz odtwarzacz",
+  "hint.stop": "zatrzymaj"
 }

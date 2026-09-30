@@ -293,5 +293,11 @@
   "text.truncated": "{1} 중 처음 {0} 표시 중",
   "playlist.reading": "재생목록을 읽는 중…",
   "playlist.empty": "이 재생목록에는 Tessel이 재생할 수 있는 항목이 없습니다.",
-  "playlist.ungrouped": "기타"
+  "playlist.ungrouped": "기타",
+  "repeat.all": "전체 반복",
+  "repeat.allOption": "폴더 전체 반복",
+  "mini.stopped": "중지됨",
+  "mini.skipped": "{0}을(를) 재생할 수 없어 건너뜁니다",
+  "hint.openPlayer": "플레이어 열기",
+  "hint.stop": "중지"
 }

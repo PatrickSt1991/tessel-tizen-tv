@@ -293,5 +293,11 @@
   "text.truncated": "de eerste {0} van {1}",
   "playlist.reading": "Afspeellijst lezen…",
   "playlist.empty": "Deze afspeellijst bevat niets wat Tessel kan afspelen.",
-  "playlist.ungrouped": "Overig"
+  "playlist.ungrouped": "Overig",
+  "repeat.all": "Alles herhalen",
+  "repeat.allOption": "De hele map herhalen",
+  "mini.stopped": "Gestopt",
+  "mini.skipped": "Kon {0} niet afspelen — overgeslagen",
+  "hint.openPlayer": "speler openen",
+  "hint.stop": "stoppen"
 }

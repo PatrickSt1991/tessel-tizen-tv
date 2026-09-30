@@ -162,7 +162,17 @@
         listBack:   null,
         // The playlist being shown, so leaving the player can return to it:
         // { src, entries, group }.
-        playlistView: null
+        playlistView: null,
+        // Where leaving the player goes when the list came from elsewhere
+        // (the SMB browser hands this over): fn({ uri, title }).
+        originBack: null,
+        // Music playing on while the user browses, with the mini-player up
+        // (issue #105).  See minimizePlayer().
+        background: false,
+        playingIsAudio: false,
+        // Files that failed in a row in the background, so a folder of
+        // broken files can't cycle forever under repeat-all.
+        bgErrors:   0
     };
     // Latest progress sample, used to decide partial-watch → watched on exit.
     var lastProgress = { time: 0, duration: 0 };
@@ -226,7 +236,9 @@
         Player.setListener('onstatechange', function (s) {
             if (typeof Debug !== 'undefined') Debug.player('state → ' + s);
             updatePlayPauseButton(s);
+            updateMiniPlayer();
             if (s === 'playing') {
+                state.bgErrors = 0;
                 /* Don't clear the watchdog here — it needs to keep running so
                  * it can detect the "PLAYING but stuck at time=0" case.  The
                  * watchdog disarms itself once it sees time advancing. */
@@ -284,6 +296,7 @@
             // position, not the real playhead.
             if (!scrub.active && !scrub.waiting)
                 updateProgress(p && p.time, p && p.duration);
+            if (state.background) updateMiniProgress();
             // Prev lights up as Restart once past the first seconds.
             var canRestart = lastProgress.time > RESTART_THRESHOLD_MS;
             if (canRestart !== prevRestartLit) { prevRestartLit = canRestart; updateNextPrevButtons(); }
@@ -304,10 +317,12 @@
             }
             // A file that played to the end counts as watched.
             markWatched(state.playingUri);
-            // Auto-play the next sibling if enabled and one exists.
-            if (Settings.get('autoPlay') && playNext(true)) return;
+            // Auto-play the next sibling if enabled and one exists; repeat-all
+            // goes on by definition, wrapping round at the end.
+            if ((Settings.get('autoPlay') || Settings.get('repeatMode') === 'all') && playNext(true)) return;
             UI.toast(I18n.t('player.finished'));
-            exitPlayer();
+            if (state.background) stopBackground();
+            else exitPlayer();
         });
         // A track being read out of the container, or one that turned out
         // unreadable — the only place the user hears about either.
@@ -618,6 +633,7 @@
             });
             if (!ul.children.length)
                 ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + escapeHtml(I18n.t('browse.empty')) + '</span></li>';
+            markNowPlaying();
             UI.refreshFocusables();
             UI.focusOn(focus || ul.firstElementChild);
         });
@@ -643,6 +659,7 @@
         });
         list.forEach(function (item, i) {
             var li = document.createElement('li');
+            li.dataset.uri = item.uri;
             var watched = isWatched(item.uri);
             if (watched) li.classList.add('watched-item');
             var watchedBadge = watched ? '<span class="watched" title="' + escapeHtml(I18n.t('browse.watched')) + '">✓</span>' : '';
@@ -655,6 +672,7 @@
             });
             ul.appendChild(li);
         });
+        markNowPlaying();
         UI.refreshFocusables();
         UI.focusOn(ul.firstElementChild);
     }
@@ -764,6 +782,7 @@
                 if (focusUri && e.uri === focusUri) focus = li;
             });
         }
+        markNowPlaying();
         UI.refreshFocusables();
         UI.focusOn(focus || ul.firstElementChild);
     }
@@ -805,7 +824,7 @@
      * listener). */
     function onVisibilityChange() {
         if (document.visibilityState === 'hidden') {
-            if (state.view !== 'player' || !state.playingUri) return;
+            if ((state.view !== 'player' && !state.background) || !state.playingUri) return;
             var subs = [];
             var cur = state.playlist[state.playlistIndex];
             if (cur && cur.subtitles) subs = cur.subtitles;
@@ -817,6 +836,7 @@
                 // it carries size/path APIs used by incremental extraction.
                 file:      cur && cur.file ? cur.file : null,
                 tagSrc:    cur && cur.tagSrc ? cur.tagSrc : null,
+                background: state.background,
                 pos:       Player.currentTime() || 0,
                 paused:    Player.state() === 'PAUSED'
             };
@@ -835,6 +855,7 @@
                 subtitles: ss.subtitles,
                 file:      ss.file,
                 tagSrc:    ss.tagSrc,
+                background: ss.background,
                 resume:    { pos: ss.pos, paused: ss.paused }
             });
         }
@@ -898,15 +919,25 @@
         state.playingTitle = title || uri;
         state.directFallback = null;
         updateNextPrevButtons();
-        UI.showView('view-player'); state.view = 'player';
-        if (typeof Debug !== 'undefined') Debug.view('player');
+        // In the background (next track while browsing) the screen stays
+        // where the user is; only the mini-player follows along.
+        if (opts.background) {
+            state.background = true;
+        } else {
+            state.background = false;
+            UI.showView('view-player'); state.view = 'player';
+            if (typeof Debug !== 'undefined') Debug.view('player');
+        }
 
         document.getElementById('osd-title').textContent = title || uri;
         var isAudio = FileTypes.kind(title || '') === 'audio' ||
                       FileTypes.kind(String(uri).split('?')[0]) === 'audio';
         document.getElementById('audio-card').classList.toggle('hidden', !isAudio);
         document.getElementById('audio-title').textContent = isAudio ? (title || uri) : '';
+        state.playingIsAudio = isAudio;
         showAudioTags(isAudio ? uri : null, opts);
+        updateMiniPlayer();
+        markNowPlaying();
         document.getElementById('osd-top').classList.remove('hidden');
         document.getElementById('osd-bottom').classList.remove('hidden');
         showSpinner(I18n.t('player.openingShort'));
@@ -1043,6 +1074,7 @@
         document.getElementById('audio-sub').textContent =
             [artist, t.album].filter(Boolean).join('  ·  ');
         if (t.picture) setCoverArt(t.picture);
+        updateMiniPlayer();
     }
 
     /* A blob: URL for the art, released again with the next file. */
@@ -1059,7 +1091,7 @@
             artUrl = URL.createObjectURL(new Blob([pic.bytes], { type: pic.mime }));
         } catch (e) { return; }
         // A picture the TV can't decode leaves the note up.
-        img.onload  = function () { img.classList.remove('hidden'); note.classList.add('hidden'); };
+        img.onload  = function () { img.classList.remove('hidden'); note.classList.add('hidden'); updateMiniPlayer(); };
         img.onerror = function () { setCoverArt(null); };
         img.src = artUrl;
     }
@@ -1105,9 +1137,14 @@
         }
         return out;
     }
-    function playFromList(origin, playlist, idx, dir) {
+    function playFromList(origin, playlist, idx, dir, back) {
+        // OK on the song that's playing on in the background: back to it,
+        // not a restart.
+        var picked = playlist && playlist[idx];
+        if (state.background && picked && picked.uri === state.playingUri) { restorePlayer(); return; }
         state.origin        = origin;
         state.originDir     = dir;
+        state.originBack    = back || null;
         if (Settings.get('shuffle') && playlist && playlist.length > 1) {
             state.playlist      = shufflePlaylist(playlist, idx);
             state.playlistIndex = 0;
@@ -1119,13 +1156,33 @@
         if (!item) return;
         playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null, askResume: true });
     }
+    /* The next (+1) or previous (−1) item to play, wrapping round under
+     * repeat-all, or -1.  In the background only music counts: a video in
+     * the same folder would play on behind the list with nobody seeing it. */
+    function stepIndex(dir) {
+        var n = state.playlist.length, i = state.playlistIndex;
+        if (i < 0 || !n) return -1;
+        var wrap = Settings.get('repeatMode') === 'all';
+        for (var k = 0; k < n; k++) {
+            i += dir;
+            if (i < 0 || i >= n) {
+                if (!wrap) return -1;
+                i = (i + n) % n;
+            }
+            if (i === state.playlistIndex) return -1;   // all the way round
+            var it = state.playlist[i];
+            if (!state.background || FileTypes.kind(it.title || it.uri) === 'audio') return i;
+        }
+        return -1;
+    }
     function playNext(isAuto) {
-        var ni = state.playlistIndex + 1;
-        if (state.playlistIndex < 0 || ni >= state.playlist.length) return false;
+        var ni = stepIndex(+1);
+        if (ni < 0) return false;
         var item = state.playlist[ni];
         state.playlistIndex = ni;
         if (isAuto) UI.toast(I18n.t('player.upNext', item.title));
-        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null });
+        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null,
+                                        background: state.background });
         return true;
     }
     /* OSD Prev / MediaTrackPrevious: restart the current file when we're
@@ -1144,11 +1201,12 @@
         if (!playPrev()) UI.toast(I18n.t('player.noPrev'));
     }
     function playPrev() {
-        if (state.playlistIndex <= 0) return false;
-        var pi = state.playlistIndex - 1;
+        var pi = stepIndex(-1);
+        if (pi < 0) return false;
         var item = state.playlist[pi];
         state.playlistIndex = pi;
-        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null });
+        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null,
+                                        background: state.background });
         return true;
     }
     /* Dim the prev/next OSD buttons when there's nothing on that side.
@@ -1156,15 +1214,23 @@
     function updateNextPrevButtons() {
         var prev = document.getElementById('btn-prev');
         var next = document.getElementById('btn-next');
+        var wraps = Settings.get('repeatMode') === 'all' && state.playlist.length > 1;
         if (prev) prev.classList.toggle('disabled',
-            state.playlistIndex <= 0 && lastProgress.time <= RESTART_THRESHOLD_MS);
+            !wraps && state.playlistIndex <= 0 && lastProgress.time <= RESTART_THRESHOLD_MS);
         if (next) next.classList.toggle('disabled',
-            state.playlistIndex < 0 || state.playlistIndex + 1 >= state.playlist.length);
+            state.playlistIndex < 0 || (!wraps && state.playlistIndex + 1 >= state.playlist.length));
     }
 
     /* Leave the player and return to the menu playback was launched from,
      * rather than always jumping back to the home screen. */
     function exitPlayer() {
+        stopPlayback();
+        returnToOrigin();
+    }
+
+    /* Stop for good: watched / resume bookkeeping, the decoder released, the
+     * mini-player gone. */
+    function stopPlayback() {
         // Watched ≥ 90 % counts as seen even if the user stops before the end
         // (markWatched also drops the resume position); anything short of
         // that keeps its position so the file can pick up where it left off.
@@ -1175,12 +1241,120 @@
 
         resetScrub();
         Player.stop();
+        state.background = false;
+        hideMiniPlayer();
+        markNowPlaying();
         hideError();
         document.getElementById('osd-top').classList.add('hidden');
         document.getElementById('osd-bottom').classList.add('hidden');
         closeTrackMenu();
+    }
 
-        if (state.origin === 'browse' && state.originDir) {
+    /* ── Music in the background (issue #105) ────────────────────────
+     * BACK on a song that's playing doesn't stop it: the user goes back to
+     * the list it came from and it plays on, with a mini-player in the
+     * corner and auto-play / repeat carrying on through the folder.  The
+     * media keys still work from any screen (see backgroundKeys); OK on
+     * the playing song, or INFO, brings the full player back, and Stop
+     * ends it.  Video always stops on BACK, as before. */
+    function minimizePlayer() {
+        if (scrub.active) commitScrub();
+        state.background = true;
+        closeTrackMenu();
+        clearTimeout(osdHideTimer);
+        document.getElementById('osd-top').classList.add('hidden');
+        document.getElementById('osd-bottom').classList.add('hidden');
+        if (typeof Debug !== 'undefined') Debug.player('playing on in the background: ' + state.playingTitle);
+        returnToOrigin();
+        updateMiniPlayer();
+        markNowPlaying();
+    }
+    function restorePlayer() {
+        if (!state.background) return;
+        if (typeof SMB !== 'undefined' && SMB.detach) SMB.detach();   // its BACK would steer the player
+        state.listBack = null;
+        state.background = false;
+        hideMiniPlayer();
+        UI.showView('view-player'); state.view = 'player';
+        flashOSD();
+    }
+    function stopBackground() {
+        stopPlayback();
+        UI.toast(I18n.t('mini.stopped'));
+    }
+    /* A file that won't play in the background: say so and move on, but
+     * give up after a whole list of failures. */
+    function backgroundError(msg) {
+        clearInterval(openWatchdog);
+        if (typeof Debug !== 'undefined') Debug.error('background: ' + msg);
+        UI.toast(I18n.t('mini.skipped', state.playingTitle));
+        state.bgErrors++;
+        if (state.bgErrors < Math.max(1, state.playlist.length) && playNext(true)) return;
+        stopBackground();
+    }
+
+    /* The remote while music plays on behind another screen. */
+    function backgroundKeys(code) {
+        var K = Remote.KEY;
+        switch (code) {
+            case K.PLAY: case K.PAUSE: case K.PLAYPAUSE:
+                Player.togglePause(); updateMiniPlayer(); return true;
+            case K.STOP:    stopBackground(); return true;
+            case K.FF:      Player.seekRel( 30000); return true;
+            case K.REWIND:  Player.seekRel(-30000); return true;
+            case K.CH_UP:   case K.TRACK_NEXT:
+                if (!playNext(false)) UI.toast(I18n.t('player.noNext')); return true;
+            case K.CH_DOWN: case K.TRACK_PREV:
+                handlePrev(); return true;
+            case K.INFO:    restorePlayer(); return true;
+        }
+        return false;
+    }
+
+    function updateMiniPlayer() {
+        var mini = document.getElementById('mini-player');
+        if (!mini) return;
+        var on = state.background && !!state.playingUri;
+        document.body.classList.toggle('mini-on', on);
+        if (!on) { mini.classList.add('hidden'); return; }
+        mini.classList.remove('hidden');
+        document.getElementById('mini-title').textContent = document.getElementById('audio-title').textContent || state.playingTitle;
+        document.getElementById('mini-sub').textContent   = document.getElementById('audio-sub').textContent;
+        var art = document.getElementById('audio-art'), mArt = document.getElementById('mini-art');
+        var hasArt = !art.classList.contains('hidden') && art.getAttribute('src');
+        if (hasArt) mArt.src = art.getAttribute('src'); else mArt.removeAttribute('src');
+        mArt.classList.toggle('hidden', !hasArt);
+        document.getElementById('mini-note').classList.toggle('hidden', !!hasArt);
+        document.getElementById('mini-state').textContent = Player.state() === 'PAUSED' ? '❚❚' : '▶';
+        updateMiniProgress();
+    }
+    function updateMiniProgress() {
+        var f = document.getElementById('mini-fill');
+        if (!f) return;
+        var pct = lastProgress.duration ? Math.min(100, lastProgress.time / lastProgress.duration * 100) : 0;
+        f.style.width = pct.toFixed(1) + '%';
+    }
+    function hideMiniPlayer() {
+        var mini = document.getElementById('mini-player');
+        if (mini) mini.classList.add('hidden');
+        document.body.classList.remove('mini-on');
+    }
+    /* ♪ on the row of whatever plays on in the background. */
+    function markNowPlaying() {
+        var uri = state.background ? state.playingUri : null;
+        var rows = document.querySelectorAll('#browse-list li[data-uri]');
+        for (var i = 0; i < rows.length; i++)
+            rows[i].classList.toggle('now-playing', !!uri && rows[i].dataset.uri === uri);
+    }
+
+    /* Back to the list playback was launched from, rather than always
+     * jumping home. */
+    function returnToOrigin() {
+        if (state.originBack) {
+            if (typeof Debug !== 'undefined') Debug.view('origin (return)');
+            state.view = 'browse';
+            state.originBack({ uri: state.playingUri, title: state.playingTitle });
+        } else if (state.origin === 'browse' && state.originDir) {
             if (typeof Debug !== 'undefined') Debug.view('browse (return)');
             UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = false;
             listInto(state.originDir, state.playingUri);
@@ -1198,7 +1372,8 @@
     function backToHome() {
         if (typeof Debug !== 'undefined') Debug.view('home');
         resetScrub();
-        Player.stop();
+        // Music playing on in the background keeps playing on the home screen.
+        if (!state.background) Player.stop();
         state.view = 'home';
         state.listBack = null;
         state.playlistView = null;
@@ -1232,6 +1407,9 @@
     /* ── OSD show/hide ────────────────────────────────────────────── */
     var osdHideTimer = null;
     function showOSD(visible) {
+        // Music in the background: no OSD to show, and focusing its buttons
+        // would pull the cursor out of the list the user is in.
+        if (visible && state.view !== 'player') return;
         var wasHidden = document.getElementById('osd-bottom').classList.contains('hidden');
         document.getElementById('osd-top').classList.toggle('hidden', !visible);
         document.getElementById('osd-bottom').classList.toggle('hidden', !visible);
@@ -1405,6 +1583,7 @@
     /* kind 'codec': the message is our own (and so translated), and the
      * codec hint below can't be matched out of its text. */
     function showError(msg, kind) {
+        if (state.background) { backgroundError(msg); return; }
         // Hide all sibling overlays so the error stays the only focusable thing
         document.getElementById('osd-top').classList.add('hidden');
         document.getElementById('osd-bottom').classList.add('hidden');
@@ -1486,7 +1665,7 @@
         document.getElementById('setting-ui-lang-value').textContent       = uiLanguageName(Settings.get('uiLanguage'));
         document.getElementById('setting-audio-lang-value').textContent    = LanguageList.nameFor(Settings.get('audioLang'));
         document.getElementById('setting-subtitle-lang-value').textContent = LanguageList.nameFor(Settings.get('subtitleLang'));
-        document.getElementById('setting-repeat-mode-value').textContent   = I18n.t((Settings.get('repeatMode') === 'one') ? 'repeat.one' : 'common.off');
+        document.getElementById('setting-repeat-mode-value').textContent   = repeatName(Settings.get('repeatMode'));
         document.getElementById('setting-auto-play-value').textContent     = I18n.t(Settings.get('autoPlay') ? 'common.on' : 'common.off');
         document.getElementById('setting-resume-mode-value').textContent   = resumeModeName(Settings.get('resumeMode'));
         document.getElementById('setting-shuffle-value').textContent       = I18n.t(Settings.get('shuffle') ? 'common.on' : 'common.off');
@@ -1600,11 +1779,13 @@
         var cur = Settings.get('repeatMode');
         openPicker(I18n.t('settings.repeatMode'), [
             { code: 'off', name: I18n.t('common.off') },
-            { code: 'one', name: I18n.t('repeat.current') }
+            { code: 'one', name: I18n.t('repeat.current') },
+            { code: 'all', name: I18n.t('repeat.allOption') }
         ], cur, function (val) {
             Settings.set('repeatMode', val);
             refreshSettingsValues();
-            UI.toast(I18n.t('toast.repeat', I18n.t(val === 'one' ? 'common.on' : 'common.off')));
+            updateNextPrevButtons();
+            UI.toast(I18n.t('toast.repeat', repeatName(val)));
         });
     }
     /* Subtitle-appearance pickers — share the generic option list, then
@@ -1744,16 +1925,24 @@
         });
     }
     /* ── Repeat toggle from the OSD ───────────────────────────────── */
+    /* Off → all → one → off, like a music player's repeat button. */
     function toggleRepeat() {
-        var next = Settings.get('repeatMode') === 'one' ? 'off' : 'one';
+        var cur = Settings.get('repeatMode');
+        var next = cur === 'off' ? 'all' : cur === 'all' ? 'one' : 'off';
         Settings.set('repeatMode', next);
         updateRepeatButton();
-        UI.toast(I18n.t('toast.repeat', I18n.t(next === 'one' ? 'common.on' : 'common.off')));
+        updateNextPrevButtons();
+        UI.toast(I18n.t('toast.repeat', repeatName(next)));
+    }
+    function repeatName(code) {
+        return I18n.t(code === 'one' ? 'repeat.one' : code === 'all' ? 'repeat.all' : 'common.off');
     }
     function updateRepeatButton() {
         var btn = document.getElementById('btn-repeat');
         if (!btn) return;
-        btn.classList.toggle('repeat-on', Settings.get('repeatMode') === 'one');
+        var mode = Settings.get('repeatMode');
+        btn.classList.toggle('repeat-on', mode === 'one' || mode === 'all');
+        btn.classList.toggle('repeat-one', mode === 'one');
     }
 
     /* ── Shuffle (issue #43) ──────────────────────────────────────────
@@ -1940,6 +2129,8 @@
         var K = Remote.KEY;
         if (typeof Debug !== 'undefined') Debug.key('code=' + code + ' view=' + state.view);
 
+        if (state.background && state.view !== 'player' && backgroundKeys(code)) return true;
+
         // Remote number buttons (0-9) type into a focused text field, so the
         // hardware keys work alongside the on-screen keyboard. Only consumes the
         // key when a text field actually took it, otherwise it falls through.
@@ -2057,6 +2248,7 @@
                 }
                 if (state.view === 'browse')    { browseUp();        return true; }
                 if (state.view === 'player' && scrub.active) { cancelScrub(true); return true; }
+                if (state.view === 'player' && state.playingIsAudio) { minimizePlayer(); return true; }
                 if (state.view === 'player')    { exitPlayer();      return true; }
                 if (state.view === 'url')       { backToHome();      return true; }
                 if (state.view === 'settings')  { backToHome();      return true; }
@@ -2076,6 +2268,16 @@
                 return false;
             case K.STOP:
                 if (state.view === 'player') { exitPlayer(); return true; }
+                return false;
+            // Channel ± and the track keys step through the list (issue #105).
+            case K.CH_UP: case K.TRACK_NEXT:
+                if (state.view === 'player' && !errorUp) {
+                    if (!playNext(false)) UI.toast(I18n.t('player.noNext'));
+                    return true;
+                }
+                return false;
+            case K.CH_DOWN: case K.TRACK_PREV:
+                if (state.view === 'player' && !errorUp) { handlePrev(); return true; }
                 return false;
             case K.REWIND:
                 if (state.view === 'player') { scrubStep(-1, 30000); return true; }
@@ -2289,6 +2491,8 @@
         play: playFromList, home: backToHome, openSettings: openSettings,
         // smb.js hands a playlist on a share over the same way.
         openPlaylist: openPlaylist, maxPlaylistBytes: MAX_PLAYLIST_BYTES,
+        // …and marks the song playing on in the background in its lists.
+        markNowPlaying: markNowPlaying,
         // server.js uses this to let the user choose when a LAN scan turns up
         // more than one transcode server.
         openPicker: openPicker

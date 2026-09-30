@@ -293,5 +293,11 @@
   "text.truncated": "מוצגים {0} הראשונים מתוך {1}",
   "playlist.reading": "קורא את רשימת ההשמעה…",
   "playlist.empty": "ברשימה הזו אין שום דבר ש-Tessel יכול לנגן.",
-  "playlist.ungrouped": "אחר"
+  "playlist.ungrouped": "אחר",
+  "repeat.all": "חזרה על הכול",
+  "repeat.allOption": "חזרה על כל התיקייה",
+  "mini.stopped": "נעצר",
+  "mini.skipped": "לא ניתן לנגן את {0} — מדלג",
+  "hint.openPlayer": "פתיחת הנגן",
+  "hint.stop": "עצירה"
 }

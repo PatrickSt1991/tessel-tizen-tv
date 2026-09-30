@@ -30,6 +30,10 @@ var Remote = (function () {
         RED: 403, GREEN: 404, YELLOW: 405, BLUE: 406,
         INFO: 457, GUIDE: 458,
 
+        // MediaTrackPrevious / MediaTrackNext; registerMediaKeys() takes the
+        // TV's own codes when it can.
+        TRACK_PREV: 10232, TRACK_NEXT: 10233,
+
         // The on-screen keyboard's own Done / Cancel keys.
         IME_DONE: 65376, IME_CANCEL: 65385,
 
@@ -58,6 +62,10 @@ var Remote = (function () {
         for (var i = 0; i < keys.length; i++) {
             try { tizen.tvinputdevice.registerKey(keys[i]); }
             catch (e) { failed.push(keys[i] + ' (' + ((e && e.name) || e) + ')'); }
+        }
+        var ask = { MediaTrackPrevious: 'TRACK_PREV', MediaTrackNext: 'TRACK_NEXT' };
+        for (var name in ask) {
+            try { var k = tizen.tvinputdevice.getKey(name); if (k && k.code) KEY[ask[name]] = k.code; } catch (e) {}
         }
         /* A SecurityError here means config.xml lacks the tv.inputdevice
          * privilege and NO media key will reach the app — the TV shows its

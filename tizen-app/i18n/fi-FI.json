@@ -293,5 +293,11 @@
   "text.truncated": "näytetään ensimmäiset {0} / {1}",
   "playlist.reading": "Luetaan soittolistaa…",
   "playlist.empty": "Soittolistalla ei ole mitään, mitä Tessel voi toistaa.",
-  "playlist.ungrouped": "Muut"
+  "playlist.ungrouped": "Muut",
+  "repeat.all": "Toista kaikki",
+  "repeat.allOption": "Toista koko kansio",
+  "mini.stopped": "Pysäytetty",
+  "mini.skipped": "Kohdetta {0} ei voitu toistaa — ohitetaan",
+  "hint.openPlayer": "avaa soitin",
+  "hint.stop": "pysäytä"
 }

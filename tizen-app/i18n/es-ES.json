@@ -293,5 +293,11 @@
   "text.truncated": "se muestran los primeros {0} de {1}",
   "playlist.reading": "Leyendo la lista de reproducción…",
   "playlist.empty": "Esta lista no contiene nada que Tessel pueda reproducir.",
-  "playlist.ungrouped": "Otros"
+  "playlist.ungrouped": "Otros",
+  "repeat.all": "Repetir todo",
+  "repeat.allOption": "Repetir toda la carpeta",
+  "mini.stopped": "Detenido",
+  "mini.skipped": "No se pudo reproducir {0}: se omite",
+  "hint.openPlayer": "abrir reproductor",
+  "hint.stop": "detener"
 }

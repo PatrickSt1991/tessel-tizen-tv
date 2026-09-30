@@ -293,5 +293,11 @@
   "text.truncated": "visar de första {0} av {1}",
   "playlist.reading": "Läser spellistan…",
   "playlist.empty": "Spellistan innehåller inget som Tessel kan spela.",
-  "playlist.ungrouped": "Övrigt"
+  "playlist.ungrouped": "Övrigt",
+  "repeat.all": "Upprepa alla",
+  "repeat.allOption": "Upprepa hela mappen",
+  "mini.stopped": "Stoppad",
+  "mini.skipped": "Kunde inte spela {0} — hoppar över",
+  "hint.openPlayer": "öppna spelaren",
+  "hint.stop": "stoppa"
 }

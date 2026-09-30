@@ -293,5 +293,11 @@
   "text.truncated": "приказано првих {0} од {1}",
   "playlist.reading": "Читање листе за репродукцију…",
   "playlist.empty": "Ова листа нема ништа што Tessel може да пусти.",
-  "playlist.ungrouped": "Остало"
+  "playlist.ungrouped": "Остало",
+  "repeat.all": "Понављај све",
+  "repeat.allOption": "Понављај целу фасциклу",
+  "mini.stopped": "Заустављено",
+  "mini.skipped": "{0} није могло да се пусти — прескаче се",
+  "hint.openPlayer": "отвори плејер",
+  "hint.stop": "заустави"
 }

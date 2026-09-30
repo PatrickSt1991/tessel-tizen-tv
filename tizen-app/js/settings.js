@@ -12,7 +12,7 @@ var Settings = (function () {
         uiLanguage:       '',
         audioLang:        '',          // '' = auto (use file's default), or ISO code
         subtitleLang:     'off',       // 'off' = no subs, '' = auto (file's default track), or ISO code
-        repeatMode:       'off',       // 'off' | 'one'
+        repeatMode:       'off',       // 'off' | 'one' | 'all'
         autoPlay:         false,       // auto-play the next file in the folder when one finishes
         // What to do when a file with a saved position is opened again:
         // 'ask' shows a Continue / Start-over prompt, 'always' resumes

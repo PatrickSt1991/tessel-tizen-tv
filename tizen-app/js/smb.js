@@ -399,9 +399,15 @@ var SMB = (function () {
             var pictures = entries
                 .filter(function (e) { return !e.isDir && FileTypes.kind(e.name) === 'image'; })
                 .map(function (e) { return { uri: streamUrl(join(path, e.name), current), title: e.name, size: e.size }; });
-            var srv = current;
+            var srv = current, stackHere = pathStack.slice();
+            // Back to this folder from a viewer or the player — also after the
+            // user left the share meanwhile (music playing on), which is why
+            // the way up is restored too.
             function backHere(name) {
-                return function (last) { current = srv; setupBack(); render(path, (last && last.title) || name); };
+                return function (last) {
+                    current = srv; pickingServer = false; pathStack = stackHere.slice();
+                    setupBack(); render(path, (last && last.title) || name);
+                };
             }
 
             // ".." row to go up (except at root, unless that leads back to the
@@ -427,6 +433,7 @@ var SMB = (function () {
                     '<span class="name">' + esc(e.name) + '</span>' +
                     (e.isDir ? '' : subBadge + '<span class="meta">' + humanSize(e.size) + '</span>');
                 if (focusName && e.name === focusName) focus = li;
+                if (!e.isDir && isPlayable(e.name)) li.dataset.uri = playableUrl(join(path, e.name), current);
                 li.addEventListener('click', function () {
                     if (e.isDir) {
                         pathStack.push(path);
@@ -440,7 +447,8 @@ var SMB = (function () {
                     // Hand off to the player; release our Back handler so the
                     // player's own Back (exit) behaviour takes over.
                     teardownBack();
-                    if (window.VlcApp && window.VlcApp.play) window.VlcApp.play('smb', playlist, idx);
+                    // Leaving the player comes back to this folder.
+                    if (window.VlcApp && window.VlcApp.play) window.VlcApp.play('smb', playlist, idx, null, backHere(e.name));
                 });
                 ul.appendChild(li);
             });
@@ -448,6 +456,7 @@ var SMB = (function () {
             if (!ul.children.length)
                 ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + esc(I18n.t('browse.empty')) + '</span></li>';
 
+            if (window.VlcApp && window.VlcApp.markNowPlaying) window.VlcApp.markNowPlaying();
             UI.refreshFocusables();
             UI.focusOn(focus || ul.firstElementChild);
 
@@ -842,6 +851,9 @@ var SMB = (function () {
 
     return {
         openBrowser:     openBrowser,
+        // The app's full player is coming up over this folder: its BACK
+        // belongs to the player now.
+        detach:          teardownBack,
         // Exposed for server.js: the local-file relay lives in the same
         // background service, so it needs the same launch-and-wait dance.
         ensureService:   ensureService,

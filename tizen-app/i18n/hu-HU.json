@@ -293,5 +293,11 @@
   "text.truncated": "az első {0} látható ennyiből: {1}",
   "playlist.reading": "Lejátszási lista olvasása…",
   "playlist.empty": "Ebben a listában nincs semmi, amit a Tessel le tud játszani.",
-  "playlist.ungrouped": "Egyéb"
+  "playlist.ungrouped": "Egyéb",
+  "repeat.all": "Összes ismétlése",
+  "repeat.allOption": "Az egész mappa ismétlése",
+  "mini.stopped": "Leállítva",
+  "mini.skipped": "{0} nem játszható le — kihagyva",
+  "hint.openPlayer": "lejátszó megnyitása",
+  "hint.stop": "leállítás"
 }

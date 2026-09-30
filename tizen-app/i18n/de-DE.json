@@ -293,5 +293,11 @@
   "text.truncated": "die ersten {0} von {1}",
   "playlist.reading": "Playlist wird gelesen…",
   "playlist.empty": "Diese Playlist enthält nichts, was Tessel abspielen kann.",
-  "playlist.ungrouped": "Sonstige"
+  "playlist.ungrouped": "Sonstige",
+  "repeat.all": "Alle wiederholen",
+  "repeat.allOption": "Den ganzen Ordner wiederholen",
+  "mini.stopped": "Gestoppt",
+  "mini.skipped": "{0} konnte nicht abgespielt werden – übersprungen",
+  "hint.openPlayer": "Player öffnen",
+  "hint.stop": "stoppen"
 }
