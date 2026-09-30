@@ -390,7 +390,9 @@ var SMB = (function () {
             var playlist = entries
                 .filter(function (e) { return !e.isDir && isPlayable(e.name); })
                 .map(function (e) {
-                    return { uri: playableUrl(join(path, e.name), current), title: e.name, subtitles: sidecars[e.name] || [] };
+                    return { uri: playableUrl(join(path, e.name), current), title: e.name, subtitles: sidecars[e.name] || [],
+                             // Tags come off the share itself, not the transcode server's HLS.
+                             tagSrc: FileTypes.kind(e.name) === 'audio' ? streamUrl(join(path, e.name), current) : null };
                 });
             // Pictures and text come straight off the smbproxy: the transcode
             // server only knows how to turn things into video.

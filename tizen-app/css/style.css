@@ -1055,6 +1055,15 @@ button:focus { outline: none; }
     line-height: 200px;
 }
 .audio-title { font-size: 34px; color: var(--fg); word-break: break-word; }
+.audio-art {
+    display: block;
+    width: 360px; height: 360px;
+    margin: 0 auto 36px;
+    object-fit: cover;
+    border-radius: var(--r);
+    box-shadow: var(--shadow);
+}
+.audio-sub { margin-top: 12px; font-size: 26px; color: var(--fg-mute); word-break: break-word; }
 
 /* Listed, but nothing in the app opens it. */
 .browse-list li.unopenable .name,

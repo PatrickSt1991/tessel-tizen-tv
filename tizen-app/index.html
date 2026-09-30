@@ -158,8 +158,10 @@
     <!-- Music has no picture of its own: without this card the screen is
          just black once the OSD fades (issue #105). -->
     <div class="audio-card hidden" id="audio-card">
-        <div class="audio-note">♪</div>
+        <img class="audio-art hidden" id="audio-art" alt="">
+        <div class="audio-note" id="audio-note">♪</div>
         <div class="audio-title" id="audio-title"></div>
+        <div class="audio-sub" id="audio-sub"></div>
     </div>
 
     <!-- Top bar: title -->
@@ -392,6 +394,7 @@
 <script src="js/filetypes.js"></script>
 <script src="js/text-decode.js"></script>
 <script src="js/playlist.js"></script>
+<script src="js/audio-tags.js"></script>
 <script src="js/browser.js"></script>
 <script src="js/ass-style.js"></script>
 <script src="js/mp4-subs.js"></script>

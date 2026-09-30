@@ -37,6 +37,9 @@
             });
         var entry = { uri: item.uri, title: item.title };
         if (subs.length) entry.subtitles = subs;
+        // Where a share file's tags are read when it plays through the
+        // transcode server (a URL; a USB File wouldn't survive JSON).
+        if (typeof item.tagSrc === 'string') entry.tagSrc = item.tagSrc;
 
         var list = getRecent().filter(function (x) { return x.uri !== entry.uri; });
         list.unshift(entry);
@@ -636,7 +639,7 @@
         document.getElementById('browse-path').textContent = '';
         var ul = document.getElementById('browse-list'); ul.innerHTML = '';
         var playlist = list.map(function (item) {
-            return { uri: item.uri, title: item.title, subtitles: item.subtitles };
+            return { uri: item.uri, title: item.title, subtitles: item.subtitles, tagSrc: item.tagSrc };
         });
         list.forEach(function (item, i) {
             var li = document.createElement('li');
@@ -813,6 +816,7 @@
                 // Preserve the live Tizen File object for standby resumes;
                 // it carries size/path APIs used by incremental extraction.
                 file:      cur && cur.file ? cur.file : null,
+                tagSrc:    cur && cur.tagSrc ? cur.tagSrc : null,
                 pos:       Player.currentTime() || 0,
                 paused:    Player.state() === 'PAUSED'
             };
@@ -830,6 +834,7 @@
             playUri(ss.uri, ss.title, {
                 subtitles: ss.subtitles,
                 file:      ss.file,
+                tagSrc:    ss.tagSrc,
                 resume:    { pos: ss.pos, paused: ss.paused }
             });
         }
@@ -901,6 +906,7 @@
                       FileTypes.kind(String(uri).split('?')[0]) === 'audio';
         document.getElementById('audio-card').classList.toggle('hidden', !isAudio);
         document.getElementById('audio-title').textContent = isAudio ? (title || uri) : '';
+        showAudioTags(isAudio ? uri : null, opts);
         document.getElementById('osd-top').classList.remove('hidden');
         document.getElementById('osd-bottom').classList.remove('hidden');
         showSpinner(I18n.t('player.openingShort'));
@@ -976,8 +982,86 @@
             }
         }, 1000);
 
-        pushRecent({ uri: uri, title: title || uri, subtitles: opts.subtitles });
+        pushRecent({ uri: uri, title: title || uri, subtitles: opts.subtitles, tagSrc: opts.tagSrc });
         scheduleOSDHide();
+    }
+
+    /* ── Now playing: tags and cover art (issue #105) ────────────────
+     * Read out of the head of the file itself — the USB File, or the share
+     * file straight off the smbproxy even when the transcode server is the
+     * one playing it (its HLS carries no tags).  A stream URL with no music
+     * extension is left alone: it may be a live radio that never ends. */
+    var tagSeq = 0, artUrl = null;
+    var TAG_FIRST_READ = 128 * 1024;
+
+    function tagSourceFor(uri, opts) {
+        if (opts.tagSrc) return opts.tagSrc;
+        if (opts.file)   return opts.file;
+        var s = String(uri || '');
+        if (typeof SMB !== 'undefined' && SMB.isStreamUrl && SMB.isStreamUrl(s)) return s;
+        if (/^file:/i.test(s)) return s;
+        if (/^https?:/i.test(s) && FileTypes.kind(s.split('?')[0].split('#')[0]) === 'audio') return s;
+        return null;
+    }
+
+    function showAudioTags(uri, opts) {
+        var seq = ++tagSeq;
+        setCoverArt(null);
+        document.getElementById('audio-sub').textContent = '';
+        var src = uri ? tagSourceFor(uri, opts || {}) : null;
+        if (!src || typeof AudioTags === 'undefined') return;
+        var want = TAG_FIRST_READ;
+        (function read(round) {
+            Browser.readHead(src, want, function (err, bytes, total) {
+                if (seq !== tagSeq) return;   // another file started meanwhile
+                if (err) {
+                    if (typeof Debug !== 'undefined') Debug.player('tags: read failed: ' + (err.message || err));
+                    return;
+                }
+                var t = AudioTags.parse(bytes);
+                // Cover art bigger than the first read: go again for the rest.
+                if (t.need && t.need > bytes.length && round < 3 &&
+                    !(total && bytes.length >= total) && bytes.length >= want) {
+                    want = t.need;
+                    read(round + 1);
+                    return;
+                }
+                applyAudioTags(t);
+            });
+        })(0);
+    }
+
+    function applyAudioTags(t) {
+        var artist = t.artist || t.albumArtist || '';
+        if (typeof Debug !== 'undefined')
+            Debug.player('tags: ' + JSON.stringify({ title: t.title, artist: artist, album: t.album,
+                                                     art: t.picture ? t.picture.bytes.length : 0 }));
+        if (t.title) {
+            document.getElementById('audio-title').textContent = t.title;
+            document.getElementById('osd-title').textContent = (artist ? artist + ' — ' : '') + t.title;
+        }
+        document.getElementById('audio-sub').textContent =
+            [artist, t.album].filter(Boolean).join('  ·  ');
+        if (t.picture) setCoverArt(t.picture);
+    }
+
+    /* A blob: URL for the art, released again with the next file. */
+    function setCoverArt(pic) {
+        var img = document.getElementById('audio-art');
+        var note = document.getElementById('audio-note');
+        if (artUrl) { try { URL.revokeObjectURL(artUrl); } catch (e) {} artUrl = null; }
+        img.onerror = null;
+        img.removeAttribute('src');
+        img.classList.add('hidden');
+        note.classList.remove('hidden');
+        if (!pic) return;
+        try {
+            artUrl = URL.createObjectURL(new Blob([pic.bytes], { type: pic.mime }));
+        } catch (e) { return; }
+        // A picture the TV can't decode leaves the note up.
+        img.onload  = function () { img.classList.remove('hidden'); note.classList.add('hidden'); };
+        img.onerror = function () { setCoverArt(null); };
+        img.src = artUrl;
     }
 
     /* Smart routing sent this share file straight to AVPlay and it never
@@ -1033,7 +1117,7 @@
         }
         var item = state.playlist[state.playlistIndex];
         if (!item) return;
-        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, askResume: true });
+        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null, askResume: true });
     }
     function playNext(isAuto) {
         var ni = state.playlistIndex + 1;
@@ -1041,7 +1125,7 @@
         var item = state.playlist[ni];
         state.playlistIndex = ni;
         if (isAuto) UI.toast(I18n.t('player.upNext', item.title));
-        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null });
+        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null });
         return true;
     }
     /* OSD Prev / MediaTrackPrevious: restart the current file when we're
@@ -1064,7 +1148,7 @@
         var pi = state.playlistIndex - 1;
         var item = state.playlist[pi];
         state.playlistIndex = pi;
-        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null });
+        playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null });
         return true;
     }
     /* Dim the prev/next OSD buttons when there's nothing on that side.
