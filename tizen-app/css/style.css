@@ -1042,7 +1042,20 @@ button:focus { outline: none; }
     position: absolute; left: 50%; top: 42%;
     transform: translate(-50%, -50%);
     text-align: center;
-    max-width: 80%;
+    max-width: 70%;            /* leaves room for the drift below */
+    animation: audio-drift 900s ease-in-out infinite;
+}
+/* Music can play for hours with no key pressed, and AVPlay keeps the TV's
+ * own screensaver away while it plays, so the cover and text would sit
+ * still on an OLED panel (issue #115).  Drift them slowly round the
+ * screen instead — about 2px a second, too slow to notice.  The range
+ * keeps the card clear of the screen edges and the bottom OSD. */
+@keyframes audio-drift {
+    0%, 100% { transform: translate(-50%, -50%) translate(0, 0); }
+    20%      { transform: translate(-50%, -50%) translate(-240px, -70px); }
+    40%      { transform: translate(-50%, -50%) translate(160px, 20px); }
+    60%      { transform: translate(-50%, -50%) translate(240px, -40px); }
+    80%      { transform: translate(-50%, -50%) translate(-180px, 25px); }
 }
 .audio-note {
     width: 200px; height: 200px;
@@ -1081,6 +1094,15 @@ button:focus { outline: none; }
     box-shadow: var(--shadow);
     z-index: 90;               /* above the views, below the toast */
     text-align: left;
+    animation: mini-drift 600s ease-in-out infinite;
+}
+/* Same idea as audio-drift, in a smaller box: it only moves inwards from
+ * its corner so it never slides off screen. */
+@keyframes mini-drift {
+    0%, 100% { transform: translate(0, 0); }
+    25%      { transform: translate(-28px, -12px); }
+    50%      { transform: translate(-8px, -28px); }
+    75%      { transform: translate(-24px, -4px); }
 }
 .mini-art, .mini-note {
     width: 96px; height: 96px; flex: 0 0 96px;
