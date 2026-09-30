@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets"
         xmlns="http://www.w3.org/ns/widgets"
         id="http://madebypatrick.com/vlctv"
-        version="1.10.0"
+        version="1.11.0"
         viewmodes="maximized">
     <tizen:application id="madebypatk.vlcweb"
                        package="madebypatk"
@@ -31,6 +31,12 @@
     <!-- App is a secure-context origin but talks to http://localhost for SMB. -->
     <tizen:allow-mixed-content>true</tizen:allow-mixed-content>
     <tizen:content-security-policy>default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * http://127.0.0.1:8127 http://localhost:8127; media-src * http://127.0.0.1:8127 http://localhost:8127;</tizen:content-security-policy>
+
+    <!-- Open the on-screen keyboard only when the user presses OK on a text
+         field, not whenever the D-pad lands on one (issue #111; honoured on
+         2022+ TVs).  Older firmware still opens it on focus, which is why
+         the Settings sections with text fields stay collapsed. -->
+    <tizen:metadata key="http://samsung.com/tv/metadata/use.keypad.without.useraction" value="false"/>
 
     <tizen:setting screen-orientation="landscape"
                    context-menu="disable"

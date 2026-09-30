@@ -3,8 +3,9 @@
  * Views (mutually exclusive):
  *   home    — start screen with three tiles
  *   url     — keyboard-input URL entry
- *   browse  — file browser (USB / local roots)
+ *   browse  — file browser (USB / local roots), and a playlist's entries
  *   player  — fullscreen video with OSD
+ *   viewer  — picture or text viewer (js/viewer.js) over a browser folder
  */
 
 (function () {
@@ -152,7 +153,13 @@
         // Set while smart routing plays a share file directly instead of
         // through the transcode server: { uri, title, opts } to replay if the
         // direct open never starts.  See retryThroughServer().
-        directFallback: null
+        directFallback: null,
+        // Set while the browse view lists a playlist's entries: what BACK does
+        // there instead of going up a folder.  See openPlaylist().
+        listBack:   null,
+        // The playlist being shown, so leaving the player can return to it:
+        // { src, entries, group }.
+        playlistView: null
     };
     // Latest progress sample, used to decide partial-watch → watched on exit.
     var lastProgress = { time: 0, duration: 0 };
@@ -383,6 +390,7 @@
             case 'setting-resume-mode':   openResumeModePicker(); break;
             case 'setting-shuffle':       openShufflePicker(); break;
             case 'setting-aspect-mode':   openAspectPicker(); break;
+            case 'setting-browse-filter': openBrowseFilterPicker(); break;
             case 'setting-subtitle-size':     openSubtitlePicker('subtitleSize',     I18n.t('settings.subSize'),     SubtitleStyle.forSize());     break;
             case 'setting-subtitle-font':     openSubtitlePicker('subtitleFont',     I18n.t('settings.subFont'),     SubtitleStyle.forFont());     break;
             case 'setting-subtitle-position': openSubtitlePicker('subtitlePosition', I18n.t('settings.subPosition'), SubtitleStyle.forPosition()); break;
@@ -394,6 +402,23 @@
     /* ── URL playback ─────────────────────────────────────────────── */
     function openUrl(url) {
         var title = urlBaseName(url);
+        // A channel or song list can't go to AVPlay as it is (issue #110):
+        // read it first.  An HLS manifest turns out to be one when read, and
+        // is then played exactly as before — so is anything that can't be
+        // read here, which leaves AVPlay to try it.
+        if (Playlist.isPlaylistUrl(url)) {
+            openPlaylist({
+                title:   title,
+                read:    function (cb) { fetchBytes(url, cb); },
+                resolve: function (ref) { return Playlist.resolveUrl(ref, url); },
+                playAsStream: function () { playStreamUrl(url, title); },
+                back:    function () { UI.showView('view-url'); state.view = 'url'; }
+            });
+            return;
+        }
+        playStreamUrl(url, title);
+    }
+    function playStreamUrl(url, title) {
         state.origin    = 'url';
         state.originDir = null;
         state.playlist  = [{ uri: url, title: title }];
@@ -463,6 +488,7 @@
     function openBrowserAtRoot() {
         state.browseAtRoot = true;
         state.browseDir   = null;
+        state.listBack    = null;
         UI.showView('view-browse'); state.view = 'browse';
         document.getElementById('browse-title').textContent = I18n.t('browse.storage');
         document.getElementById('browse-path').textContent = '/';
@@ -500,9 +526,10 @@
         });
     }
 
-    function listInto(dir) {
+    function listInto(dir, focusUri) {
         if (!dir) return;
         state.browseDir = dir;
+        state.listBack  = null;
         document.getElementById('browse-title').textContent = dir.name || I18n.t('browse.folder');
         document.getElementById('browse-path').textContent = dir.fullPath;
 
@@ -514,39 +541,82 @@
                              + err.message + '</span></li>';
                 return;
             }
+            var filter = Settings.get('browseFilter');
+            entries = entries.filter(function (e) { return FileTypes.shown(filter, e.kind); });
             // Ordered list of playable media in this folder — the playlist
             // that auto-play and next/prev walk through.
             var playlist = entries
                 .filter(function (e) { return e.playable; })
                 .map(function (e) { return { uri: e.uri, title: e.name, subtitles: e.subtitles, file: e.file }; });
+            // …and the pictures, which the viewer steps through the same way.
+            var pictures = entries
+                .filter(function (e) { return e.kind === 'image'; })
+                .map(function (e) { return { uri: e.uri, title: e.name, size: e.size }; });
+            function backHere(uri) {
+                return function (last) {
+                    UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = false;
+                    listInto(dir, (last && last.uri) || uri);
+                };
+            }
 
+            var focus = null;
             entries.forEach(function (e) {
-                if (e.isDir === false && !e.playable) return; // hide non-media files
                 var li = document.createElement('li');
                 li.dataset.uri = e.uri || '';
                 li.dataset.dir = e.isDir ? '1' : '0';
-                var watched = !e.isDir && isWatched(e.uri);
+                var watched = e.playable && isWatched(e.uri);
                 if (watched) li.classList.add('watched-item');
+                if (e.kind === 'other') li.classList.add('unopenable');
                 var watchedBadge = watched ? '<span class="watched" title="' + escapeHtml(I18n.t('browse.watched')) + '">✓</span>' : '';
                 var subBadge = (e.subtitles && e.subtitles.length)
                     ? '<span class="meta">CC ×' + e.subtitles.length + '</span>'
                     : '';
                 li.innerHTML =
-                    '<span class="icon">' + (e.isDir ? '📁' : '🎬') + '</span>' +
+                    '<span class="icon">' + FileTypes.icon(e.kind) + '</span>' +
                     '<span class="name">' + escapeHtml(e.name) + '</span>' +
                     watchedBadge +
                     subBadge +
                     (e.isDir ? '' :
                         '<span class="meta">' + Browser.humanSize(e.size) + '</span>');
                 li.addEventListener('click', function () {
-                    if (e.isDir) { listInto(e.file); return; }
-                    var idx = playlist.findIndex(function (p) { return p.uri === e.uri; });
-                    playFromList('browse', playlist, idx >= 0 ? idx : 0, dir);
+                    switch (e.kind) {
+                        case 'dir':
+                            listInto(e.file); return;
+                        case 'video': case 'audio':
+                            var idx = playlist.findIndex(function (p) { return p.uri === e.uri; });
+                            playFromList('browse', playlist, idx >= 0 ? idx : 0, dir);
+                            return;
+                        case 'image':
+                            state.view = 'viewer';
+                            Viewer.openImage(pictures,
+                                pictures.findIndex(function (p) { return p.uri === e.uri; }), backHere(e.uri));
+                            return;
+                        case 'text':
+                            state.view = 'viewer';
+                            Viewer.openText({ title: e.name, src: e.file, size: e.size }, backHere(e.uri));
+                            return;
+                        case 'playlist':
+                            openPlaylist({
+                                title:   e.name,
+                                read:    function (cb) { Browser.readHead(e.file, MAX_PLAYLIST_BYTES, cb); },
+                                resolve: function (ref) { return Playlist.resolveUrl(ref, e.uri); },
+                                // A local HLS manifest: what the browser always did with it.
+                                playAsStream: function () {
+                                    playFromList('browse', [{ uri: e.uri, title: e.name, file: e.file }], 0, dir);
+                                },
+                                back:    backHere(e.uri)
+                            });
+                            return;
+                    }
+                    UI.toast(I18n.t('browse.cantOpen'));
                 });
                 ul.appendChild(li);
+                if (focusUri && e.uri === focusUri) focus = li;
             });
+            if (!ul.children.length)
+                ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + escapeHtml(I18n.t('browse.empty')) + '</span></li>';
             UI.refreshFocusables();
-            UI.focusOn(ul.firstElementChild);
+            UI.focusOn(focus || ul.firstElementChild);
         });
     }
 
@@ -561,6 +631,7 @@
         var list = getRecent();
         if (!list.length) { UI.toast(I18n.t('recent.none')); return; }
         UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = true;
+        state.listBack = null;
         document.getElementById('browse-title').textContent = I18n.t('home.recent');
         document.getElementById('browse-path').textContent = '';
         var ul = document.getElementById('browse-list'); ul.innerHTML = '';
@@ -583,6 +654,142 @@
         });
         UI.refreshFocusables();
         UI.focusOn(ul.firstElementChild);
+    }
+
+    /* ── Playlists (issue #110) ───────────────────────────────────────
+     * src: {
+     *   title,
+     *   read(cb)      — cb(err, Uint8Array) with the list's bytes,
+     *   resolve(ref)  — an entry's reference → the URI to play, or null,
+     *   playAsStream()— play the list itself (it's an HLS manifest),
+     *   back()        — where BACK goes from the list
+     * }
+     * Entries show in the browse view, grouped by group-title when the list
+     * has more than one group — a big IPTV list is thousands of channels,
+     * which is too many to scroll through, and too many for the TV to lay
+     * out in one go. */
+    var MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
+
+    function openPlaylist(src) {
+        state.listBack = null;
+        UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = false;
+        document.getElementById('browse-title').textContent = src.title;
+        document.getElementById('browse-path').textContent = '';
+        var ul = document.getElementById('browse-list');
+        ul.innerHTML = '<li><span class="icon">…</span><span class="name">' +
+                       escapeHtml(I18n.t('playlist.reading')) + '</span></li>';
+        // BACK works while it loads too.
+        state.listBack = src.back;
+        var seq = ++playlistSeq;
+
+        src.read(function (err, bytes) {
+            // Left meanwhile: BACK clears listBack, other lists replace it.
+            if (seq !== playlistSeq || state.view !== 'browse' || state.listBack !== src.back) return;
+            var parsed = null;
+            if (!err) {
+                var d = TextDecode.decode(bytes);
+                if (!d.binary) parsed = Playlist.parse(d.text);
+            }
+            if (!parsed || parsed.hls) {
+                if (typeof Debug !== 'undefined')
+                    Debug.player('playlist ' + src.title + ': ' + (parsed ? 'HLS manifest' :
+                                 'unreadable (' + (err && err.message || 'binary') + ')') + ' → playing as a stream');
+                state.listBack = null;
+                src.playAsStream();
+                return;
+            }
+            var entries = [];
+            parsed.entries.forEach(function (e) {
+                var uri = src.resolve(e.ref);
+                if (uri) entries.push({ uri: uri, title: e.title, group: e.group });
+            });
+            if (typeof Debug !== 'undefined')
+                Debug.player('playlist ' + src.title + ': ' + entries.length + ' of ' +
+                             parsed.entries.length + ' entries playable');
+            if (!entries.length) {
+                ul.innerHTML = '<li><span class="icon">i</span><span class="name">' +
+                               escapeHtml(I18n.t('playlist.empty')) + '</span></li>';
+                return;
+            }
+            state.playlistView = { src: src, entries: entries, group: null };
+            renderPlaylist();
+        });
+    }
+    var playlistSeq = 0;
+
+    /* The groups, or one group's entries (all entries when there's only one
+     * group).  focusUri puts the cursor back on the entry just played. */
+    function renderPlaylist(focusUri) {
+        var pv = state.playlistView;
+        if (!pv) return;
+        var groups = Playlist.groups(pv.entries);
+        var grouped = groups.length > 1;
+        UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = false;
+        document.getElementById('browse-title').textContent = pv.src.title;
+        document.getElementById('browse-path').textContent = grouped && pv.group !== null ? groupName(pv.group) : '';
+        var ul = document.getElementById('browse-list');
+        ul.innerHTML = '';
+        var focus = null;
+
+        if (grouped && pv.group === null) {
+            state.listBack = pv.src.back;
+            groups.forEach(function (g) {
+                var li = document.createElement('li');
+                li.dataset.dir = '1';
+                li.innerHTML = '<span class="icon">📁</span>' +
+                               '<span class="name">' + escapeHtml(groupName(g.name)) + '</span>' +
+                               '<span class="meta">' + g.count + '</span>';
+                li.addEventListener('click', function () { pv.group = g.name; renderPlaylist(); });
+                ul.appendChild(li);
+                if (focusUri === 'group:' + g.name) focus = li;
+            });
+        } else {
+            state.listBack = grouped
+                ? function () { var was = pv.group; pv.group = null; renderPlaylist('group:' + was); }
+                : pv.src.back;
+            var items = pv.entries.filter(function (e) { return !grouped || (e.group || '') === pv.group; });
+            items.forEach(function (e, i) {
+                var li = document.createElement('li');
+                li.dataset.uri = e.uri;
+                li.innerHTML = '<span class="icon">' + FileTypes.icon(entryKind(e)) + '</span>' +
+                               '<span class="name">' + escapeHtml(e.title) + '</span>';
+                li.addEventListener('click', function () {
+                    state.listBack = null;
+                    playFromList('playlist', items, i, null);
+                });
+                ul.appendChild(li);
+                if (focusUri && e.uri === focusUri) focus = li;
+            });
+        }
+        UI.refreshFocusables();
+        UI.focusOn(focus || ul.firstElementChild);
+    }
+    function groupName(g) { return g || I18n.t('playlist.ungrouped'); }
+    /* A stream URL has no extension more often than not; call it video. */
+    function entryKind(e) {
+        var k = FileTypes.kind(String(e.uri).split('?')[0]);
+        return k === 'audio' ? 'audio' : 'video';
+    }
+
+    /* The bytes behind a URL, for a playlist typed on the URL screen.  A
+     * plain GET: an IPTV panel rarely answers Range requests. */
+    function fetchBytes(url, cb) {
+        var done = false;
+        function finish(err, bytes) { if (!done) { done = true; cb(err, bytes); } }
+        try {
+            var x = new XMLHttpRequest();
+            x.open('GET', url, true);
+            x.responseType = 'arraybuffer';
+            x.timeout = 20000;
+            x.onload = function () {
+                if (x.status < 200 || x.status >= 300) { finish(new Error('HTTP ' + x.status)); return; }
+                var b = new Uint8Array(x.response || new ArrayBuffer(0));
+                finish(null, b.length > MAX_PLAYLIST_BYTES ? b.subarray(0, MAX_PLAYLIST_BYTES) : b);
+            };
+            x.onerror   = function () { finish(new Error('network error')); };
+            x.ontimeout = function () { finish(new Error('timed out')); };
+            x.send();
+        } catch (e) { finish(e); }
     }
 
     /* ── Standby handling (issue #42) ────────────────────────────────
@@ -690,6 +897,10 @@
         if (typeof Debug !== 'undefined') Debug.view('player');
 
         document.getElementById('osd-title').textContent = title || uri;
+        var isAudio = FileTypes.kind(title || '') === 'audio' ||
+                      FileTypes.kind(String(uri).split('?')[0]) === 'audio';
+        document.getElementById('audio-card').classList.toggle('hidden', !isAudio);
+        document.getElementById('audio-title').textContent = isAudio ? (title || uri) : '';
         document.getElementById('osd-top').classList.remove('hidden');
         document.getElementById('osd-bottom').classList.remove('hidden');
         showSpinner(I18n.t('player.openingShort'));
@@ -888,7 +1099,10 @@
         if (state.origin === 'browse' && state.originDir) {
             if (typeof Debug !== 'undefined') Debug.view('browse (return)');
             UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = false;
-            listInto(state.originDir);
+            listInto(state.originDir, state.playingUri);
+        } else if (state.origin === 'playlist' && state.playlistView) {
+            if (typeof Debug !== 'undefined') Debug.view('playlist (return)');
+            renderPlaylist(state.playingUri);
         } else if (state.origin === 'recent') {
             if (typeof Debug !== 'undefined') Debug.view('recent (return)');
             openRecent();
@@ -902,6 +1116,8 @@
         resetScrub();
         Player.stop();
         state.view = 'home';
+        state.listBack = null;
+        state.playlistView = null;
         UI.showView('view-home');
         hideError();
         document.getElementById('osd-top').classList.add('hidden');
@@ -1191,6 +1407,7 @@
         document.getElementById('setting-resume-mode-value').textContent   = resumeModeName(Settings.get('resumeMode'));
         document.getElementById('setting-shuffle-value').textContent       = I18n.t(Settings.get('shuffle') ? 'common.on' : 'common.off');
         document.getElementById('setting-aspect-mode-value').textContent   = AspectRatio.nameFor(Settings.get('aspectMode'));
+        document.getElementById('setting-browse-filter-value').textContent = browseFilterName(Settings.get('browseFilter'));
         document.getElementById('setting-subtitle-size-value').textContent     = SubtitleStyle.nameForSize(Settings.get('subtitleSize'));
         document.getElementById('setting-subtitle-font-value').textContent     = SubtitleStyle.nameForFont(Settings.get('subtitleFont'));
         document.getElementById('setting-subtitle-position-value').textContent = SubtitleStyle.nameForPosition(Settings.get('subtitlePosition'));
@@ -1400,6 +1617,20 @@
         // a cropped/stretched picture is never a mystery.
         btn.classList.toggle('aspect-on', AspectRatio.isKnown(mode) && mode !== 'fit');
     }
+    function browseFilterName(code) {
+        return I18n.t(code === 'media' ? 'browseFilter.media' : 'browseFilter.all');
+    }
+    function openBrowseFilterPicker() {
+        pickerSetting = 'browseFilter';
+        openPicker(I18n.t('settings.browseFilter'), [
+            { code: 'all',   name: I18n.t('browseFilter.all') },
+            { code: 'media', name: I18n.t('browseFilter.media') }
+        ], Settings.get('browseFilter'), function (val) {
+            Settings.set('browseFilter', val);
+            refreshSettingsValues();
+            UI.toast(I18n.t('toast.setTo', I18n.t('settings.browseFilter'), browseFilterName(val)));
+        });
+    }
     function openAutoPlayPicker() {
         pickerSetting = 'autoPlay';
         var cur = Settings.get('autoPlay') ? 'on' : 'off';
@@ -1599,6 +1830,10 @@
         return true;
     }
 
+    function isTextField(el) {
+        return !!el && el.tagName === 'INPUT';
+    }
+
     /* Number-key seek: digit n → n × 10 % of the duration.  Returns false
      * when an overlay owns the keys or the duration isn't known yet. */
     function seekToTenth(digit) {
@@ -1632,11 +1867,13 @@
         if (code >= K.ZERO && code <= K.NINE && state.view === 'player' &&
             seekToTenth(code - K.ZERO)) return true;
 
-        // URL input view: let typing flow through except on RETURN/Enter.
+        // URL input view: OK on the field opens the on-screen keyboard (see
+        // ENTER below), and the keyboard's Done plays what was typed.
         if (state.view === 'url') {
             if (code === K.BACK) { backToHome(); return true; }
-            if (code === K.ENTER && document.activeElement &&
-                document.activeElement.id === 'url-input') {
+            if (code === K.IME_DONE && document.activeElement &&
+                document.activeElement.id === 'url-input' &&
+                document.activeElement.value.trim()) {
                 handleAction('open-current-url');
                 return true;
             }
@@ -1717,11 +1954,23 @@
                     if (!UI.activateFocused()) flashOSD();
                     return true;
                 }
-                UI.activateFocused();  return true;
+                // A text field: let OK through untouched.  That key press is
+                // the user action that opens the on-screen keyboard — merely
+                // landing on the field no longer does (config.xml, issue #111).
+                if (!UI.activateFocused() && isTextField(document.activeElement)) return false;
+                return true;
             case K.BACK:
                 if (pickerOpen)                 { closePicker();     return true; }
                 if (trackMenuOpen)              { closeTrackMenu();  return true; }
+                // A dead channel is routine in an IPTV list: back to the list,
+                // not all the way home.
+                if (errorUp && state.origin === 'playlist') { exitPlayer(); return true; }
                 if (errorUp)                    { backToHome();      return true; }
+                if (state.view === 'browse' && state.listBack) {
+                    var listBack = state.listBack; state.listBack = null;
+                    listBack();
+                    return true;
+                }
                 if (state.view === 'browse')    { browseUp();        return true; }
                 if (state.view === 'player' && scrub.active) { cancelScrub(true); return true; }
                 if (state.view === 'player')    { exitPlayer();      return true; }
@@ -1954,6 +2203,8 @@
     // reuses next/prev, auto-play, recent & watched tracking.
     window.VlcApp = {
         play: playFromList, home: backToHome, openSettings: openSettings,
+        // smb.js hands a playlist on a share over the same way.
+        openPlaylist: openPlaylist, maxPlaylistBytes: MAX_PLAYLIST_BYTES,
         // server.js uses this to let the user choose when a LAN scan turns up
         // more than one transcode server.
         openPicker: openPicker

@@ -120,8 +120,48 @@
     </footer>
 </section>
 
+<!-- ── Picture viewer (js/viewer.js) ────────────────────────────────── -->
+<section id="view-image" class="view hidden">
+    <img id="image-el" alt="">
+    <div class="image-status hidden" id="image-status"></div>
+    <div class="image-bar" id="image-bar">
+        <div class="image-caption">
+            <span id="image-name"></span>
+            <span id="image-info" class="image-info"></span>
+        </div>
+        <div class="image-keys">
+            <span class="key">←→</span> <span data-i18n="hint.prevNext">previous / next</span>
+            <span class="key">OK</span> <span data-i18n="hint.slideshow">slideshow</span>
+            <span class="key">↑↓</span> <span data-i18n="hint.rotate">rotate</span>
+            <span class="key">RETURN</span> <span data-i18n="hint.back">back</span>
+        </div>
+    </div>
+</section>
+
+<!-- ── Text viewer (js/viewer.js) ───────────────────────────────────── -->
+<section id="view-text" class="view hidden">
+    <div class="text-head">
+        <span id="text-name" class="text-name"></span>
+        <span id="text-info" class="text-info"></span>
+    </div>
+    <div class="text-body" id="text-body"><pre id="text-pre"></pre></div>
+    <footer class="hint">
+        <span class="key">↑↓</span> <span data-i18n="hint.scroll">scroll</span>
+        <span class="key">←→</span> <span data-i18n="hint.page">page</span>
+        <span class="key">0–9</span> <span data-i18n="hint.jump">jump</span>
+        <span class="key">RETURN</span> <span data-i18n="hint.back">back</span>
+    </footer>
+</section>
+
 <!-- ── Player view ───────────────────────────────────────────────────── -->
 <section id="view-player" class="view hidden">
+    <!-- Music has no picture of its own: without this card the screen is
+         just black once the OSD fades (issue #105). -->
+    <div class="audio-card hidden" id="audio-card">
+        <div class="audio-note">♪</div>
+        <div class="audio-title" id="audio-title"></div>
+    </div>
+
     <!-- Top bar: title -->
     <div class="osd osd-top hidden" id="osd-top">
         <span id="osd-title" data-i18n="common.loading">Loading…</span>
@@ -230,6 +270,10 @@
             <button class="settings-row" data-action="setting-shuffle">
                 <div class="settings-label" data-i18n="settings.shuffle">Shuffle playlist</div>
                 <div class="settings-value" id="setting-shuffle-value">Off</div>
+            </button>
+            <button class="settings-row" data-action="setting-browse-filter">
+                <div class="settings-label" data-i18n="settings.browseFilter">File browser shows</div>
+                <div class="settings-value" id="setting-browse-filter-value">All files</div>
             </button>
             <button class="settings-row" data-action="setting-aspect-mode">
                 <div class="settings-label" data-i18n="settings.aspect">Video aspect ratio</div>
@@ -345,6 +389,9 @@
 <script src="js/ui.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/i18n.js"></script>
+<script src="js/filetypes.js"></script>
+<script src="js/text-decode.js"></script>
+<script src="js/playlist.js"></script>
 <script src="js/browser.js"></script>
 <script src="js/ass-style.js"></script>
 <script src="js/mp4-subs.js"></script>
@@ -354,6 +401,7 @@
 <script src="js/url-drop.js"></script>
 <script src="js/server.js"></script>
 <script src="js/smb.js"></script>
+<script src="js/viewer.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

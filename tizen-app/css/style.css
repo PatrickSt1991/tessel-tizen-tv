@@ -965,3 +965,97 @@ button:focus { outline: none; }
 }
 #pair-qr { display: flex; align-items: center; justify-content: center; }
 #pair-qr img { display: block; border-radius: 4px; }
+
+/* ── Picture viewer ───────────────────────────────────────────────── */
+#view-image {
+    background: #000;
+    padding: 0;
+}
+#image-el {
+    max-width: 100%;
+    max-height: 100%;
+    transition: transform .2s ease;
+}
+/* Turned a quarter, the picture's width runs up the screen. */
+#image-el.sideways {
+    max-width: 100vh;
+    max-height: 100vw;
+}
+#image-el.loading { visibility: hidden; }
+.image-status {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--fg-mute);
+    font-size: 26px;
+}
+.image-bar {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 28px 60px 36px;
+    background: linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,0));
+    text-align: left;
+}
+.image-caption { font-size: 26px; margin-bottom: 12px; }
+.image-info { color: var(--fg-mute); font-size: 20px; margin-left: 24px; }
+.image-keys { color: var(--fg-mute); font-size: 18px; }
+
+/* ── Text viewer ──────────────────────────────────────────────────── */
+#view-text {
+    justify-content: flex-start;
+    padding: 48px 60px 36px;
+}
+.text-head {
+    width: 100%;
+    max-width: 1700px;
+    display: flex;
+    align-items: baseline;
+    margin-bottom: 16px;
+    text-align: left;
+}
+.text-name { flex: 1; font-size: 28px; word-break: break-all; }
+.text-info { color: var(--fg-mute); font-size: 18px; margin-left: 24px; flex-shrink: 0; }
+.text-body {
+    flex: 1;
+    width: 100%;
+    max-width: 1700px;
+    overflow: hidden;           /* scrolled by the remote, not a scrollbar */
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    text-align: left;
+}
+#text-pre {
+    margin: 0;
+    padding: 24px 32px;
+    font-family: 'Consolas', 'DejaVu Sans Mono', monospace;
+    font-size: 24px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: var(--fg);
+    user-select: text;
+}
+#text-pre.muted { color: var(--fg-mute); }
+#view-text .hint { margin-top: 20px; }
+
+/* ── Audio-only playback ──────────────────────────────────────────── */
+.audio-card {
+    position: absolute; left: 50%; top: 42%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    max-width: 80%;
+}
+.audio-note {
+    width: 200px; height: 200px;
+    margin: 0 auto 36px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 4px solid var(--accent);
+    color: var(--accent);
+    font-size: 110px;
+    line-height: 200px;
+}
+.audio-title { font-size: 34px; color: var(--fg); word-break: break-word; }
+
+/* Listed, but nothing in the app opens it. */
+.browse-list li.unopenable .name,
+.browse-list li.unopenable .icon { opacity: .55; }

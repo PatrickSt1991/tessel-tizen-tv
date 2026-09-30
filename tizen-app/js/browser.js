@@ -6,18 +6,10 @@
  *   - 'wgt-package' for our app's own bundled files
  *
  * We resolve all known roots, list any that contain media, and let the user
- * navigate file tree relative to them.  Files matching media extensions
- * become "playable" items. */
+ * navigate file tree relative to them.  Every file is listed with its kind
+ * (FileTypes); video and audio are the "playable" items. */
 
 var Browser = (function () {
-    var MEDIA_EXTS = [
-        // Video
-        'mp4','m4v','mkv','avi','mov','wmv','webm','flv','ts','m2ts','mpg','mpeg','3gp',
-        // Audio
-        'mp3','aac','flac','wav','ogg','m4a','wma','opus',
-        // Playlists / streams
-        'm3u','m3u8','mpd','pls'
-    ];
     // Text-based subtitle formats we can convert to WebVTT on the fly.
     // Image-based subs (.sub/.idx VobSub, .sup PGS, DVD streams) aren't
     // representable in HTML5 <track> at all and are deliberately omitted.
@@ -31,7 +23,7 @@ var Browser = (function () {
         var dot = name.lastIndexOf('.');
         return dot < 0 ? name : name.slice(0, dot);
     }
-    function isMedia(name)    { return MEDIA_EXTS.indexOf(ext(name)) >= 0; }
+    function isMedia(name)    { return FileTypes.isPlayable(name); }
     function isSubtitle(name) { return SUBTITLE_EXTS.indexOf(ext(name)) >= 0; }
 
     /* Static fallback list of known Tizen virtual root names — used only when
@@ -167,6 +159,7 @@ var Browser = (function () {
                         return {
                             name:     f.name,
                             isDir:    f.isDirectory,
+                            kind:     f.isDirectory ? 'dir' : FileTypes.kind(f.name),
                             playable: !f.isDirectory && isMedia(f.name),
                             size:     f.fileSize,
                             mtime:    f.modified,
@@ -283,6 +276,67 @@ var Browser = (function () {
         }
     }
 
+    /* The first maxBytes of a file, for the text viewer and the playlist
+     * reader.  `src` is a Tizen File (USB), or an http URL — the smbproxy
+     * serves share files with Range support, so a 200 MB log costs one
+     * ranged read rather than a download.  A USB file goes through
+     * Mp4Subs.openReader, which knows every way this firmware can be made
+     * to read bytes.  cb(err, Uint8Array, totalSize); totalSize is 0 when
+     * the reply doesn't say. */
+    function readHead(src, maxBytes, cb) {
+        if (typeof src === 'string' && /^https?:/i.test(src)) { readHeadHttp(src, maxBytes, cb); return; }
+        if (typeof Mp4Subs === 'undefined' || !Mp4Subs.openReader) { cb(new Error('no file reader')); return; }
+        Mp4Subs.openReader(src, function (err, reader) {
+            if (err) { cb(err); return; }
+            function done(e, bytes, total) {
+                try { if (reader.close) reader.close(); } catch (x) {}
+                cb(e, bytes, total);
+            }
+            reader.getSize(function (e, size) {
+                if (e) { done(e); return; }
+                var n = Math.min(size, maxBytes);
+                if (!n) { done(null, new Uint8Array(0), size); return; }
+                reader.readRange(0, n, function (e2, buf) {
+                    if (e2) { done(e2); return; }
+                    done(null, new Uint8Array(buf), size);
+                });
+            });
+        });
+    }
+    /* One ranged GET.  A server that ignores Range sends the whole file,
+     * which is cut to size here. */
+    function readHeadHttp(url, maxBytes, cb) {
+        var done = false;
+        function finish(e, b, t) { if (!done) { done = true; cb(e, b, t); } }
+        try {
+            var x = new XMLHttpRequest();
+            x.open('GET', url, true);
+            x.responseType = 'arraybuffer';
+            x.timeout = 30000;
+            x.setRequestHeader('Range', 'bytes=0-' + (maxBytes - 1));
+            x.onload = function () {
+                // 416: an empty file has no byte 0 to start the range at.
+                if (x.status === 416) { finish(null, new Uint8Array(0), 0); return; }
+                if (x.status < 200 || x.status >= 300) {
+                    var why = '';
+                    try { why = x.response ? String.fromCharCode.apply(null, new Uint8Array(x.response).subarray(0, 200)) : ''; } catch (e) {}
+                    finish(new Error('HTTP ' + x.status + (why ? ': ' + why : '')));
+                    return;
+                }
+                var b = new Uint8Array(x.response || new ArrayBuffer(0));
+                var total = 0;
+                try {
+                    var m = /\/\s*(\d+)\s*$/.exec(x.getResponseHeader('Content-Range') || '');
+                    total = m ? parseInt(m[1], 10) : (x.status === 200 ? b.length : 0);
+                } catch (e) {}
+                finish(null, b.length > maxBytes ? b.subarray(0, maxBytes) : b, total);
+            };
+            x.onerror   = function () { finish(new Error('network error')); };
+            x.ontimeout = function () { finish(new Error('timed out')); };
+            x.send();
+        } catch (e) { finish(e); }
+    }
+
     return {
         listRoots:        listRoots,
         listDir:          listDir,
@@ -290,6 +344,7 @@ var Browser = (function () {
         isMedia:          isMedia,
         isSubtitle:       isSubtitle,
         humanSize:        humanSize,
-        readSubtitleText: readSubtitleText
+        readSubtitleText: readSubtitleText,
+        readHead:         readHead
     };
 })();
