@@ -279,15 +279,32 @@ var SMB = (function () {
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
-    function isPlayable(name) {
-        return /\.(mkv|mp4|m4v|mov|avi|webm|ts|m2ts|flv|wmv|mpe?g|mp3|flac|aac|m4a|ogg|wav|opus)$/i.test(name);
-    }
+    function isPlayable(name) { return FileTypes.isPlayable(name); }
     /* Text subtitle formats the player can paint.  Image subs (.sub/.idx,
      * .sup) are left out on purpose — same list as the USB browser. */
     function isSubtitle(name) {
         return /\.(srt|vtt|ass|ssa|smi|sami)$/i.test(name);
     }
     function join(dir, name) { return (dir ? dir.replace(/\/+$/, '') : '') + '/' + name; }
+
+    /* Where an entry of a playlist that sits in folder `dir` of the share
+     * points, as a share path ('/Music/01.mp3').  Relative entries are the
+     * folder's; a leading slash is the share's root.  null for what can't
+     * be on this share: a drive letter or a \\server\share path written by
+     * a desktop player, or '..' past the root. */
+    function sharePath(dir, ref) {
+        var r = String(ref || '').replace(/\\/g, '/');
+        if (!r || /^[a-z]:\//i.test(r) || r.indexOf('//') === 0) return null;
+        var parts = (r.charAt(0) === '/' ? r : (dir || '') + '/' + r).split('/');
+        var out = [];
+        for (var i = 0; i < parts.length; i++) {
+            var p = parts[i];
+            if (!p || p === '.') continue;
+            if (p === '..') { if (!out.length) return null; out.pop(); continue; }
+            out.push(p);
+        }
+        return out.length ? '/' + out.join('/') : null;
+    }
     function stem(name) {
         var dot = name.lastIndexOf('.');
         return dot < 0 ? name : name.slice(0, dot);
@@ -343,7 +360,7 @@ var SMB = (function () {
         if (ul) ul.innerHTML = '<li><span class="icon">!</span><span class="name">' + esc(msg) + '</span></li>';
     }
 
-    function render(path) {
+    function render(path, focusName) {
         UI.showView('view-browse');
         document.getElementById('browse-title').textContent = path ? path.split('/').pop() : I18n.t('smb.title');
         var srv = serverById(current) || {};
@@ -366,11 +383,24 @@ var SMB = (function () {
             var sidecarCount = Object.keys(sidecars).reduce(function (n, k) { return n + sidecars[k].length; }, 0);
             dbg('list ' + JSON.stringify(path || '/') + ': ' + entries.length + ' entries, ' +
                 sidecarCount + ' sidecar subtitle(s) matched to ' + Object.keys(sidecars).length + ' video(s)');
+            var filter = Settings.get('browseFilter');
+            entries = entries.filter(function (e) {
+                return FileTypes.shown(filter, e.isDir ? 'dir' : FileTypes.kind(e.name));
+            });
             var playlist = entries
                 .filter(function (e) { return !e.isDir && isPlayable(e.name); })
                 .map(function (e) {
                     return { uri: playableUrl(join(path, e.name), current), title: e.name, subtitles: sidecars[e.name] || [] };
                 });
+            // Pictures and text come straight off the smbproxy: the transcode
+            // server only knows how to turn things into video.
+            var pictures = entries
+                .filter(function (e) { return !e.isDir && FileTypes.kind(e.name) === 'image'; })
+                .map(function (e) { return { uri: streamUrl(join(path, e.name), current), title: e.name, size: e.size }; });
+            var srv = current;
+            function backHere(name) {
+                return function (last) { current = srv; setupBack(); render(path, (last && last.title) || name); };
+            }
 
             // ".." row to go up (except at root, unless that leads back to the
             // server list).
@@ -382,22 +412,26 @@ var SMB = (function () {
                 ul.appendChild(up);
             }
 
+            var focus = null;
             entries.forEach(function (e) {
-                if (!e.isDir && !isPlayable(e.name)) return;   // hide non-media
+                var kind = e.isDir ? 'dir' : FileTypes.kind(e.name);
                 var li = document.createElement('li');
                 li.dataset.dir = e.isDir ? '1' : '0';
+                if (kind === 'other') li.classList.add('unopenable');
                 var subs = sidecars[e.name] || [];
                 var subBadge = subs.length ? '<span class="meta">CC ×' + subs.length + '</span>' : '';
                 li.innerHTML =
-                    '<span class="icon">' + (e.isDir ? '📁' : '🎬') + '</span>' +
+                    '<span class="icon">' + FileTypes.icon(kind) + '</span>' +
                     '<span class="name">' + esc(e.name) + '</span>' +
                     (e.isDir ? '' : subBadge + '<span class="meta">' + humanSize(e.size) + '</span>');
+                if (focusName && e.name === focusName) focus = li;
                 li.addEventListener('click', function () {
                     if (e.isDir) {
                         pathStack.push(path);
                         render(join(path, e.name));
                         return;
                     }
+                    if (openOther(kind, e)) return;
                     var uri = playableUrl(join(path, e.name), current);
                     var idx = 0;
                     for (var i = 0; i < playlist.length; i++) if (playlist[i].uri === uri) { idx = i; break; }
@@ -413,7 +447,52 @@ var SMB = (function () {
                 ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + esc(I18n.t('browse.empty')) + '</span></li>';
 
             UI.refreshFocusables();
-            UI.focusOn(ul.firstElementChild);
+            UI.focusOn(focus || ul.firstElementChild);
+
+            /* A file that isn't for the player: the viewers, the playlist
+             * reader, or a toast.  Each hands the remote over (our Back
+             * handler comes off) and gets this folder back on its way out.
+             * false for video and audio, which play as before. */
+            function openOther(kind, e) {
+                var file = join(path, e.name);
+                switch (kind) {
+                    case 'video': case 'audio':
+                        return false;
+                    case 'image':
+                        teardownBack();
+                        Viewer.openImage(pictures,
+                            pictures.findIndex(function (p) { return p.title === e.name; }), backHere(e.name));
+                        return true;
+                    case 'text':
+                        teardownBack();
+                        Viewer.openText({ title: e.name, src: streamUrl(file, srv), size: e.size }, backHere(e.name));
+                        return true;
+                    case 'playlist':
+                        if (!window.VlcApp || !window.VlcApp.openPlaylist) return false;
+                        teardownBack();
+                        window.VlcApp.openPlaylist({
+                            title:   e.name,
+                            read:    function (cb) { Browser.readHead(streamUrl(file, srv), window.VlcApp.maxPlaylistBytes, cb); },
+                            resolve: function (ref) {
+                                // A stream URL of its own; a file: URL is a disk on
+                                // whichever PC wrote the list.
+                                if (/^(https?|rtsp|rtmp|mms|udp|rtp):/i.test(ref)) return ref;
+                                if (/^[a-z][a-z0-9+.-]+:/i.test(ref)) return null;
+                                var p = sharePath(path, ref);
+                                return p ? playableUrl(p, srv) : null;
+                            },
+                            // HLS segments can't be found relative to a
+                            // proxy URL; AVPlay gets the manifest and tries.
+                            playAsStream: function () {
+                                window.VlcApp.play('smb', [{ uri: streamUrl(file, srv), title: e.name }], 0);
+                            },
+                            back:    backHere(e.name)
+                        });
+                        return true;
+                }
+                UI.toast(I18n.t('browse.cantOpen'));
+                return true;
+            }
         });
     }
 
@@ -775,6 +854,7 @@ var SMB = (function () {
         dumpServiceLogs: dumpServiceLogs,
         normalizeServer: normalizeServer,   // exposed for the Node tests
         siblingSubtitles: siblingSubtitles, // exposed for the Node tests
+        sharePath:       sharePath,         // exposed for the Node tests
         isStreamUrl:     isStreamUrl,
         // Used by server.js to tell the servers apart: which one a stream
         // URL reads from, which saved server a host and share are, and what

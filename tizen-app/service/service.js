@@ -1056,6 +1056,9 @@ function cors(res, code, type, extra) {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Range',
+        // Without this a cross-origin page can't read how big a ranged
+        // reply's file is.
+        'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
         'Access-Control-Allow-Private-Network': 'true',
         'Cache-Control': 'no-store'
     };
@@ -1178,6 +1181,11 @@ function handleStream(req, res, query) {
                     if (m[1] === '' && m[2] !== '') { start = size - parseInt(m[2], 10); end = size - 1; } // suffix range
                 }
             }
+            // A range may run past the end ("the first MB" of a 2 KB file);
+            // it means up to the end.  Unclamped, Content-Length promised
+            // bytes that never came and the client saw a broken reply.
+            if (start < 0) start = 0;
+            if (end >= size) end = size - 1;
             if (start > end || start >= size) {
                 c.close(file.fileId);
                 cors(res, 416, 'text/plain', { 'Content-Range': 'bytes */' + size });

@@ -69,6 +69,7 @@ function load(opts) {
         module: { exports: {} },
         Debug: { send: function () {}, net: function () {} },
         I18n: I18n,
+        FileTypes: require('../../tizen-app/js/filetypes.js'),
         UI: { toast: function (m) { toasts.push(m); }, focusOn: function () {} },
         Settings: { get: function (k) { return k === 'smartRouting' ? opts.smart !== false : false; } },
         localStorage: {

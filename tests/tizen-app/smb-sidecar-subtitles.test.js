@@ -17,6 +17,7 @@ function loadSmb() {
         module: { exports: {} },
         Debug:  { send: function () {} },
         I18n:   I18n,
+        FileTypes: require('../../tizen-app/js/filetypes.js'),
         UI:     { toast: function () {} },
         localStorage: { getItem: function () { return null; }, setItem: function () {} },
         document: {

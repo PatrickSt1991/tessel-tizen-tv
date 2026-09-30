@@ -30,6 +30,9 @@ var Remote = (function () {
         RED: 403, GREEN: 404, YELLOW: 405, BLUE: 406,
         INFO: 457, GUIDE: 458,
 
+        // The on-screen keyboard's own Done / Cancel keys.
+        IME_DONE: 65376, IME_CANCEL: 65385,
+
         MEDIA_PLAY: 415, MEDIA_PAUSE: 19, MEDIA_STOP: 413,
         MEDIA_REWIND: 412, MEDIA_FF: 417,
         MEDIA_RECORD: 416, MEDIA_PLAYPAUSE: 10252

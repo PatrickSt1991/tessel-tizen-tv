@@ -19,6 +19,10 @@ var Settings = (function () {
         // silently (the pre-1.5 behaviour), 'never' starts from the top.
         resumeMode:       'ask',       // 'ask' | 'always' | 'never'
         shuffle:          false,       // randomize playlist order (folder + recent) instead of alphabetical
+        // What the USB and SMB browsers list: 'all' files (pictures and text
+        // open in the viewers, anything else is shown but can't be opened),
+        // or 'media' — folders, video, audio and playlists, as before 1.11.
+        browseFilter:     'all',       // 'all' | 'media'
         // Route USB / internal-storage files through the paired transcode
         // server instead of straight into AVPlay.  Off by default: it only
         // helps when a transcode server is paired, and it costs the embedded
