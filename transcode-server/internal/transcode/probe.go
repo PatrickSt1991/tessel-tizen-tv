@@ -18,11 +18,12 @@ type MediaInfo struct {
 
 // ffprobe JSON shapes (only the fields we read).
 type ffStream struct {
-	CodecType     string `json:"codec_type"`
-	CodecName     string `json:"codec_name"`
-	Channels      int    `json:"channels"`
-	Disposition   struct {
-		Default int `json:"default"`
+	CodecType   string `json:"codec_type"`
+	CodecName   string `json:"codec_name"`
+	Channels    int    `json:"channels"`
+	Disposition struct {
+		Default     int `json:"default"`
+		AttachedPic int `json:"attached_pic"`
 	} `json:"disposition"`
 }
 type ffFormat struct {
@@ -51,6 +52,14 @@ func (c *Caps) Inspect(ctx context.Context, url string) (*MediaInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseProbe(out)
+}
+
+// parseProbe summarises ffprobe's JSON. Embedded cover art (an MP3's ID3
+// picture, a FLAC's PICTURE block) shows up as a one-frame png/mjpeg "video"
+// stream flagged attached_pic; it isn't video, and counting it as such sends a
+// plain music file through a full video transcode of a single frame.
+func parseProbe(out []byte) (*MediaInfo, error) {
 	var probe ffProbeOut
 	if err := json.Unmarshal(out, &probe); err != nil {
 		return nil, err
@@ -63,7 +72,7 @@ func (c *Caps) Inspect(ctx context.Context, url string) (*MediaInfo, error) {
 		s := &probe.Streams[i]
 		switch s.CodecType {
 		case "video":
-			if mi.VideoCodec == "" {
+			if mi.VideoCodec == "" && s.Disposition.AttachedPic == 0 {
 				mi.VideoCodec = s.CodecName
 			}
 		case "audio":
