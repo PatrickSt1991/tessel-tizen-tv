@@ -325,6 +325,8 @@
   "playlist.reading": "جارٍ قراءة قائمة التشغيل…",
   "playlist.empty": "لا تحتوي قائمة التشغيل هذه على شيء يمكن لـ Tessel تشغيله.",
   "playlist.ungrouped": "أخرى",
+  "playlist.filter": "تصفية القنوات…",
+  "playlist.noMatches": "لا توجد قنوات تطابق «{0}»",
   "repeat.all": "تكرار الكل",
   "repeat.allOption": "تكرار المجلد بأكمله",
   "mini.stopped": "تم الإيقاف",

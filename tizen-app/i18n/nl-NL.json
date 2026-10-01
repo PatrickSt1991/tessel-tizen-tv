@@ -325,6 +325,8 @@
   "playlist.reading": "Afspeellijst lezen…",
   "playlist.empty": "Deze afspeellijst bevat niets wat Tessel kan afspelen.",
   "playlist.ungrouped": "Overig",
+  "playlist.filter": "Zenders filteren…",
+  "playlist.noMatches": "Geen zenders gevonden voor “{0}”",
   "repeat.all": "Alles herhalen",
   "repeat.allOption": "De hele map herhalen",
   "mini.stopped": "Gestopt",

@@ -325,6 +325,8 @@
   "playlist.reading": "Playlist wird gelesen…",
   "playlist.empty": "Diese Playlist enthält nichts, was Tessel abspielen kann.",
   "playlist.ungrouped": "Sonstige",
+  "playlist.filter": "Sender filtern…",
+  "playlist.noMatches": "Keine Sender passen zu „{0}“",
   "repeat.all": "Alle wiederholen",
   "repeat.allOption": "Den ganzen Ordner wiederholen",
   "mini.stopped": "Gestoppt",

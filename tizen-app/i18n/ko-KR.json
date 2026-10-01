@@ -325,6 +325,8 @@
   "playlist.reading": "재생목록을 읽는 중…",
   "playlist.empty": "이 재생목록에는 Tessel이 재생할 수 있는 항목이 없습니다.",
   "playlist.ungrouped": "기타",
+  "playlist.filter": "채널 필터…",
+  "playlist.noMatches": "‘{0}’와(과) 일치하는 채널이 없습니다",
   "repeat.all": "전체 반복",
   "repeat.allOption": "폴더 전체 반복",
   "mini.stopped": "중지됨",

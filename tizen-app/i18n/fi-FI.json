@@ -325,6 +325,8 @@
   "playlist.reading": "Luetaan soittolistaa…",
   "playlist.empty": "Soittolistalla ei ole mitään, mitä Tessel voi toistaa.",
   "playlist.ungrouped": "Muut",
+  "playlist.filter": "Suodata kanavia…",
+  "playlist.noMatches": "Mikään kanava ei vastaa hakua ”{0}”",
   "repeat.all": "Toista kaikki",
   "repeat.allOption": "Toista koko kansio",
   "mini.stopped": "Pysäytetty",

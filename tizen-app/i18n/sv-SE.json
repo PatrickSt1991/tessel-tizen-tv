@@ -325,6 +325,8 @@
   "playlist.reading": "Läser spellistan…",
   "playlist.empty": "Spellistan innehåller inget som Tessel kan spela.",
   "playlist.ungrouped": "Övrigt",
+  "playlist.filter": "Filtrera kanaler…",
+  "playlist.noMatches": "Inga kanaler matchar ”{0}”",
   "repeat.all": "Upprepa alla",
   "repeat.allOption": "Upprepa hela mappen",
   "mini.stopped": "Stoppad",

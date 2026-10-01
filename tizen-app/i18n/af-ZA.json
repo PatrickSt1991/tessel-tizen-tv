@@ -325,6 +325,8 @@
   "playlist.reading": "Lees die snitlys…",
   "playlist.empty": "Hierdie snitlys het niks wat Tessel kan speel nie.",
   "playlist.ungrouped": "Ander",
+  "playlist.filter": "Filtreer kanale…",
+  "playlist.noMatches": "Geen kanale pas by “{0}” nie",
   "repeat.all": "Herhaal alles",
   "repeat.allOption": "Herhaal die hele vouer",
   "mini.stopped": "Gestop",

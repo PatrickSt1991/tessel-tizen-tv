@@ -325,6 +325,8 @@
   "playlist.reading": "S’està llegint la llista de reproducció…",
   "playlist.empty": "Aquesta llista no té res que el Tessel pugui reproduir.",
   "playlist.ungrouped": "Altres",
+  "playlist.filter": "Filtra els canals…",
+  "playlist.noMatches": "Cap canal coincideix amb «{0}»",
   "repeat.all": "Repeteix-ho tot",
   "repeat.allOption": "Repeteix tota la carpeta",
   "mini.stopped": "Aturat",

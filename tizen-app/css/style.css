@@ -352,6 +352,31 @@ button:focus { outline: none; }
     font-weight: 700;
 }
 .browse-list li.watched-item .name { color: var(--fg-mute); }
+/* Playlist filter (issue #122), above the list. */
+.playlist-filter { width: 100%; max-width: 1400px; margin-bottom: 16px; }
+.playlist-filter input {
+    width: 100%;
+    background: var(--bg-card);
+    color: var(--fg);
+    font: inherit;
+    font-size: 22px;
+    border: 2px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 14px 24px;
+}
+.playlist-filter input::placeholder { color: var(--fg-dim); }
+.playlist-filter input:focus, .playlist-filter input.focused {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-card-h);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+}
+/* Channel logos (issue #123): a fixed box so rows don't shift when one
+ * arrives; the plain icon shows until it has loaded. */
+.browse-list .channel-icon { width: 64px; flex: 0 0 64px; height: 40px; display: flex; align-items: center; justify-content: center; }
+.browse-list .channel-icon img { display: none; max-width: 64px; max-height: 40px; object-fit: contain; }
+.browse-list .channel-icon.has-logo img { display: block; }
+.browse-list .channel-icon.has-logo .glyph { display: none; }
 /* A playlist channel that is on Saved streams (issue #121). */
 .browse-list .saved-mark { display: none; flex-shrink: 0; color: var(--accent); font-size: 22px; }
 .browse-list li.is-saved .saved-mark { display: inline; }

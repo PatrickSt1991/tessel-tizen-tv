@@ -325,6 +325,8 @@
   "playlist.reading": "Читання плейлиста…",
   "playlist.empty": "У цьому плейлисті немає нічого, що Tessel може відтворити.",
   "playlist.ungrouped": "Інше",
+  "playlist.filter": "Фільтр каналів…",
+  "playlist.noMatches": "Немає каналів за запитом «{0}»",
   "repeat.all": "Повторювати все",
   "repeat.allOption": "Повторювати всю теку",
   "mini.stopped": "Зупинено",

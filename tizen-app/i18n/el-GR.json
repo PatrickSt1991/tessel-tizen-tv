@@ -325,6 +325,8 @@
   "playlist.reading": "Ανάγνωση λίστας αναπαραγωγής…",
   "playlist.empty": "Αυτή η λίστα δεν έχει τίποτα που να μπορεί να παίξει το Tessel.",
   "playlist.ungrouped": "Άλλα",
+  "playlist.filter": "Φιλτράρισμα καναλιών…",
+  "playlist.noMatches": "Κανένα κανάλι δεν ταιριάζει με «{0}»",
   "repeat.all": "Επανάληψη όλων",
   "repeat.allOption": "Επανάληψη όλου του φακέλου",
   "mini.stopped": "Διακόπηκε",

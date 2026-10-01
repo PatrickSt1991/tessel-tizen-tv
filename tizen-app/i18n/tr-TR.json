@@ -325,6 +325,8 @@
   "playlist.reading": "Oynatma listesi okunuyor…",
   "playlist.empty": "Bu listede Tessel’in oynatabileceği bir şey yok.",
   "playlist.ungrouped": "Diğer",
+  "playlist.filter": "Kanalları filtrele…",
+  "playlist.noMatches": "“{0}” ile eşleşen kanal yok",
   "repeat.all": "Tümünü tekrarla",
   "repeat.allOption": "Tüm klasörü tekrarla",
   "mini.stopped": "Durduruldu",

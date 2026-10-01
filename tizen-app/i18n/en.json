@@ -325,6 +325,8 @@
   "playlist.reading": "Reading the playlist…",
   "playlist.empty": "This playlist has nothing Tessel can play.",
   "playlist.ungrouped": "Other",
+  "playlist.filter": "Filter channels…",
+  "playlist.noMatches": "No channels match “{0}”",
   "repeat.all": "Repeat all",
   "repeat.allOption": "Repeat the whole folder",
   "mini.stopped": "Stopped",

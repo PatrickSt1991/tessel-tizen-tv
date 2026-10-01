@@ -325,6 +325,8 @@
   "playlist.reading": "Načítání playlistu…",
   "playlist.empty": "Tento playlist neobsahuje nic, co by Tessel přehrál.",
   "playlist.ungrouped": "Ostatní",
+  "playlist.filter": "Filtrovat kanály…",
+  "playlist.noMatches": "Žádný kanál neodpovídá „{0}“",
   "repeat.all": "Opakovat vše",
   "repeat.allOption": "Opakovat celou složku",
   "mini.stopped": "Zastaveno",
