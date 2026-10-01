@@ -360,6 +360,17 @@
             <button id="srv-unpair" class="settings-row"><span class="settings-label" data-i18n="srv.unpair">Remove transcode server</span></button>
         </div>
 
+        <button class="settings-section-toggle" data-toggle="grp-backup" aria-expanded="false">
+            <span class="settings-section-title" data-i18n="backup.section">Backup</span>
+            <span class="settings-section-chev" aria-hidden="true">▸</span>
+        </button>
+        <div class="settings-group is-collapsed" id="grp-backup">
+            <button class="settings-row" id="backup-pass"><div class="settings-label" data-i18n="backup.passwords">Include SMB passwords (saved as plain text)</div><div class="settings-value" id="backup-pass-val">Off</div></button>
+            <button class="settings-row" id="backup-history"><div class="settings-label" data-i18n="backup.history">Include history and resume positions</div><div class="settings-value" id="backup-history-val">On</div></button>
+            <button id="backup-save" class="settings-row"><span class="settings-label" data-i18n="backup.save">Save backup to USB</span></button>
+            <button id="backup-restore" class="settings-row"><span class="settings-label" data-i18n="backup.restore">Restore backup from USB</span></button>
+        </div>
+
         <button class="settings-section-toggle" data-toggle="grp-dbg" aria-expanded="false">
             <span class="settings-section-title" data-i18n="dbg.section">Debug logging</span>
             <span class="settings-section-chev" aria-hidden="true">▸</span>
@@ -422,6 +433,7 @@
 <script src="js/server.js"></script>
 <script src="js/smb.js"></script>
 <script src="js/viewer.js"></script>
+<script src="js/backup.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
