@@ -21,6 +21,7 @@
   "hint.open": "abrir",
   "hint.up": "subir",
   "hint.openAsMedia": "abrir como multimedia",
+  "hint.saveChannel": "guardar / quitar",
   "common.loading": "Cargando…",
   "player.opening": "Abriendo flujo…",
   "player.error": "Error de reproducción",

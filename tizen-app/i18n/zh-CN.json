@@ -21,6 +21,7 @@
   "hint.open": "打开",
   "hint.up": "上一级",
   "hint.openAsMedia": "作为媒体打开",
+  "hint.saveChannel": "保存 / 取消保存",
   "common.loading": "正在加载…",
   "player.opening": "正在打开串流…",
   "player.error": "播放错误",

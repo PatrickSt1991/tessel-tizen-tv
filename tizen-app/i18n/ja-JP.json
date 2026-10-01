@@ -21,6 +21,7 @@
   "hint.open": "開く",
   "hint.up": "上へ",
   "hint.openAsMedia": "メディアとして開く",
+  "hint.saveChannel": "保存 / 解除",
   "common.loading": "読み込み中…",
   "player.opening": "ストリームを開いています…",
   "player.error": "再生エラー",

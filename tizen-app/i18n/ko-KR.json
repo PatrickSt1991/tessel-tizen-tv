@@ -21,6 +21,7 @@
   "hint.open": "열기",
   "hint.up": "상위",
   "hint.openAsMedia": "미디어로 열기",
+  "hint.saveChannel": "저장 / 해제",
   "common.loading": "불러오는 중…",
   "player.opening": "스트림 여는 중…",
   "player.error": "재생 오류",

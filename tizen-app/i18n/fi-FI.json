@@ -21,6 +21,7 @@
   "hint.open": "avaa",
   "hint.up": "ylös",
   "hint.openAsMedia": "avaa mediana",
+  "hint.saveChannel": "tallenna / poista",
   "common.loading": "Ladataan…",
   "player.opening": "Avataan virtaa…",
   "player.error": "Toistovirhe",

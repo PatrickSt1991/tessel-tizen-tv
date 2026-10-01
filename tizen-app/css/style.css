@@ -352,6 +352,9 @@ button:focus { outline: none; }
     font-weight: 700;
 }
 .browse-list li.watched-item .name { color: var(--fg-mute); }
+/* A playlist channel that is on Saved streams (issue #121). */
+.browse-list .saved-mark { display: none; flex-shrink: 0; color: var(--accent); font-size: 22px; }
+.browse-list li.is-saved .saved-mark { display: inline; }
 .browse-list li.watched-item .icon { opacity: .6; }
 
 /* ── Player ───────────────────────────────────────────────────────── */
