@@ -200,6 +200,7 @@
   "err.codecHint": "Tệp hoặc luồng có thể dùng codec hoặc container mà TV này không giải mã được (HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2, v.v.). Với tệp cục bộ, hãy remux sang MP4 bằng: {0}",
   "err.networkHint": "TV không thể kết nối đến nguồn.  Hãy kiểm tra URL, máy chủ đang chạy và TV có kết nối mạng.",
   "repeat.one": "Lặp lại một",
+  "tv.appVersion": "Phiên bản Tessel",
   "tv.model": "Model",
   "tv.marketingName": "Tên thương mại",
   "tv.firmware": "Firmware",

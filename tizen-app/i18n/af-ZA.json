@@ -200,6 +200,7 @@
   "err.codecHint": "Die lêer of stroom gebruik dalk 'n kodek of houer wat hierdie TV nie kan dekodeer nie (HEVC 10-bis, AV1, DTS-HD MA, VP9 Profile 2, ens.). Vir plaaslike lêers, remuks na MP4 met: {0}",
   "err.networkHint": "Die TV kon nie die bron bereik nie.  Kontroleer die URL, dat die bediener aan is, en dat jou TV netwerktoegang het.",
   "repeat.one": "Herhaal een",
+  "tv.appVersion": "Tessel-weergawe",
   "tv.model": "Model",
   "tv.marketingName": "Bemarkingsnaam",
   "tv.firmware": "Fermware",

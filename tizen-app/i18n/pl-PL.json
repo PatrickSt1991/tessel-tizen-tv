@@ -200,6 +200,7 @@
   "err.codecHint": "Plik lub strumień może używać kodeka lub kontenera, którego ten telewizor nie dekoduje (HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2 itp.). Pliki lokalne można zremuksować do MP4 poleceniem: {0}",
   "err.networkHint": "Telewizor nie mógł połączyć się ze źródłem.  Sprawdź URL, czy serwer działa i czy telewizor ma dostęp do sieci.",
   "repeat.one": "Powtarzaj jeden",
+  "tv.appVersion": "Wersja Tessel",
   "tv.model": "Model",
   "tv.marketingName": "Nazwa handlowa",
   "tv.firmware": "Oprogramowanie",

@@ -124,13 +124,30 @@ var Viewer = (function () {
         if (pic.timer) { stopSlideshow(); return; }
         if (pic.items.length < 2) return;
         pic.timer = setInterval(function () { step(1); }, SLIDESHOW_MS);
+        setScreenSaver(false);
         UI.toast(I18n.t('image.slideshowOn'));
     }
     function stopSlideshow(quiet) {
         if (!pic.timer) return;
         clearInterval(pic.timer);
         pic.timer = null;
+        setScreenSaver(true);
         if (!quiet) UI.toast(I18n.t('image.slideshowOff'));
+    }
+
+    /* The TV counts a slideshow as idle — no key presses, no video — and
+     * puts its screensaver over it after a few minutes (issue #115).  It is
+     * held off while the slideshow runs and allowed again when it stops; a
+     * single picture left on screen may still get the screensaver, which is
+     * what protects the panel. */
+    function setScreenSaver(on) {
+        try {
+            var ac = webapis.appcommon;
+            ac.setScreenSaver(on ? ac.AppCommonScreenSaverState.SCREEN_SAVER_ON
+                                 : ac.AppCommonScreenSaverState.SCREEN_SAVER_OFF);
+        } catch (e) {
+            if (typeof Debug !== 'undefined') Debug.warn('setScreenSaver failed: ' + ((e && e.message) || e));
+        }
     }
 
     function showBar() {

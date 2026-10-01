@@ -200,6 +200,7 @@
   "err.codecHint": "Filen eller strömmen kan använda en codec eller container som den här tv:n inte kan avkoda (HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2 osv.). För lokala filer kan du remuxa till MP4 med: {0}",
   "err.networkHint": "Tv:n kunde inte nå källan.  Kontrollera URL:en, att servern är igång och att din tv har nätverksåtkomst.",
   "repeat.one": "Upprepa en",
+  "tv.appVersion": "Tessel-version",
   "tv.model": "Modell",
   "tv.marketingName": "Marknadsföringsnamn",
   "tv.firmware": "Firmware",

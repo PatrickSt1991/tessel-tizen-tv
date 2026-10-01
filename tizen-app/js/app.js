@@ -40,6 +40,7 @@
         // Where a share file's tags are read when it plays through the
         // transcode server (a URL; a USB File wouldn't survive JSON).
         if (typeof item.tagSrc === 'string') entry.tagSrc = item.tagSrc;
+        if (typeof item.art === 'string') entry.art = item.art;
 
         var list = getRecent().filter(function (x) { return x.uri !== entry.uri; });
         list.unshift(entry);
@@ -559,13 +560,21 @@
                              + err.message + '</span></li>';
                 return;
             }
+            // The folder's cover picture, for music without art of its own —
+            // looked up before the filter, which may hide pictures.
+            var artName = FileTypes.folderArt(entries.map(function (e) { return e.isDir ? '' : e.name; }));
+            var art = null;
+            entries.forEach(function (e) { if (!e.isDir && e.name === artName) art = e.uri; });
             var filter = Settings.get('browseFilter');
             entries = entries.filter(function (e) { return FileTypes.shown(filter, e.kind); });
             // Ordered list of playable media in this folder — the playlist
             // that auto-play and next/prev walk through.
             var playlist = entries
                 .filter(function (e) { return e.playable; })
-                .map(function (e) { return { uri: e.uri, title: e.name, subtitles: e.subtitles, file: e.file }; });
+                .map(function (e) {
+                    return { uri: e.uri, title: e.name, subtitles: e.subtitles, file: e.file,
+                             art: e.kind === 'audio' ? art : null };
+                });
             // …and the pictures, which the viewer steps through the same way.
             var pictures = entries
                 .filter(function (e) { return e.kind === 'image'; })
@@ -655,7 +664,7 @@
         document.getElementById('browse-path').textContent = '';
         var ul = document.getElementById('browse-list'); ul.innerHTML = '';
         var playlist = list.map(function (item) {
-            return { uri: item.uri, title: item.title, subtitles: item.subtitles, tagSrc: item.tagSrc };
+            return { uri: item.uri, title: item.title, subtitles: item.subtitles, tagSrc: item.tagSrc, art: item.art };
         });
         list.forEach(function (item, i) {
             var li = document.createElement('li');
@@ -1013,7 +1022,7 @@
             }
         }, 1000);
 
-        pushRecent({ uri: uri, title: title || uri, subtitles: opts.subtitles, tagSrc: opts.tagSrc });
+        pushRecent({ uri: uri, title: title || uri, subtitles: opts.subtitles, tagSrc: opts.tagSrc, art: folderArtFor(uri) });
         scheduleOSDHide();
     }
 
@@ -1035,18 +1044,30 @@
         return null;
     }
 
+    /* The folder's cover picture (cover.jpg …) the list put on this file,
+     * if it is the one playing; shown when the file carries no art itself. */
+    function folderArtFor(uri) {
+        var cur = state.playlist[state.playlistIndex];
+        return cur && cur.uri === uri && cur.art ? cur.art : null;
+    }
+
     function showAudioTags(uri, opts) {
         var seq = ++tagSeq;
         setCoverArt(null);
         document.getElementById('audio-sub').textContent = '';
+        var folderArt = uri ? folderArtFor(uri) : null;
         var src = uri ? tagSourceFor(uri, opts || {}) : null;
-        if (!src || typeof AudioTags === 'undefined') return;
+        if (!src || typeof AudioTags === 'undefined') {
+            if (folderArt) setCoverArt({ url: folderArt });
+            return;
+        }
         var want = TAG_FIRST_READ;
         (function read(round) {
             Browser.readHead(src, want, function (err, bytes, total) {
                 if (seq !== tagSeq) return;   // another file started meanwhile
                 if (err) {
                     if (typeof Debug !== 'undefined') Debug.player('tags: read failed: ' + (err.message || err));
+                    if (folderArt) setCoverArt({ url: folderArt });
                     return;
                 }
                 var t = AudioTags.parse(bytes);
@@ -1057,6 +1078,7 @@
                     read(round + 1);
                     return;
                 }
+                if (!t.picture && folderArt) t.picture = { url: folderArt };
                 applyAudioTags(t);
             });
         })(0);
@@ -1066,7 +1088,7 @@
         var artist = t.artist || t.albumArtist || '';
         if (typeof Debug !== 'undefined')
             Debug.player('tags: ' + JSON.stringify({ title: t.title, artist: artist, album: t.album,
-                                                     art: t.picture ? t.picture.bytes.length : 0 }));
+                                                     art: t.picture ? (t.picture.url || t.picture.bytes.length) : 0 }));
         if (t.title) {
             document.getElementById('audio-title').textContent = t.title;
             document.getElementById('osd-title').textContent = (artist ? artist + ' — ' : '') + t.title;
@@ -1077,7 +1099,9 @@
         updateMiniPlayer();
     }
 
-    /* A blob: URL for the art, released again with the next file. */
+    /* pic: { bytes, mime } out of the file's tags, made into a blob: URL
+     * that is released again with the next file — or { url } of the
+     * folder's cover picture. */
     function setCoverArt(pic) {
         var img = document.getElementById('audio-art');
         var note = document.getElementById('audio-note');
@@ -1087,13 +1111,16 @@
         img.classList.add('hidden');
         note.classList.remove('hidden');
         if (!pic) return;
-        try {
-            artUrl = URL.createObjectURL(new Blob([pic.bytes], { type: pic.mime }));
-        } catch (e) { return; }
+        var src = pic.url;
+        if (!src) {
+            try {
+                src = artUrl = URL.createObjectURL(new Blob([pic.bytes], { type: pic.mime }));
+            } catch (e) { return; }
+        }
         // A picture the TV can't decode leaves the note up.
         img.onload  = function () { img.classList.remove('hidden'); note.classList.add('hidden'); updateMiniPlayer(); };
         img.onerror = function () { setCoverArt(null); };
-        img.src = artUrl;
+        img.src = src;
     }
 
     /* Smart routing sent this share file straight to AVPlay and it never
@@ -1689,6 +1716,7 @@
         TvInfo.getBuild(function (b) {
             var rows = [];
             function row(k, v) { rows.push('<div class="row"><div class="k">' + escapeHtml(k) + '</div><div class="v">' + escapeHtml(v || '—') + '</div></div>'); }
+            row(I18n.t('tv.appVersion'),   TvInfo.getAppVersion() || '—');
             row(I18n.t('tv.model'),        pInfo.realModel || b.model || '—');
             row(I18n.t('tv.marketingName'), pInfo.tvName    || b.buildDescription || '—');
             row(I18n.t('tv.firmware'),     pInfo.firmwareVersion || b.buildVersion || '—');
@@ -2107,6 +2135,19 @@
         return !!el && el.tagName === 'INPUT';
     }
 
+    /* Left / Right in a text field move the cursor through what's typed, so
+     * a typo can be fixed (issue #115); only past either end do they move
+     * focus on.  The key is then left to the browser. */
+    function caretCanMove(delta) {
+        var el = document.activeElement;
+        if (!isTextField(el) || !el.classList.contains('focused')) return false;
+        try {
+            var s = el.selectionStart, e = el.selectionEnd;
+            if (s == null || e == null) return false;
+            return delta < 0 ? e > 0 : s < el.value.length;
+        } catch (ex) { return false; }
+    }
+
     /* Number-key seek: digit n → n × 10 % of the duration.  Returns false
      * when an overlay owns the keys or the duration isn't known yet. */
     function seekToTenth(digit) {
@@ -2208,12 +2249,14 @@
                     scrubStep(-1, 10000);
                     return true;
                 }
+                if (caretCanMove(-1)) return false;
                 UI.moveFocus('left');  return true;
             case K.RIGHT:
                 if (state.view === 'player' && !errorUp && !trackMenuOpen) {
                     scrubStep(+1, 10000);
                     return true;
                 }
+                if (caretCanMove(+1)) return false;
                 UI.moveFocus('right'); return true;
             case K.ENTER:
                 // In player view: OK activates the focused OSD button if the OSD

@@ -200,6 +200,7 @@
   "err.codecHint": "此檔案或串流可能使用了這台電視無法解碼的編解碼器或容器（HEVC 10-bit、AV1、DTS-HD MA、VP9 Profile 2 等）。若是本機檔案，可用以下指令重新封裝為 MP4：{0}",
   "err.networkHint": "電視無法連線到來源。請檢查網址、伺服器是否正在執行，以及電視是否已連上網路。",
   "repeat.one": "單一重複",
+  "tv.appVersion": "Tessel 版本",
   "tv.model": "型號",
   "tv.marketingName": "產品名稱",
   "tv.firmware": "韌體",

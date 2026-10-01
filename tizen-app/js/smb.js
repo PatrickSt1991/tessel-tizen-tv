@@ -383,6 +383,10 @@ var SMB = (function () {
             var sidecarCount = Object.keys(sidecars).reduce(function (n, k) { return n + sidecars[k].length; }, 0);
             dbg('list ' + JSON.stringify(path || '/') + ': ' + entries.length + ' entries, ' +
                 sidecarCount + ' sidecar subtitle(s) matched to ' + Object.keys(sidecars).length + ' video(s)');
+            // The folder's cover picture, for music without art of its own —
+            // looked up before the filter, which may hide pictures.
+            var artName = FileTypes.folderArt(entries.map(function (e) { return e.isDir ? '' : e.name; }));
+            var art = artName ? streamUrl(join(path, artName), current) : null;
             var filter = Settings.get('browseFilter');
             entries = entries.filter(function (e) {
                 return FileTypes.shown(filter, e.isDir ? 'dir' : FileTypes.kind(e.name));
@@ -392,7 +396,8 @@ var SMB = (function () {
                 .map(function (e) {
                     return { uri: playableUrl(join(path, e.name), current), title: e.name, subtitles: sidecars[e.name] || [],
                              // Tags come off the share itself, not the transcode server's HLS.
-                             tagSrc: FileTypes.kind(e.name) === 'audio' ? streamUrl(join(path, e.name), current) : null };
+                             tagSrc: FileTypes.kind(e.name) === 'audio' ? streamUrl(join(path, e.name), current) : null,
+                             art:    FileTypes.kind(e.name) === 'audio' ? art : null };
                 });
             // Pictures and text come straight off the smbproxy: the transcode
             // server only knows how to turn things into video.

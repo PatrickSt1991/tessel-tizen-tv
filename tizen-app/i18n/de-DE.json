@@ -200,6 +200,7 @@
   "err.codecHint": "Die Datei oder der Stream nutzt evtl. einen Codec oder Container, den dieser TV nicht dekodieren kann (HEVC 10-Bit, AV1, DTS-HD MA, VP9 Profile 2 usw.). Lokale Dateien können Sie so zu MP4 remuxen: {0}",
   "err.networkHint": "Der TV konnte die Quelle nicht erreichen.  Prüfen Sie die URL, ob der Server läuft und ob Ihr TV Netzwerkzugang hat.",
   "repeat.one": "Einen wiederholen",
+  "tv.appVersion": "Tessel-Version",
   "tv.model": "Modell",
   "tv.marketingName": "Handelsname",
   "tv.firmware": "Firmware",

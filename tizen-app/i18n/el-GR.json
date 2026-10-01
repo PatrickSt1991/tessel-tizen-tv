@@ -200,6 +200,7 @@
   "err.codecHint": "Το αρχείο ή η ροή ίσως χρησιμοποιεί codec ή container που αυτή η TV δεν αποκωδικοποιεί (HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2 κ.λπ.). Για τοπικά αρχεία, κάντε remux σε MP4 με: {0}",
   "err.networkHint": "Η TV δεν μπόρεσε να φτάσει στην πηγή.  Ελέγξτε το URL, ότι ο διακομιστής λειτουργεί και ότι η TV έχει πρόσβαση στο δίκτυο.",
   "repeat.one": "Επανάληψη ενός",
+  "tv.appVersion": "Έκδοση Tessel",
   "tv.model": "Μοντέλο",
   "tv.marketingName": "Εμπορική ονομασία",
   "tv.firmware": "Υλικολογισμικό",

@@ -16,6 +16,16 @@ function utf8(s) { return new Uint8Array(Buffer.from(s, 'utf8')); }
 
 /* ── FileTypes (issue #109) ─────────────────────────────────────────── */
 
+test('a music folder\'s cover picture is found by the names players use', function () {
+    assert.strictEqual(FileTypes.folderArt(['01 - Song.flac', 'Folder.JPG', 'cover.png']), 'cover.png');
+    assert.strictEqual(FileTypes.folderArt(['01.mp3', 'front.jpg', 'back.jpg']), 'front.jpg');
+    assert.strictEqual(FileTypes.folderArt(['AlbumArtSmall.jpg', 'AlbumArt_{1234}_Large.jpg']),
+                       'AlbumArt_{1234}_Large.jpg');
+    // Only pictures the TV can show, and not just any picture in the folder.
+    assert.strictEqual(FileTypes.folderArt(['cover.heic', 'IMG_0001.jpg', 'cover.txt']), null);
+    assert.strictEqual(FileTypes.folderArt([]), null);
+});
+
 test('files are sorted into what opens them', function () {
     assert.strictEqual(FileTypes.kind('Movie.MKV'), 'video');
     assert.strictEqual(FileTypes.kind('01 - Song.flac'), 'audio');

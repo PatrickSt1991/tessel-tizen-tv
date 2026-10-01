@@ -47,10 +47,28 @@ var FileTypes = (function () {
         return k === 'dir' || k === 'video' || k === 'audio' || k === 'playlist';
     }
 
+    /* The picture in a music folder that stands for the album, by the names
+     * music players look for (cover.jpg, folder.jpg, front.png, Windows
+     * Media Player's AlbumArt_….jpg …), best first.  names: the folder's file
+     * names.  Returns one of them, or null. */
+    var ART_NAMES = ['cover', 'folder', 'front', 'album', 'albumart'];
+    function folderArt(names) {
+        var best = null, bestRank = Infinity;
+        for (var i = 0; i < (names || []).length; i++) {
+            var n = String(names[i]);
+            if (kind(n) !== 'image') continue;
+            var base = n.slice(0, n.lastIndexOf('.')).toLowerCase();
+            var rank = ART_NAMES.indexOf(base);
+            if (rank < 0 && /^albumart/.test(base)) rank = ART_NAMES.length + (/large$/.test(base) ? 0 : 1);
+            if (rank >= 0 && rank < bestRank) { bestRank = rank; best = n; }
+        }
+        return best;
+    }
+
     var ICONS = { dir: '📁', video: '🎬', audio: '🎵', image: '📷', text: '📄', playlist: '📋', other: '▫' };
     function icon(k) { return ICONS[k] || ICONS.other; }
 
-    return { ext: ext, kind: kind, isPlayable: isPlayable, shown: shown, icon: icon };
+    return { ext: ext, kind: kind, isPlayable: isPlayable, shown: shown, folderArt: folderArt, icon: icon };
 })();
 
 // Ignored by the Tizen/browser build; lets Node tests drive the module.

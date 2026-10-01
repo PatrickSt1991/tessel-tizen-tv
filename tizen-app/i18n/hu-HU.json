@@ -200,6 +200,7 @@
   "err.codecHint": "Lehet, hogy a fájl vagy stream olyan kodeket vagy konténert használ, amelyet ez a TV nem tud dekódolni (HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2 stb.). Helyi fájlok esetén alakítsa át MP4-re ezzel: {0}",
   "err.networkHint": "A TV nem érte el a forrást.  Ellenőrizze az URL-t, hogy fut-e a szerver, és hogy a TV-nek van-e hálózati hozzáférése.",
   "repeat.one": "Egy ismétlése",
+  "tv.appVersion": "Tessel verzió",
   "tv.model": "Modell",
   "tv.marketingName": "Kereskedelmi név",
   "tv.firmware": "Firmware",
