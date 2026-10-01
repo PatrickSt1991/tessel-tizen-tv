@@ -174,7 +174,7 @@ button:focus { outline: none; }
     letter-spacing: 2px;
     margin-bottom: 16px;
 }
-#url-input {
+.url-input-wrap input {
     width: 100%;
     background: var(--bg-card);
     color: var(--fg);
@@ -186,8 +186,8 @@ button:focus { outline: none; }
     text-align: center;
     transition: border-color .15s ease, background .15s ease;
 }
-#url-input::placeholder { color: var(--fg-dim); }
-#url-input:focus, #url-input.focused {
+.url-input-wrap input::placeholder { color: var(--fg-dim); }
+.url-input-wrap input:focus, .url-input-wrap input.focused {
     outline: none;
     border-color: var(--accent);
     background: var(--bg-card-h);
@@ -225,6 +225,28 @@ button:focus { outline: none; }
     color: var(--fg);
     background: var(--bg-card-h);
 }
+
+/* Saved streams (issue #119): a chip that plays, and a ⋯ chip beside it for
+ * the rest.  A long list scrolls inside its own box so Play and the samples
+ * stay on screen; focusing a chip scrolls it into view. */
+.saved-streams { margin-top: 32px; }
+.saved-streams-list {
+    width: 100%;
+    max-height: 260px;
+    overflow-y: auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.saved-item { display: inline-flex; align-items: center; margin: 7px; }
+.saved-item .preset { margin: 0; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-item .saved-more { margin-left: 6px; padding: 12px 18px; }
+
+/* The name/URL form takes the screen while it's open. */
+.saved-edit { display: none; width: 100%; max-width: 1080px; flex-direction: column; align-items: center; }
+.saved-edit .url-input-wrap + .url-input-wrap { margin-top: 28px; }
+#view-url.editing .saved-edit { display: flex; }
+#view-url.editing > :not(.brand):not(.saved-edit) { display: none; }
 
 .actions {
     display: flex;

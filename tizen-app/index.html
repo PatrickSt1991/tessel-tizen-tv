@@ -83,8 +83,34 @@
 
     <div class="actions">
         <button class="btn primary" data-action="open-current-url" data-i18n="common.play">Play</button>
+        <button class="btn ghost"   data-action="save-current-url" data-i18n="saved.save">☆ Save</button>
         <button class="btn ghost"   data-action="fetch-remote-url" data-i18n="url.fromDevice">📲 Get URL from device</button>
         <button class="btn ghost"   data-action="back-home" data-i18n="common.cancel">Cancel</button>
+    </div>
+
+    <!-- The user's own saved streams (issue #119).  Each is a chip that plays
+         it and a ⋯ chip beside it for rename / move / remove; hidden while
+         the list is empty. -->
+    <div class="presets saved-streams hidden" id="saved-streams">
+        <div class="presets-label" data-i18n="saved.title">Saved streams</div>
+        <div id="saved-streams-list" class="saved-streams-list"></div>
+    </div>
+
+    <!-- Name and URL of a stream being saved or edited.  While it's open the
+         rest of the screen steps aside (#view-url.editing). -->
+    <div class="saved-edit" id="saved-edit">
+        <div class="url-input-wrap">
+            <label for="saved-name" data-i18n="saved.name">Name</label>
+            <input id="saved-name" type="text">
+        </div>
+        <div class="url-input-wrap">
+            <label for="saved-url" data-i18n="url.label">Stream URL or file path</label>
+            <input id="saved-url" type="text" inputmode="url">
+        </div>
+        <div class="actions">
+            <button class="btn primary" data-action="saved-edit-done" data-i18n="saved.done">Save</button>
+            <button class="btn ghost"   data-action="saved-edit-cancel" data-i18n="common.cancel">Cancel</button>
+        </div>
     </div>
 
     <!-- Sample inputs sit below the primary actions so the remote lands on
@@ -433,6 +459,7 @@
 <script src="js/server.js"></script>
 <script src="js/smb.js"></script>
 <script src="js/viewer.js"></script>
+<script src="js/saved-streams.js"></script>
 <script src="js/backup.js"></script>
 <script src="js/app.js"></script>
 </body>

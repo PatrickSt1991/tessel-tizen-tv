@@ -374,7 +374,7 @@
     function handleAction(action, el) {
         if (typeof Debug !== 'undefined') Debug.action(action);
         switch (action) {
-            case 'open-url':           UI.showView('view-url'); state.view = 'url'; break;
+            case 'open-url':           openUrlView(); break;
             case 'browse-usb':         openBrowserAtRoot(); break;
             case 'browse-smb':         SMB.openBrowser(); break;
             case 'browse-recent':      openRecent(); break;
@@ -386,6 +386,11 @@
                 break;
             }
             case 'fetch-remote-url':   fetchRemoteUrl(); break;
+            case 'save-current-url':   saveCurrentUrl(); break;
+            case 'play-saved':         playSaved(el.dataset.id); break;
+            case 'saved-menu':         openSavedMenu(el.dataset.id); break;
+            case 'saved-edit-done':    finishSavedEdit(); break;
+            case 'saved-edit-cancel':  closeSavedEdit(); break;
             case 'back-home':          backToHome(); break;
             case 'play-pause':         Player.togglePause(); scheduleOSDHide(); break;
             case 'stop':               exitPlayer(); break;
@@ -419,8 +424,13 @@
     }
 
     /* ── URL playback ─────────────────────────────────────────────── */
-    function openUrl(url) {
-        var title = urlBaseName(url);
+    function openUrlView() {
+        closeSavedEdit(true);
+        renderSavedStreams();
+        UI.showView('view-url'); state.view = 'url';
+    }
+    function openUrl(url, title) {
+        title = title || urlBaseName(url);
         // A channel or song list can't go to AVPlay as it is (issue #110):
         // read it first.  An HLS manifest turns out to be one when read, and
         // is then played exactly as before — so is anything that can't be
@@ -443,6 +453,143 @@
         state.playlist  = [{ uri: url, title: title }];
         state.playlistIndex = 0;
         playUri(url, title, { askResume: true });
+    }
+
+    /* ── Saved streams (issue #119) ───────────────────────────────────
+     * The user's own named list on the URL screen: OK on a chip plays it,
+     * the ⋯ chip beside it edits, moves or removes it.  Saving and editing
+     * share one name + URL form that takes the screen while it's open. */
+    var savedEditing = null;           // id being edited, '' for a new one, null when closed
+    var savedMenuFor = null;           // whose ⋯ menu was opened last, to come back to
+
+    function renderSavedStreams() {
+        var box  = document.getElementById('saved-streams');
+        var list = document.getElementById('saved-streams-list');
+        if (!box || !list) return;
+        var items = SavedStreams.list();
+        list.innerHTML = '';
+        items.forEach(function (s) {
+            var row = document.createElement('div');
+            row.className = 'saved-item';
+            var play = document.createElement('button');
+            play.className = 'preset saved-stream';
+            play.dataset.action = 'play-saved';
+            play.dataset.id = s.id;
+            play.textContent = s.name;
+            play.title = s.url;
+            var more = document.createElement('button');
+            more.className = 'preset saved-more';
+            more.dataset.action = 'saved-menu';
+            more.dataset.id = s.id;
+            more.textContent = '⋯';
+            more.setAttribute('aria-label', I18n.t('saved.options', s.name));
+            row.appendChild(play);
+            row.appendChild(more);
+            list.appendChild(row);
+        });
+        box.classList.toggle('hidden', !items.length);
+        if (state.view === 'url') UI.refreshFocusables();
+    }
+
+    /* Focus a saved stream's chip once the list has been drawn again;
+     * Play when the list has nothing left to land on. */
+    function focusSaved(id, which) {
+        setTimeout(function () {
+            var el = id && document.querySelector('#saved-streams-list [data-action="' +
+                         (which || 'play-saved') + '"][data-id="' + id + '"]');
+            UI.focusOn(el || document.querySelector('#view-url [data-action="open-current-url"]'));
+        }, 0);
+    }
+
+    function playSaved(id) {
+        var s = SavedStreams.get(id);
+        if (!s) return;
+        document.getElementById('url-input').value = s.url;
+        openUrl(s.url, s.name);
+    }
+
+    function saveCurrentUrl() {
+        var url = document.getElementById('url-input').value.trim();
+        if (!url) { UI.toast(I18n.t('url.enterFirst')); return; }
+        var dup = SavedStreams.findByUrl(url);
+        if (dup) { UI.toast(I18n.t('saved.already', dup.name)); focusSaved(dup.id); return; }
+        openSavedEdit('', urlBaseName(url), url);
+    }
+
+    function openSavedEdit(id, name, url) {
+        savedEditing = id;
+        document.getElementById('saved-name').value = name;
+        document.getElementById('saved-url').value  = url;
+        document.getElementById('view-url').classList.add('editing');
+        UI.refreshFocusables();
+        UI.focusOn(document.getElementById('saved-name'));
+    }
+    /* quiet: closing on the way into the screen, nothing to put focus back on. */
+    function closeSavedEdit(quiet) {
+        var id = savedEditing;
+        savedEditing = null;
+        var view = document.getElementById('view-url');
+        if (!view.classList.contains('editing')) return;
+        view.classList.remove('editing');
+        UI.refreshFocusables();
+        if (!quiet) focusSaved(id, id ? 'saved-menu' : null);
+    }
+    function finishSavedEdit() {
+        var name = document.getElementById('saved-name').value;
+        var url  = document.getElementById('saved-url').value.trim();
+        if (!url) { UI.toast(I18n.t('url.enterFirst')); return; }
+        var s = savedEditing ? SavedStreams.update(savedEditing, name, url)
+                             : SavedStreams.add(name, url);
+        if (!s) return;
+        savedEditing = null;
+        document.getElementById('view-url').classList.remove('editing');
+        renderSavedStreams();
+        UI.toast(I18n.t('saved.saved', s.name));
+        focusSaved(s.id);
+    }
+
+    function openSavedMenu(id) {
+        var items = SavedStreams.list();
+        var at = -1;
+        for (var i = 0; i < items.length; i++) if (items[i].id === id) at = i;
+        if (at < 0) return;
+        var s = items[at];
+        savedMenuFor = id;
+        var opts = [{ code: 'edit', name: I18n.t('saved.edit') }];
+        if (at > 0)                opts.push({ code: 'up',   name: I18n.t('saved.moveUp') });
+        if (at < items.length - 1) opts.push({ code: 'down', name: I18n.t('saved.moveDown') });
+        opts.push({ code: 'remove', name: I18n.t('saved.remove') });
+        openPicker(s.name, opts, null, function (code) {
+            if (code === 'edit') {
+                setTimeout(function () { openSavedEdit(s.id, s.name, s.url); }, 0);
+                return;
+            }
+            if (code === 'remove') { confirmSavedRemove(s); return; }
+            SavedStreams.move(s.id, code === 'up' ? -1 : 1);
+            renderSavedStreams();
+            focusSaved(s.id, 'saved-menu');
+        });
+    }
+    function confirmSavedRemove(s) {
+        // The picker that asked closes once this returns; open the next one after.
+        setTimeout(function () {
+            openPicker(I18n.t('saved.removeConfirm', s.name), [
+                { code: 'remove', name: I18n.t('saved.remove') },
+                { code: 'keep',   name: I18n.t('common.cancel') }
+            ], 'keep', function (code) {
+                if (code === 'remove') {
+                    var items = SavedStreams.list(), next = null;
+                    for (var i = 0; i < items.length; i++)
+                        if (items[i].id === s.id) next = items[i + 1] || items[i - 1] || null;
+                    SavedStreams.remove(s.id);
+                    renderSavedStreams();
+                    UI.toast(I18n.t('saved.removed', s.name));
+                    focusSaved(next && next.id, 'saved-menu');
+                } else {
+                    focusSaved(s.id, 'saved-menu');
+                }
+            });
+        }, 0);
     }
 
     /* ── URL drop (paste from any device) ─────────────────────────────
@@ -2186,7 +2333,22 @@
         // URL input view: OK on the field opens the on-screen keyboard (see
         // ENTER below), and the keyboard's Done plays what was typed.
         if (state.view === 'url') {
-            if (code === K.BACK) { backToHome(); return true; }
+            if (code === K.BACK) {
+                if (!document.getElementById('picker').classList.contains('hidden')) {
+                    closePicker();
+                    if (savedMenuFor) focusSaved(savedMenuFor, 'saved-menu');
+                } else if (savedEditing !== null) closeSavedEdit();
+                else backToHome();
+                return true;
+            }
+            // In the save form the keyboard's Done goes on to the URL, then saves.
+            if (code === K.IME_DONE && savedEditing !== null && document.activeElement) {
+                if (document.activeElement.id === 'saved-name') {
+                    UI.focusOn(document.getElementById('saved-url'));
+                    return true;
+                }
+                if (document.activeElement.id === 'saved-url') { finishSavedEdit(); return true; }
+            }
             if (code === K.IME_DONE && document.activeElement &&
                 document.activeElement.id === 'url-input' &&
                 document.activeElement.value.trim()) {

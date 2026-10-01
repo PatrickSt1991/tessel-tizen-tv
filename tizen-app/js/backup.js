@@ -16,6 +16,7 @@
  *     this TV already has for the same server, if it has one.
  *   - The transcode server.  Its token is no secret on the LAN (the box hands
  *     it out on /api/status without a login), so it always goes along.
+ *   - The streams saved on the URL screen (issue #119).
  *   - The debug listener.
  *   - Recents, watched marks and resume positions, unless the user leaves
  *     them out.
@@ -41,6 +42,7 @@ var Backup = (function () {
         smb:      'vlctv_smb_v1',
         smbExtra: 'vlctv_smb_extra_v1',
         server:   'vlctv_server_v1',
+        saved:    'vlctv_saved_v1',
         debug:    'vlctv_debug_v1'
     };
     var HISTORY_KEYS = {
@@ -91,6 +93,8 @@ var Backup = (function () {
 
         var server = readJson(storage, KEYS.server);
         if (server && server.url) data.server = server;
+        var saved = readJson(storage, KEYS.saved);
+        if (Array.isArray(saved)) data.saved = saved;
         var debug = readJson(storage, KEYS.debug);
         if (debug && typeof debug === 'object') data.debug = debug;
 
@@ -167,6 +171,7 @@ var Backup = (function () {
             writeJson(storage, KEYS.smbExtra, d.smbExtra.map(function (s) { return keepPass(s, known); }));
 
         if (d.server && d.server.url) writeJson(storage, KEYS.server, d.server);
+        if (Array.isArray(d.saved)) writeJson(storage, KEYS.saved, d.saved);
         if (d.debug && typeof d.debug === 'object') writeJson(storage, KEYS.debug, d.debug);
 
         for (var k in HISTORY_KEYS)
