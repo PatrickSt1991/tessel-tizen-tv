@@ -21,6 +21,7 @@
   "hint.open": "открыть",
   "hint.up": "вверх",
   "hint.openAsMedia": "открыть как медиа",
+  "hint.saveChannel": "сохранить / убрать",
   "common.loading": "Загрузка…",
   "player.opening": "Открытие потока…",
   "player.error": "Ошибка воспроизведения",

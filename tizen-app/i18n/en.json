@@ -21,6 +21,7 @@
   "hint.open": "open",
   "hint.up": "up",
   "hint.openAsMedia": "open as media",
+  "hint.saveChannel": "save / unsave",
   "common.loading": "Loading…",
   "player.opening": "Opening stream…",
   "player.error": "Playback error",

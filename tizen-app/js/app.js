@@ -222,6 +222,8 @@
             UI.refreshFocusables();
         });
 
+        watchChannelHint();
+
         // Preset URL chips
         document.querySelectorAll('.preset').forEach(function (el) {
             el.addEventListener('click', function () {
@@ -441,7 +443,8 @@
                 read:    function (cb) { fetchBytes(url, cb); },
                 resolve: function (ref) { return Playlist.resolveUrl(ref, url); },
                 playAsStream: function () { playStreamUrl(url, title); },
-                back:    function () { UI.showView('view-url'); state.view = 'url'; }
+                // Drawn again: a channel may have been saved in the list.
+                back:    function () { renderSavedStreams(); UI.showView('view-url'); state.view = 'url'; }
             });
             return;
         }
@@ -928,8 +931,11 @@
             items.forEach(function (e, i) {
                 var li = document.createElement('li');
                 li.dataset.uri = e.uri;
+                li.dataset.channel = e.title;
                 li.innerHTML = '<span class="icon">' + FileTypes.icon(entryKind(e)) + '</span>' +
-                               '<span class="name">' + escapeHtml(e.title) + '</span>';
+                               '<span class="name">' + escapeHtml(e.title) + '</span>' +
+                               '<span class="saved-mark">★</span>';
+                li.classList.toggle('is-saved', !!SavedStreams.findByUrl(e.uri));
                 li.addEventListener('click', function () {
                     state.listBack = null;
                     playFromList('playlist', items, i, null);
@@ -943,6 +949,34 @@
         UI.focusOn(focus || ul.firstElementChild);
     }
     function groupName(g) { return g || I18n.t('playlist.ungrouped'); }
+
+    /* Right on a channel row puts it on Saved streams, or takes it off
+     * again (issue #121), so a few channels out of a big IPTV list play
+     * straight from the URL screen.  The ★ shows which are on it. */
+    function toggleSavedChannel() {
+        var li = document.querySelector('#browse-list li.focused');
+        if (!li || li.dataset.channel == null) return false;
+        var s = SavedStreams.findByUrl(li.dataset.uri);
+        if (s) {
+            SavedStreams.remove(s.id);
+            UI.toast(I18n.t('saved.removed', s.name));
+        } else {
+            s = SavedStreams.add(li.dataset.channel, li.dataset.uri);
+            if (s) UI.toast(I18n.t('saved.saved', s.name));
+        }
+        li.classList.toggle('is-saved', !!SavedStreams.findByUrl(li.dataset.uri));
+        return true;
+    }
+    /* The ► hint only while channel rows are listed; every browse list
+     * (USB, SMB, Recents, playlists) is drawn into the same <ul>. */
+    function watchChannelHint() {
+        var ul = document.getElementById('browse-list');
+        var hint = document.getElementById('hint-save');
+        if (!ul || !hint || typeof MutationObserver === 'undefined') return;
+        new MutationObserver(function () {
+            hint.classList.toggle('hidden', !ul.querySelector('li[data-channel]'));
+        }).observe(ul, { childList: true });
+    }
     /* A stream URL has no extension more often than not; call it video. */
     function entryKind(e) {
         var k = FileTypes.kind(String(e.uri).split('?')[0]);
@@ -2419,6 +2453,7 @@
                     return true;
                 }
                 if (caretCanMove(+1)) return false;
+                if (state.view === 'browse' && !pickerOpen && toggleSavedChannel()) return true;
                 UI.moveFocus('right'); return true;
             case K.ENTER:
                 // In player view: OK activates the focused OSD button if the OSD

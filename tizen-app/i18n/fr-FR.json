@@ -21,6 +21,7 @@
   "hint.open": "ouvrir",
   "hint.up": "remonter",
   "hint.openAsMedia": "ouvrir comme média",
+  "hint.saveChannel": "enregistrer / retirer",
   "common.loading": "Chargement…",
   "player.opening": "Ouverture du flux…",
   "player.error": "Erreur de lecture",

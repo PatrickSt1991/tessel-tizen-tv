@@ -21,6 +21,7 @@
   "hint.open": "megnyitás",
   "hint.up": "fel",
   "hint.openAsMedia": "megnyitás médiaként",
+  "hint.saveChannel": "mentés / eltávolítás",
   "common.loading": "Betöltés…",
   "player.opening": "Stream megnyitása…",
   "player.error": "Lejátszási hiba",

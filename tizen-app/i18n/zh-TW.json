@@ -21,6 +21,7 @@
   "hint.open": "開啟",
   "hint.up": "上一層",
   "hint.openAsMedia": "以媒體開啟",
+  "hint.saveChannel": "儲存 / 取消儲存",
   "common.loading": "載入中…",
   "player.opening": "正在開啟串流…",
   "player.error": "播放錯誤",

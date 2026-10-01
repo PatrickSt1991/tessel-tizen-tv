@@ -21,6 +21,7 @@
   "hint.open": "åbn",
   "hint.up": "op",
   "hint.openAsMedia": "åbn som medie",
+  "hint.saveChannel": "gem / fjern",
   "common.loading": "Indlæser…",
   "player.opening": "Åbner stream…",
   "player.error": "Afspilningsfejl",
