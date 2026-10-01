@@ -325,6 +325,8 @@
   "playlist.reading": "Читање листе за репродукцију…",
   "playlist.empty": "Ова листа нема ништа што Tessel може да пусти.",
   "playlist.ungrouped": "Остало",
+  "playlist.filter": "Филтрирај канале…",
+  "playlist.noMatches": "Ниједан канал не одговара упиту „{0}”",
   "repeat.all": "Понављај све",
   "repeat.allOption": "Понављај целу фасциклу",
   "mini.stopped": "Заустављено",

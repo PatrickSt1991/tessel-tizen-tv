@@ -325,6 +325,8 @@
   "playlist.reading": "Đang đọc danh sách phát…",
   "playlist.empty": "Danh sách phát này không có gì Tessel phát được.",
   "playlist.ungrouped": "Khác",
+  "playlist.filter": "Lọc kênh…",
+  "playlist.noMatches": "Không có kênh nào khớp với “{0}”",
   "repeat.all": "Lặp lại tất cả",
   "repeat.allOption": "Lặp lại cả thư mục",
   "mini.stopped": "Đã dừng",

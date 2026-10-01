@@ -325,6 +325,8 @@
   "playlist.reading": "プレイリストを読み込み中…",
   "playlist.empty": "このプレイリストには Tessel で再生できるものがありません。",
   "playlist.ungrouped": "その他",
+  "playlist.filter": "チャンネルを絞り込む…",
+  "playlist.noMatches": "「{0}」に一致するチャンネルはありません",
   "repeat.all": "全曲リピート",
   "repeat.allOption": "フォルダー全体をリピート",
   "mini.stopped": "停止しました",

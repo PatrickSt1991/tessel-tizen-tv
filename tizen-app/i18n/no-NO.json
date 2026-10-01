@@ -325,6 +325,8 @@
   "playlist.reading": "Leser spillelisten…",
   "playlist.empty": "Spillelisten har ingenting Tessel kan spille av.",
   "playlist.ungrouped": "Andre",
+  "playlist.filter": "Filtrer kanaler…",
+  "playlist.noMatches": "Ingen kanaler passer med «{0}»",
   "repeat.all": "Gjenta alle",
   "repeat.allOption": "Gjenta hele mappen",
   "mini.stopped": "Stoppet",

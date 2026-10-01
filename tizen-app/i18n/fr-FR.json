@@ -325,6 +325,8 @@
   "playlist.reading": "Lecture de la playlist…",
   "playlist.empty": "Cette playlist ne contient rien que Tessel puisse lire.",
   "playlist.ungrouped": "Autres",
+  "playlist.filter": "Filtrer les chaînes…",
+  "playlist.noMatches": "Aucune chaîne ne correspond à « {0} »",
   "repeat.all": "Tout répéter",
   "repeat.allOption": "Répéter tout le dossier",
   "mini.stopped": "Arrêté",

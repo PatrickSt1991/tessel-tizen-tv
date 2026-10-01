@@ -325,6 +325,8 @@
   "playlist.reading": "正在讀取播放清單…",
   "playlist.empty": "此播放清單中沒有 Tessel 可以播放的內容。",
   "playlist.ungrouped": "其他",
+  "playlist.filter": "篩選頻道…",
+  "playlist.noMatches": "沒有符合「{0}」的頻道",
   "repeat.all": "全部重複",
   "repeat.allOption": "重複整個資料夾",
   "mini.stopped": "已停止",

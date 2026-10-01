@@ -325,6 +325,8 @@
   "playlist.reading": "Lejátszási lista olvasása…",
   "playlist.empty": "Ebben a listában nincs semmi, amit a Tessel le tud játszani.",
   "playlist.ungrouped": "Egyéb",
+  "playlist.filter": "Csatornák szűrése…",
+  "playlist.noMatches": "Egy csatorna sem egyezik ezzel: „{0}”",
   "repeat.all": "Összes ismétlése",
   "repeat.allOption": "Az egész mappa ismétlése",
   "mini.stopped": "Leállítva",

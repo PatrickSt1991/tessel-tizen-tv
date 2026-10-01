@@ -325,6 +325,8 @@
   "playlist.reading": "正在读取播放列表…",
   "playlist.empty": "此播放列表中没有 Tessel 可以播放的内容。",
   "playlist.ungrouped": "其他",
+  "playlist.filter": "筛选频道…",
+  "playlist.noMatches": "没有与“{0}”匹配的频道",
   "repeat.all": "全部循环",
   "repeat.allOption": "循环整个文件夹",
   "mini.stopped": "已停止",

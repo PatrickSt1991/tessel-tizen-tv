@@ -325,6 +325,8 @@
   "playlist.reading": "קורא את רשימת ההשמעה…",
   "playlist.empty": "ברשימה הזו אין שום דבר ש-Tessel יכול לנגן.",
   "playlist.ungrouped": "אחר",
+  "playlist.filter": "סינון ערוצים…",
+  "playlist.noMatches": "אין ערוצים שתואמים ל־„{0}”",
   "repeat.all": "חזרה על הכול",
   "repeat.allOption": "חזרה על כל התיקייה",
   "mini.stopped": "נעצר",

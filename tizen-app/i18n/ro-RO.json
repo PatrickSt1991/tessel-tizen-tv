@@ -325,6 +325,8 @@
   "playlist.reading": "Se citește lista de redare…",
   "playlist.empty": "Această listă nu conține nimic ce poate reda Tessel.",
   "playlist.ungrouped": "Altele",
+  "playlist.filter": "Filtrează canalele…",
+  "playlist.noMatches": "Niciun canal nu se potrivește cu „{0}”",
   "repeat.all": "Repetă tot",
   "repeat.allOption": "Repetă tot dosarul",
   "mini.stopped": "Oprit",

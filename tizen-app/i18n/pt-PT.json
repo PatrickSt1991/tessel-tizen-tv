@@ -325,6 +325,8 @@
   "playlist.reading": "A ler a lista de reprodução…",
   "playlist.empty": "Esta lista não tem nada que o Tessel consiga reproduzir.",
   "playlist.ungrouped": "Outros",
+  "playlist.filter": "Filtrar canais…",
+  "playlist.noMatches": "Nenhum canal corresponde a «{0}»",
   "repeat.all": "Repetir tudo",
   "repeat.allOption": "Repetir a pasta inteira",
   "mini.stopped": "Parado",

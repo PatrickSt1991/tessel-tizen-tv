@@ -222,7 +222,7 @@
             UI.refreshFocusables();
         });
 
-        watchChannelHint();
+        watchPlaylistList();
 
         // Preset URL chips
         document.querySelectorAll('.preset').forEach(function (el) {
@@ -891,32 +891,38 @@
                                escapeHtml(I18n.t('playlist.empty')) + '</span></li>';
                 return;
             }
-            state.playlistView = { src: src, entries: entries, group: null };
+            state.playlistView = { src: src, entries: entries, group: null, filter: '' };
+            document.getElementById('playlist-filter').value = '';
             renderPlaylist();
         });
     }
     var playlistSeq = 0;
 
     /* The groups, or one group's entries (all entries when there's only one
-     * group).  focusUri puts the cursor back on the entry just played. */
-    function renderPlaylist(focusUri) {
+     * group), or — while the filter has text — the matching entries of every
+     * group.  focusUri puts the cursor back on the entry just played;
+     * keepFocus leaves it in the filter field while the user types. */
+    function renderPlaylist(focusUri, keepFocus) {
         var pv = state.playlistView;
         if (!pv) return;
         var groups = Playlist.groups(pv.entries);
         var grouped = groups.length > 1;
-        UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = false;
+        var query = foldText(pv.filter || '');
+        if (!keepFocus) { UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = false; }
         document.getElementById('browse-title').textContent = pv.src.title;
-        document.getElementById('browse-path').textContent = grouped && pv.group !== null ? groupName(pv.group) : '';
+        document.getElementById('browse-path').textContent = query ? '' :
+            grouped && pv.group !== null ? groupName(pv.group) : '';
         var ul = document.getElementById('browse-list');
         ul.innerHTML = '';
         var focus = null;
         if (logoObserver) { logoObserver.disconnect(); logoObserver = null; }
 
-        if (grouped && pv.group === null) {
+        if (grouped && pv.group === null && !query) {
             state.listBack = pv.src.back;
             groups.forEach(function (g) {
                 var li = document.createElement('li');
                 li.dataset.dir = '1';
+                li.dataset.playlist = '1';
                 li.innerHTML = '<span class="icon">📁</span>' +
                                '<span class="name">' + escapeHtml(groupName(g.name)) + '</span>' +
                                '<span class="meta">' + g.count + '</span>';
@@ -925,17 +931,28 @@
                 if (focusUri === 'group:' + g.name) focus = li;
             });
         } else {
-            state.listBack = grouped
+            // Back clears the filter before it leaves the group or the list.
+            state.listBack = query ? clearPlaylistFilter
+                : grouped
                 ? function () { var was = pv.group; pv.group = null; renderPlaylist('group:' + was); }
                 : pv.src.back;
-            var items = pv.entries.filter(function (e) { return !grouped || (e.group || '') === pv.group; });
+            var items = pv.entries.filter(function (e) {
+                if (query) return foldText(e.title).indexOf(query) >= 0;
+                return !grouped || (e.group || '') === pv.group;
+            });
+            if (!items.length) {
+                ul.innerHTML = '<li data-playlist="1"><span class="icon">i</span><span class="name">' +
+                               escapeHtml(I18n.t('playlist.noMatches', pv.filter.trim())) + '</span></li>';
+            }
             items.forEach(function (e, i) {
                 var li = document.createElement('li');
+                li.dataset.playlist = '1';
                 li.dataset.uri = e.uri;
                 li.dataset.channel = e.title;
                 if (e.art) li.dataset.logo = e.art;
                 li.innerHTML = '<span class="icon channel-icon"><span class="glyph">' + FileTypes.icon(entryKind(e)) + '</span></span>' +
                                '<span class="name">' + escapeHtml(e.title) + '</span>' +
+                               (query && grouped ? '<span class="meta">' + escapeHtml(groupName(e.group)) + '</span>' : '') +
                                '<span class="saved-mark">★</span>';
                 li.classList.toggle('is-saved', !!SavedStreams.findByUrl(e.uri));
                 li.addEventListener('click', function () {
@@ -949,7 +966,49 @@
         markNowPlaying();
         loadLogos(ul);
         UI.refreshFocusables();
-        UI.focusOn(focus || ul.firstElementChild);
+        if (!keepFocus) UI.focusOn(focus || ul.firstElementChild);
+    }
+
+    /* The playlist filter (issue #122): what's typed matches anywhere in a
+     * title, ignoring case and accents, across every group.  Redrawn a
+     * moment after typing stops, so a 10 000-channel list keeps up. */
+    function foldText(s) {
+        s = String(s).toLowerCase();
+        try { s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
+        return s.trim();
+    }
+    var filterTimer = null;
+    function onPlaylistFilterInput() {
+        clearTimeout(filterTimer);
+        filterTimer = setTimeout(function () {
+            var pv = state.playlistView;
+            var input = document.getElementById('playlist-filter');
+            if (!pv || state.view !== 'browse' || pv.filter === input.value) return;
+            pv.filter = input.value;
+            renderPlaylist(null, true);
+        }, 250);
+    }
+    function clearPlaylistFilter() {
+        var pv = state.playlistView;
+        clearTimeout(filterTimer);
+        document.getElementById('playlist-filter').value = '';
+        if (!pv) return;
+        pv.filter = '';
+        renderPlaylist();
+    }
+    /* The field only while a playlist is listed; every browse list is drawn
+     * into the same <ul>, which also tells the ► hint when to show. */
+    function watchPlaylistList() {
+        var ul = document.getElementById('browse-list');
+        var hint = document.getElementById('hint-save');
+        var filter = document.getElementById('playlist-filter-wrap');
+        var input = document.getElementById('playlist-filter');
+        if (input) input.addEventListener('input', onPlaylistFilterInput);
+        if (!ul || typeof MutationObserver === 'undefined') return;
+        new MutationObserver(function () {
+            if (hint) hint.classList.toggle('hidden', !ul.querySelector('li[data-channel]'));
+            if (filter) filter.classList.toggle('hidden', !ul.querySelector('li[data-playlist]'));
+        }).observe(ul, { childList: true });
     }
 
     /* Channel logos (tvg-logo, issue #123).  A relative one sits beside the
@@ -1010,16 +1069,7 @@
         li.classList.toggle('is-saved', !!SavedStreams.findByUrl(li.dataset.uri));
         return true;
     }
-    /* The ► hint only while channel rows are listed; every browse list
-     * (USB, SMB, Recents, playlists) is drawn into the same <ul>. */
-    function watchChannelHint() {
-        var ul = document.getElementById('browse-list');
-        var hint = document.getElementById('hint-save');
-        if (!ul || !hint || typeof MutationObserver === 'undefined') return;
-        new MutationObserver(function () {
-            hint.classList.toggle('hidden', !ul.querySelector('li[data-channel]'));
-        }).observe(ul, { childList: true });
-    }
+
     /* A stream URL has no extension more often than not; call it video. */
     function entryKind(e) {
         var k = FileTypes.kind(String(e.uri).split('?')[0]);
@@ -2409,6 +2459,16 @@
 
         // URL input view: OK on the field opens the on-screen keyboard (see
         // ENTER below), and the keyboard's Done plays what was typed.
+        // The keyboard's Done in the playlist filter: filter now, then on to
+        // the first result.
+        if (state.view === 'browse' && code === K.IME_DONE && document.activeElement &&
+            document.activeElement.id === 'playlist-filter' && state.playlistView) {
+            clearTimeout(filterTimer);
+            state.playlistView.filter = document.activeElement.value;
+            renderPlaylist();
+            return true;
+        }
+
         if (state.view === 'url') {
             if (code === K.BACK) {
                 if (!document.getElementById('picker').classList.contains('hidden')) {
