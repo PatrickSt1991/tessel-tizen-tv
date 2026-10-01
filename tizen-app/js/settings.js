@@ -143,7 +143,13 @@ var TvInfo = (function () {
 
     function getUA() { return (navigator && navigator.userAgent) || ''; }
 
-    return { getBuild: getBuild, getProductInfo: getProductInfo, getCodecs: getCodecs, getUA: getUA };
+    /* Tessel's own version, from config.xml as installed. */
+    function getAppVersion() {
+        try { return tizen.application.getAppInfo().version || ''; } catch (e) { return ''; }
+    }
+
+    return { getBuild: getBuild, getProductInfo: getProductInfo, getCodecs: getCodecs, getUA: getUA,
+             getAppVersion: getAppVersion };
 })();
 
 

@@ -200,6 +200,7 @@
   "err.codecHint": "파일 또는 스트림이 이 TV가 디코딩할 수 없는 코덱이나 컨테이너(HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2 등)를 사용하고 있을 수 있습니다. 로컬 파일은 다음 명령으로 MP4로 리먹스하세요: {0}",
   "err.networkHint": "TV가 소스에 연결할 수 없습니다. URL, 서버 실행 여부, TV의 네트워크 연결을 확인하세요.",
   "repeat.one": "한 개 반복",
+  "tv.appVersion": "Tessel 버전",
   "tv.model": "모델",
   "tv.marketingName": "제품명",
   "tv.firmware": "펌웨어",

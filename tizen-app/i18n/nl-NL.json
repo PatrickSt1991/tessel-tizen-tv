@@ -200,6 +200,7 @@
   "err.codecHint": "Het bestand of de stream gebruikt mogelijk een codec of container die deze tv niet kan decoderen (HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2, enz.). Zet lokale bestanden om naar MP4 met: {0}",
   "err.networkHint": "De tv kan de bron niet bereiken.  Controleer de URL, of de server draait en of uw tv netwerktoegang heeft.",
   "repeat.one": "Eén herhalen",
+  "tv.appVersion": "Tessel-versie",
   "tv.model": "Model",
   "tv.marketingName": "Handelsnaam",
   "tv.firmware": "Firmware",

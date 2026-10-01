@@ -200,6 +200,7 @@
   "err.codecHint": "O ficheiro ou a transmissão pode usar um codec ou contentor que esta TV não consegue descodificar (HEVC 10 bits, AV1, DTS-HD MA, VP9 Profile 2, etc.). Para ficheiros locais, remultiplexe para MP4 com: {0}",
   "err.networkHint": "A TV não conseguiu aceder à origem.  Verifique o URL, se o servidor está ativo e se a TV tem acesso à rede.",
   "repeat.one": "Repetir um",
+  "tv.appVersion": "Versão do Tessel",
   "tv.model": "Modelo",
   "tv.marketingName": "Nome comercial",
   "tv.firmware": "Firmware",

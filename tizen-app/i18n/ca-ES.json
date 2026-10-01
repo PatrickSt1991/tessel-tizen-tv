@@ -200,6 +200,7 @@
   "err.codecHint": "Pot ser que el fitxer o el flux utilitzi un còdec o un contenidor que aquest televisor no pot descodificar (HEVC de 10 bits, AV1, DTS-HD MA, VP9 Profile 2, etc.). Per als fitxers locals, remultiplexa a MP4 amb: {0}",
   "err.networkHint": "El televisor no ha pogut accedir a l’origen.  Comprova l’URL, que el servidor funcioni i que el televisor tingui accés a la xarxa.",
   "repeat.one": "Repeteix un",
+  "tv.appVersion": "Versió de Tessel",
   "tv.model": "Model",
   "tv.marketingName": "Nom comercial",
   "tv.firmware": "Microprogramari",

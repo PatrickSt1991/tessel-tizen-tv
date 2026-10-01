@@ -200,6 +200,7 @@
   "err.codecHint": "Dosya veya akış, bu TV'nin çözemediği bir codec ya da kapsayıcı kullanıyor olabilir (HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2 vb.). Yerel dosyaları şu komutla MP4'e dönüştürün: {0}",
   "err.networkHint": "TV kaynağa ulaşamadı.  URL'yi, sunucunun çalıştığını ve TV'nizin ağ erişimi olduğunu kontrol edin.",
   "repeat.one": "Birini tekrarla",
+  "tv.appVersion": "Tessel sürümü",
   "tv.model": "Model",
   "tv.marketingName": "Pazarlama adı",
   "tv.firmware": "Donanım yazılımı",

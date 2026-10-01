@@ -200,6 +200,7 @@
   "err.codecHint": "Tiedosto tai virta saattaa käyttää koodekkia tai säiliömuotoa, jota tämä TV ei pysty purkamaan (HEVC 10-bit, AV1, DTS-HD MA, VP9 Profile 2 jne.). Paikalliset tiedostot voi muuntaa MP4-muotoon komennolla: {0}",
   "err.networkHint": "TV ei saanut yhteyttä lähteeseen.  Tarkista URL, että palvelin on käynnissä ja että TV:llä on verkkoyhteys.",
   "repeat.one": "Uusi yksi",
+  "tv.appVersion": "Tessel-versio",
   "tv.model": "Malli",
   "tv.marketingName": "Kaupallinen nimi",
   "tv.firmware": "Laiteohjelmisto",
