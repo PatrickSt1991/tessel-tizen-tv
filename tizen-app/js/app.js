@@ -881,7 +881,7 @@
             var entries = [];
             parsed.entries.forEach(function (e) {
                 var uri = src.resolve(e.ref);
-                if (uri) entries.push({ uri: uri, title: e.title, group: e.group });
+                if (uri) entries.push({ uri: uri, title: e.title, group: e.group, art: logoUrl(e.logo, src) });
             });
             if (typeof Debug !== 'undefined')
                 Debug.player('playlist ' + src.title + ': ' + entries.length + ' of ' +
@@ -910,6 +910,7 @@
         var ul = document.getElementById('browse-list');
         ul.innerHTML = '';
         var focus = null;
+        if (logoObserver) { logoObserver.disconnect(); logoObserver = null; }
 
         if (grouped && pv.group === null) {
             state.listBack = pv.src.back;
@@ -932,7 +933,8 @@
                 var li = document.createElement('li');
                 li.dataset.uri = e.uri;
                 li.dataset.channel = e.title;
-                li.innerHTML = '<span class="icon">' + FileTypes.icon(entryKind(e)) + '</span>' +
+                if (e.art) li.dataset.logo = e.art;
+                li.innerHTML = '<span class="icon channel-icon"><span class="glyph">' + FileTypes.icon(entryKind(e)) + '</span></span>' +
                                '<span class="name">' + escapeHtml(e.title) + '</span>' +
                                '<span class="saved-mark">★</span>';
                 li.classList.toggle('is-saved', !!SavedStreams.findByUrl(e.uri));
@@ -945,8 +947,49 @@
             });
         }
         markNowPlaying();
+        loadLogos(ul);
         UI.refreshFocusables();
         UI.focusOn(focus || ul.firstElementChild);
+    }
+
+    /* Channel logos (tvg-logo, issue #123).  A relative one sits beside the
+     * list, like the streams; only web addresses are kept, which covers
+     * the list's own folder on SMB too (the service serves it over http). */
+    function logoUrl(logo, src) {
+        if (!logo) return null;
+        var u = /^https?:/i.test(logo) ? logo : src.resolve(logo);
+        return u && /^https?:/i.test(u) ? u : null;
+    }
+    /* A list of thousands of channels mustn't fetch thousands of pictures:
+     * a logo is fetched once its row scrolls near the screen.  Until it has
+     * loaded, and for good when it can't, the row keeps its plain icon. */
+    var logoObserver = null;
+    var LOGOS_WITHOUT_OBSERVER = 40;
+    function loadLogos(ul) {
+        var rows = ul.querySelectorAll('li[data-logo]');
+        if (!rows.length) return;
+        if (typeof IntersectionObserver === 'undefined') {
+            for (var i = 0; i < rows.length && i < LOGOS_WITHOUT_OBSERVER; i++) showLogo(rows[i]);
+            return;
+        }
+        logoObserver = new IntersectionObserver(function (seen, obs) {
+            seen.forEach(function (s) {
+                if (!s.isIntersecting) return;
+                obs.unobserve(s.target);
+                showLogo(s.target);
+            });
+        }, { root: ul, rootMargin: '400px 0px' });
+        for (var j = 0; j < rows.length; j++) logoObserver.observe(rows[j]);
+    }
+    function showLogo(li) {
+        var slot = li.querySelector('.channel-icon');
+        if (!slot || slot.querySelector('img')) return;
+        var img = document.createElement('img');
+        img.alt = '';
+        img.onload  = function () { slot.classList.add('has-logo'); };
+        img.onerror = function () { if (img.parentNode) img.parentNode.removeChild(img); };
+        img.src = li.dataset.logo;
+        slot.appendChild(img);
     }
     function groupName(g) { return g || I18n.t('playlist.ungrouped'); }
 
