@@ -85,7 +85,7 @@
         <button class="btn primary" data-action="open-current-url" data-i18n="common.play">Play</button>
         <button class="btn ghost"   data-action="save-current-url" data-i18n="saved.save">☆ Save</button>
         <button class="btn ghost"   data-action="fetch-remote-url" data-i18n="url.fromDevice">📲 Get URL from device</button>
-        <button class="btn ghost"   data-action="back-home" data-i18n="common.cancel">Cancel</button>
+        <!-- No Cancel: the remote's Back key does that (issue #126). -->
     </div>
 
     <!-- The user's own saved streams (issue #119).  Each is a chip that plays
@@ -294,7 +294,7 @@
             </button>
             <button class="settings-row" data-action="setting-auto-play">
                 <div class="settings-label" data-i18n="settings.autoPlay">Auto-play next file</div>
-                <div class="settings-value" id="setting-auto-play-value">Off</div>
+                <div class="settings-value" id="setting-auto-play-value">On</div>
             </button>
             <button class="settings-row" data-action="setting-resume-mode">
                 <div class="settings-label" data-i18n="settings.resume">Resume playback</div>
@@ -307,6 +307,10 @@
             <button class="settings-row" data-action="setting-browse-filter">
                 <div class="settings-label" data-i18n="settings.browseFilter">File browser shows</div>
                 <div class="settings-value" id="setting-browse-filter-value">All files</div>
+            </button>
+            <button class="settings-row" data-action="setting-slideshow-interval">
+                <div class="settings-label" data-i18n="settings.slideshow">Slideshow interval</div>
+                <div class="settings-value" id="setting-slideshow-interval-value">5 seconds</div>
             </button>
             <button class="settings-row" data-action="setting-aspect-mode">
                 <div class="settings-label" data-i18n="settings.aspect">Video aspect ratio</div>
@@ -411,6 +415,7 @@
             <label class="settings-row settings-row-input"><span class="settings-label" data-i18n="dbg.host">Listener IP</span><input id="dbg-host" type="text" placeholder="192.168.1.50"></label>
             <label class="settings-row settings-row-input"><span class="settings-label" data-i18n="dbg.port">Listener port</span><input id="dbg-port" type="text" placeholder="9999"></label>
             <button id="dbg-save" class="settings-row"><span class="settings-label" data-i18n="dbg.save">Save debug settings</span></button>
+            <button id="dbg-export" class="settings-row"><span class="settings-label" data-i18n="dbg.export">Save debug log to USB</span></button>
         </div>
 
         <h2 class="settings-section-title" data-i18n="settings.tvInfo">TV Information</h2>

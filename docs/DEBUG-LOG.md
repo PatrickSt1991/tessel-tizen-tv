@@ -20,3 +20,9 @@ forwards it after each connection step.
 
 If you'd rather capture a session without DevTools attached, **Settings → Debug
 logging** POSTs the same lines to an HTTP listener on your PC. It ships off.
+
+To save a log for later instead, plug in a USB stick and use **Settings → Debug
+logging → Save debug log to USB**. It writes the last 2000 lines of this session
+to `tessel-log-<date>-<time>.txt` at the top of the stick, with the app version
+and TV model at the head, so a problem can be reported after the fact with no
+listener running.

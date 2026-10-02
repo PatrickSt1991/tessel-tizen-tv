@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets"
         xmlns="http://www.w3.org/ns/widgets"
         id="http://madebypatrick.com/vlctv"
-        version="1.17.0"
+        version="1.18.0"
         viewmodes="maximized">
     <tizen:application id="madebypatk.vlcweb"
                        package="madebypatk"
@@ -57,6 +57,9 @@
     <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
     <tizen:privilege name="http://tizen.org/privilege/filesystem.write"/>
     <tizen:privilege name="http://tizen.org/privilege/download"/>
+    <!-- tizen.power.request('SCREEN', 'SCREEN_NORMAL') keeps the screensaver
+         off during a picture slideshow (issue #126). -->
+    <tizen:privilege name="http://tizen.org/privilege/power"/>
     <!-- Required for tizen.tvinputdevice.registerKey(); without it the TV keeps
          Play/Pause/FF/RW and the colour keys for itself and shows a
          "not supported" toast when they're pressed. -->

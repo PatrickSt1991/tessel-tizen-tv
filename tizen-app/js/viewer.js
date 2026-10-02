@@ -18,7 +18,7 @@
 
 var Viewer = (function () {
     var MAX_TEXT_BYTES = 1024 * 1024;
-    var SLIDESHOW_MS   = 5000;
+    var SLIDESHOW_DEFAULT_S = 5;
     var BAR_MS         = 4000;
 
     var keyHandler = null;
@@ -120,35 +120,65 @@ var Viewer = (function () {
         showBar();
     }
 
+    /* Settings → Slideshow interval (issue #126); the default when the
+     * setting is missing or nonsense. */
+    function slideshowMs() {
+        var s = (typeof Settings !== 'undefined') ? parseInt(Settings.get('slideshowSeconds'), 10) : 0;
+        return (s > 0 ? s : SLIDESHOW_DEFAULT_S) * 1000;
+    }
+
     function toggleSlideshow() {
         if (pic.timer) { stopSlideshow(); return; }
         if (pic.items.length < 2) return;
-        pic.timer = setInterval(function () { step(1); }, SLIDESHOW_MS);
-        setScreenSaver(false);
+        pic.timer = setInterval(function () { step(1); keepAwake(true); }, slideshowMs());
+        keepAwake(true);
         UI.toast(I18n.t('image.slideshowOn'));
     }
     function stopSlideshow(quiet) {
         if (!pic.timer) return;
         clearInterval(pic.timer);
         pic.timer = null;
-        setScreenSaver(true);
+        keepAwake(false);
         if (!quiet) UI.toast(I18n.t('image.slideshowOff'));
     }
 
     /* The TV counts a slideshow as idle — no key presses, no video — and
-     * puts its screensaver over it after a few minutes (issue #115).  It is
-     * held off while the slideshow runs and allowed again when it stops; a
-     * single picture left on screen may still get the screensaver, which is
-     * what protects the panel. */
-    function setScreenSaver(on) {
+     * puts its screensaver over it after a few minutes (issue #115).  Two
+     * things hold it off while the slideshow runs, because AppCommon's
+     * screensaver switch alone turned out not to on every TV (issue #126):
+     * the Power API's screen lock, which is what the platform offers for
+     * exactly this (privilege/power in config.xml), and that switch, for
+     * firmware that honours it instead.  Both are asked again with every
+     * picture, since some firmware lets them lapse, and both are let go
+     * when the slideshow stops; a single picture left on screen may still
+     * get the screensaver, which is what protects the panel.  What each
+     * one answers goes to the debug log, so a TV where the screensaver
+     * still comes can say which half failed. */
+    var awake = false;
+    function keepAwake(on) {
+        var changed = on !== awake;
+        awake = on;
+        function note(m) { if (changed && typeof Debug !== 'undefined') Debug.info('slideshow: ' + m); }
+        function why(e)  { return (e && (e.message || e.name)) || String(e); }
+        try {
+            if (on) tizen.power.request('SCREEN', 'SCREEN_NORMAL');
+            else    tizen.power.release('SCREEN');
+            note('power.' + (on ? 'request' : 'release') + '(SCREEN) ok');
+        } catch (e) { note('power.' + (on ? 'request' : 'release') + ' failed: ' + why(e)); }
         try {
             var ac = webapis.appcommon;
-            ac.setScreenSaver(on ? ac.AppCommonScreenSaverState.SCREEN_SAVER_ON
-                                 : ac.AppCommonScreenSaverState.SCREEN_SAVER_OFF);
-        } catch (e) {
-            if (typeof Debug !== 'undefined') Debug.warn('setScreenSaver failed: ' + ((e && e.message) || e));
-        }
+            ac.setScreenSaver(on ? ac.AppCommonScreenSaverState.SCREEN_SAVER_OFF
+                                 : ac.AppCommonScreenSaverState.SCREEN_SAVER_ON,
+                function () { note('screensaver ' + (on ? 'off' : 'on')); },
+                function (e) { note('setScreenSaver failed: ' + why(e)); });
+        } catch (e) { note('setScreenSaver threw: ' + why(e)); }
     }
+    /* The TV going to standby, or another app coming up, ends the
+     * slideshow: nothing should hold the screen awake from the background. */
+    if (typeof document !== 'undefined')
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden' && pic.timer) stopSlideshow(true);
+        });
 
     function showBar() {
         var bar = $('image-bar');

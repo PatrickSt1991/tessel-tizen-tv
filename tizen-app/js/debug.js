@@ -13,6 +13,10 @@
  * attached.  That half is configured under Settings → Debug logging,
  * persisted in localStorage, and ships DISABLED — the console output does
  * not depend on it.
+ *
+ * The last MAX_LINES lines are also kept in memory, so Settings → Debug
+ * logging → Save debug log to USB can write out what happened after the
+ * fact, with no listener running (issue #126; backup.js does the writing).
  */
 
 var Debug = (function () {
@@ -30,6 +34,11 @@ var Debug = (function () {
     }
     var cfg = loadCfg();
 
+    var MAX_LINES = 2000;        // ~200 KB at most; hours at the usual rate
+    var lines     = [];
+    var dropped   = 0;
+    var startedAt = new Date();
+
     /* Whether the POST half has somewhere to go.  The console half is always
      * on: it costs nothing when no inspector is attached, and having to go
      * and enable something before the interesting thing happens again is
@@ -46,6 +55,13 @@ var Debug = (function () {
         seq++;
         var payload = ts() + ' #' + seq + ' [' + tag + '] ' +
                       (typeof msg === 'string' ? msg : JSON.stringify(msg));
+
+        lines.push(payload);
+        // Trim in chunks rather than a shift per line once the buffer is full.
+        if (lines.length > MAX_LINES + 200) {
+            dropped += lines.length - MAX_LINES;
+            lines.splice(0, lines.length - MAX_LINES);
+        }
 
         /* DevTools first, so a line still lands there when the POST path is
          * off or the listener has gone away.  console.error for the tags that
@@ -93,6 +109,20 @@ var Debug = (function () {
         try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) {}
     }
     function getConfig() { return { enabled: cfg.enabled, host: cfg.host, port: cfg.port }; }
+
+    /* The log so far as one text: a header with what `info` says about the
+     * build and the TV, then the lines as they went to the console, oldest
+     * first.  The timestamps are seconds since the app started, which the
+     * header gives as a clock time. */
+    function exportText(info) {
+        var head = ['Tessel debug log',
+                    'exported: ' + new Date().toISOString(),
+                    'started:  ' + startedAt.toISOString() + ' (line timestamps count seconds from then)'];
+        for (var k in info) if (info[k]) head.push(k + ': ' + info[k]);
+        head.push('lines: ' + lines.length + (dropped ? ' (' + dropped + ' earlier lines dropped)' : ''));
+        return head.join('\n') + '\n\n' + lines.join('\n') + '\n';
+    }
+    function lineCount() { return lines.length; }
 
     /* debug.js loads before i18n.js; the form is wired once the page has
      * parsed, when I18n is there — except in the Node tests. */
@@ -147,6 +177,7 @@ var Debug = (function () {
         view: view, action: action,
         player: player, browse: browse, key: key,
         configure: configure, getConfig: getConfig,
+        exportText: exportText, lineCount: lineCount,
         get enabled() { return cfg.enabled; }
     };
 })();

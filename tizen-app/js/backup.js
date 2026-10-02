@@ -20,6 +20,9 @@
  *   - The debug listener.
  *   - Recents, watched marks and resume positions, unless the user leaves
  *     them out.
+ * The same USB plumbing writes the debug log out as tessel-log-<when>.txt
+ * (Settings → Debug logging → Save debug log to USB, issue #126), so a
+ * problem can be reported after the fact without a listener running.
  * What stays out: caches that rebuild themselves (the TV locale, the list of
  * files direct play failed on) and the relay secret, which is minted again
  * on first use.
@@ -191,11 +194,13 @@ var Backup = (function () {
 
     function joinPath(dir, name) { return String(dir || '').replace(/\/+$/, '') + '/' + name; }
 
-    /* Tizen 5.0+ has openFile(); older firmware only the File/FileStream
+    /* Write `text` as `name` at the top of the stick: cb(err, path).
+     * Tizen 5.0+ has openFile(); older firmware only the File/FileStream
      * API the USB browser reads with.  Try the current one first and fall
      * back, the same way the MP4 reader does. */
-    function writeText(root, text, cb) {
-        var path = joinPath(root.fullPath, FILE_NAME);
+    function writeFile(root, name, text, cb) {
+        var path = joinPath(root.fullPath, name);
+        function fail(e) { cb(e, path); }
         if (tizen.filesystem.openFile) {
             try {
                 var h = tizen.filesystem.openFile(path, 'w');
@@ -210,16 +215,30 @@ var Backup = (function () {
         try {
             tizen.filesystem.resolve(root.name, function (dir) {
                 var f;
-                try { f = dir.resolve(FILE_NAME); }
+                try { f = dir.resolve(name); }
                 catch (e) {
-                    try { f = dir.createFile(FILE_NAME); } catch (e2) { cb(e2); return; }
+                    try { f = dir.createFile(name); } catch (e2) { fail(e2); return; }
                 }
                 f.openStream('w', function (s) {
                     try { s.write(text); s.close(); cb(null, path); }
-                    catch (e) { try { s.close(); } catch (x) {} cb(e); }
-                }, cb, 'UTF-8');
-            }, cb, 'rw');
-        } catch (e) { cb(e); }
+                    catch (e) { try { s.close(); } catch (x) {} fail(e); }
+                }, fail, 'UTF-8');
+            }, fail, 'rw');
+        } catch (e) { fail(e); }
+    }
+
+    /* Save `text` as `name` on a USB stick, asking which one (under
+     * `chooseTitle`) when more than one is plugged in.  No stick: a toast,
+     * and cb isn't called.  Otherwise cb(err, path). */
+    function saveToUsb(name, text, chooseTitle, cb) {
+        usbRoots(function (roots) {
+            if (!roots.length) { toast(I18n.t('backup.noUsb')); return; }
+            function go(root) { writeFile(root, name, text, cb); }
+            if (roots.length === 1) { go(roots[0]); return; }
+            pick(chooseTitle, roots.map(function (r, i) {
+                return { code: String(i), name: driveLabel(r) };
+            }), function (i) { go(roots[+i]); });
+        });
     }
 
     function readText(root, cb) {
@@ -281,12 +300,12 @@ var Backup = (function () {
         if (window.VlcApp && window.VlcApp.openPicker) window.VlcApp.openPicker(title, options, '', onPick);
     }
 
-    function save(root) {
+    function startSave() {
         var b = build(localStorage, { passwords: includePasswords, history: includeHistory,
                                       appVersion: appVersion() });
-        writeText(root, JSON.stringify(b, null, 2), function (err, path) {
+        saveToUsb(FILE_NAME, JSON.stringify(b, null, 2), I18n.t('backup.chooseDrive'), function (err, path) {
             if (err) {
-                log('write to ' + root.fullPath + ' failed: ' + (err.message || err));
+                log('write to ' + path + ' failed: ' + (err.message || err));
                 toast(I18n.t('backup.saveFailed', err.message || String(err)));
                 return;
             }
@@ -295,13 +314,36 @@ var Backup = (function () {
         });
     }
 
-    function startSave() {
-        usbRoots(function (roots) {
-            if (!roots.length) { toast(I18n.t('backup.noUsb')); return; }
-            if (roots.length === 1) { save(roots[0]); return; }
-            pick(I18n.t('backup.chooseDrive'), roots.map(function (r, i) {
-                return { code: String(i), name: driveLabel(r) };
-            }), function (i) { save(roots[+i]); });
+    /* ── the debug log (issue #126) ───────────────────────────────────── */
+
+    /* tessel-log-20261002-0817.txt: a name per export, so the logs of two
+     * occurrences don't overwrite each other on the way to the developer. */
+    function logFileName(now) {
+        var d = now || new Date();
+        return 'tessel-log-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
+               '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.txt';
+    }
+    function tvModel() {
+        try {
+            var p = TvInfo.getProductInfo();
+            return [p.realModel, p.firmwareVersion].filter(Boolean).join(' / ');
+        } catch (e) { return ''; }
+    }
+    function startLogExport() {
+        if (typeof Debug === 'undefined' || !Debug.exportText) return;
+        var text = Debug.exportText({
+            'Tessel':     appVersion(),
+            'TV':         tvModel(),
+            'User-Agent': (typeof navigator !== 'undefined') ? navigator.userAgent : ''
+        });
+        saveToUsb(logFileName(), text, I18n.t('dbg.chooseDrive'), function (err, path) {
+            if (err) {
+                log('log export to ' + path + ' failed: ' + (err.message || err));
+                toast(I18n.t('dbg.exportFailed', err.message || String(err)));
+                return;
+            }
+            log('debug log saved to ' + path);
+            toast(I18n.t('dbg.exported', path));
         });
     }
 
@@ -346,13 +388,16 @@ var Backup = (function () {
         histBtn.addEventListener('click', function () { includeHistory = !includeHistory; paint(); });
         document.getElementById('backup-save').addEventListener('click', startSave);
         document.getElementById('backup-restore').addEventListener('click', startRestore);
+        var exportBtn = document.getElementById('dbg-export');
+        if (exportBtn) exportBtn.addEventListener('click', startLogExport);
     }
     if (typeof document !== 'undefined') {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireSettings);
         else wireSettings();
     }
 
-    return { FILE_NAME: FILE_NAME, build: build, parse: parse, restore: restore };
+    return { FILE_NAME: FILE_NAME, build: build, parse: parse, restore: restore,
+             logFileName: logFileName };
 })();
 
 // Ignored by the Tizen/browser build; lets Node tests require these helpers.

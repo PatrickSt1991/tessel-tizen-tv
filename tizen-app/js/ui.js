@@ -22,8 +22,19 @@ var UI = (function () {
         v.classList.remove('hidden');
         currentView = v;
         refreshFocusables();
-        var initial = v.querySelector('[data-focus]') || focusable[0];
+        var initial = v.querySelector('[data-focus]') || firstWidget();
         focusOn(initial);
+    }
+
+    /* The first focusable that isn't a text field.  A view that opened on
+     * a field opened the on-screen keyboard with it on older firmware: the
+     * playlist's filter field sits first in the browse view, so every
+     * group of channels came up behind the keyboard (issue #126).  A view
+     * that should start on a field says so with data-focus. */
+    function firstWidget() {
+        for (var i = 0; i < focusable.length; i++)
+            if (focusable[i].tagName !== 'INPUT') return focusable[i];
+        return null;
     }
 
     function refreshFocusables() {
@@ -57,6 +68,14 @@ var UI = (function () {
         for (var p = 0; p < prev.length; p++) prev[p].classList.remove('focused');
 
         el.classList.add('focused');
+        // Leaving a text field takes the on-screen keyboard down with it.  A
+        // list row can't hold DOM focus itself, so without this the field
+        // kept it (and the keyboard) while the cursor was visibly on a row,
+        // and OK went to the keyboard instead of the row (issue #126).
+        var active = document.activeElement;
+        if (active && active !== el && active.tagName === 'INPUT') {
+            try { active.blur(); } catch (e) {}
+        }
         el.focus({ preventScroll: false });
         focusIdx = focusable.indexOf(el);
         if (focusIdx < 0) focusIdx = 0;
