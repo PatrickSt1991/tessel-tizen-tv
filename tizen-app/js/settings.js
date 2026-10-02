@@ -13,7 +13,13 @@ var Settings = (function () {
         audioLang:        '',          // '' = auto (use file's default), or ISO code
         subtitleLang:     'off',       // 'off' = no subs, '' = auto (file's default track), or ISO code
         repeatMode:       'off',       // 'off' | 'one' | 'all'
-        autoPlay:         false,       // auto-play the next file in the folder when one finishes
+        // Play the next file in the folder when one finishes.  On since
+        // 1.18 (issue #126): a music player that stops after each song
+        // reads as broken.  Only a TV with nothing stored gets the default,
+        // so anyone who chose Off before keeps it (see load()).
+        autoPlay:         true,
+        // Seconds each picture stays on screen in a slideshow (issue #126).
+        slideshowSeconds: 5,
         // What to do when a file with a saved position is opened again:
         // 'ask' shows a Continue / Start-over prompt, 'always' resumes
         // silently (the pre-1.5 behaviour), 'never' starts from the top.

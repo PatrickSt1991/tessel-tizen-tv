@@ -95,3 +95,7 @@ test('parse refuses files that are not a backup, or come from a newer Tessel', f
     // Saved again by a Windows editor, byte-order mark and all.
     assert.strictEqual(code('﻿{"format":"tessel-backup","version":1,"data":{}}'), 'ok');
 });
+
+test('a debug log export is named after the moment it was made (issue #126)', function () {
+    assert.strictEqual(Backup.logFileName(new Date(2026, 9, 2, 8, 7)), 'tessel-log-20261002-0807.txt');
+});

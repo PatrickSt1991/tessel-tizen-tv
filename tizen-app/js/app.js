@@ -417,6 +417,7 @@
             case 'setting-shuffle':       openShufflePicker(); break;
             case 'setting-aspect-mode':   openAspectPicker(); break;
             case 'setting-browse-filter': openBrowseFilterPicker(); break;
+            case 'setting-slideshow-interval': openSlideshowPicker(); break;
             case 'setting-subtitle-size':     openSubtitlePicker('subtitleSize',     I18n.t('settings.subSize'),     SubtitleStyle.forSize());     break;
             case 'setting-subtitle-font':     openSubtitlePicker('subtitleFont',     I18n.t('settings.subFont'),     SubtitleStyle.forFont());     break;
             case 'setting-subtitle-position': openSubtitlePicker('subtitlePosition', I18n.t('settings.subPosition'), SubtitleStyle.forPosition()); break;
@@ -1003,7 +1004,13 @@
         var hint = document.getElementById('hint-save');
         var filter = document.getElementById('playlist-filter-wrap');
         var input = document.getElementById('playlist-filter');
-        if (input) input.addEventListener('input', onPlaylistFilterInput);
+        // Not every keyboard layout reports typing as `input` on every
+        // firmware (Cyrillic was reported not to filter, issue #126), so
+        // every event that can follow a change is heard; the handler only
+        // redraws when the text actually differs.
+        if (input) ['input', 'change', 'keyup', 'compositionend'].forEach(function (ev) {
+            input.addEventListener(ev, onPlaylistFilterInput);
+        });
         if (!ul || typeof MutationObserver === 'undefined') return;
         new MutationObserver(function () {
             if (hint) hint.classList.toggle('hidden', !ul.querySelector('li[data-channel]'));
@@ -1972,6 +1979,7 @@
         document.getElementById('setting-shuffle-value').textContent       = I18n.t(Settings.get('shuffle') ? 'common.on' : 'common.off');
         document.getElementById('setting-aspect-mode-value').textContent   = AspectRatio.nameFor(Settings.get('aspectMode'));
         document.getElementById('setting-browse-filter-value').textContent = browseFilterName(Settings.get('browseFilter'));
+        document.getElementById('setting-slideshow-interval-value').textContent = slideshowName(Settings.get('slideshowSeconds'));
         document.getElementById('setting-subtitle-size-value').textContent     = SubtitleStyle.nameForSize(Settings.get('subtitleSize'));
         document.getElementById('setting-subtitle-font-value').textContent     = SubtitleStyle.nameForFont(Settings.get('subtitleFont'));
         document.getElementById('setting-subtitle-position-value').textContent = SubtitleStyle.nameForPosition(Settings.get('subtitlePosition'));
@@ -2196,6 +2204,19 @@
             Settings.set('browseFilter', val);
             refreshSettingsValues();
             UI.toast(I18n.t('toast.setTo', I18n.t('settings.browseFilter'), browseFilterName(val)));
+        });
+    }
+    /* How long each picture stays in a slideshow (issue #126). */
+    var SLIDESHOW_SECONDS = [3, 5, 10, 15, 30, 60];
+    function slideshowName(sec) { return I18n.t('slideshow.seconds', sec); }
+    function openSlideshowPicker() {
+        pickerSetting = 'slideshowSeconds';
+        openPicker(I18n.t('settings.slideshow'), SLIDESHOW_SECONDS.map(function (s) {
+            return { code: s, name: slideshowName(s) };
+        }), Settings.get('slideshowSeconds'), function (val) {
+            Settings.set('slideshowSeconds', val);
+            refreshSettingsValues();
+            UI.toast(I18n.t('toast.setTo', I18n.t('settings.slideshow'), slideshowName(val)));
         });
     }
     function openAutoPlayPicker() {
@@ -2458,7 +2479,7 @@
             seekToTenth(code - K.ZERO)) return true;
 
         // URL input view: OK on the field opens the on-screen keyboard (see
-        // ENTER below), and the keyboard's Done plays what was typed.
+        // ENTER below), and the keyboard's Done moves on to the Play button.
         // The keyboard's Done in the playlist filter: filter now, then on to
         // the first result.
         if (state.view === 'browse' && code === K.IME_DONE && document.activeElement &&
@@ -2486,10 +2507,12 @@
                 }
                 if (document.activeElement.id === 'saved-url') { finishSavedEdit(); return true; }
             }
+            // Done on the URL field fills it in and lands on Play, so Save
+            // and the other buttons are one step away rather than the
+            // stream already playing (issue #126).
             if (code === K.IME_DONE && document.activeElement &&
-                document.activeElement.id === 'url-input' &&
-                document.activeElement.value.trim()) {
-                handleAction('open-current-url');
+                document.activeElement.id === 'url-input') {
+                UI.focusOn(document.querySelector('#view-url [data-action="open-current-url"]'));
                 return true;
             }
         }

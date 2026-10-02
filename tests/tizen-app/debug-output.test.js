@@ -99,3 +99,28 @@ test('the POST half only fires once it is turned on and given an address', funct
     // Every one of those calls still reached the console.
     assert.ok(d.logged.filter(function (l) { return /\[INFO\]/.test(l); }).length >= 3);
 });
+
+test('the log is kept in memory for saving to USB, oldest line first (issue #126)', function () {
+    var d = loadDebug();
+    d.Debug.info('first');
+    d.Debug.player('second');
+    var text = d.Debug.exportText({ Tessel: '1.18.0', TV: 'UE55', 'User-Agent': '' });
+    var lines = text.split('\n');
+    assert.strictEqual(lines[0], 'Tessel debug log');
+    assert.ok(/^Tessel: 1\.18\.0$/m.test(text), 'the header names the build');
+    assert.ok(/^TV: UE55$/m.test(text), 'the header names the TV');
+    assert.ok(!/User-Agent/.test(text), 'an empty header field is left out');
+    var boot = text.indexOf('[BOOT]'), first = text.indexOf('[INFO] first'), second = text.indexOf('[PLAYER] second');
+    assert.ok(boot >= 0 && first > boot && second > first, 'lines come out in the order they were logged');
+    assert.strictEqual(d.Debug.lineCount(), 3);
+});
+
+test('the in-memory log keeps the last 2000 lines and says how many went before', function () {
+    var d = loadDebug();
+    for (var i = 0; i < 2500; i++) d.Debug.info('line ' + i);
+    assert.ok(d.Debug.lineCount() <= 2200, 'the buffer is bounded');
+    var text = d.Debug.exportText({});
+    assert.ok(!/\[INFO\] line 0$/m.test(text), 'the oldest lines are gone');
+    assert.ok(/\[INFO\] line 2499$/m.test(text), 'the newest line is there');
+    assert.ok(/earlier lines dropped/.test(text), 'the header says lines were dropped');
+});
