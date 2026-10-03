@@ -784,6 +784,7 @@ var Player = (function () {
      * tracks are never offered.  The header costs ~130 KB to read however
      * big the movie is, and it is the list the CC menu counts. */
     var containerSubTracks     = [];
+    var containerTracks        = [];   // every track the MKV header lists (describe())
     var lastContainerListToken = 0;
 
     /* Which container an embedded-subtitle extractor exists for — 'MP4',
@@ -814,6 +815,7 @@ var Player = (function () {
 
     function listContainerSubTracks(uri, file) {
         containerSubTracks = [];
+        containerTracks = [];
         var token = ++lastContainerListToken;
         if (!looksLikeMatroska(uri)) return;
         if (typeof MkvSubs === 'undefined' || !MkvSubs.listTracks) return;
@@ -825,6 +827,7 @@ var Player = (function () {
                     Debug.warn('MKV header track list: ' + (err.message || err));
                 return;
             }
+            containerTracks = tracks;
             containerSubTracks = tracks.filter(MkvSubs.isSubtitleTrack);
             if (typeof Debug !== 'undefined')
                 Debug.player('MKV header declares ' + containerSubTracks.length +
@@ -1563,6 +1566,59 @@ var Player = (function () {
         if (backend === BACKEND_HTML5)    return (h5el().duration || 0) * 1000;
         if (backend === BACKEND_AVPLAY)   { try { return av().getDuration(); } catch (e) { return 0; } }
         return 0;
+    }
+
+    /* What's playing, for the INFO panel (issue #128): what AVPlay reports,
+     * filled in from the MKV header where AVPlay says nothing — the codec's
+     * name, the picture size, and HDR, which only the container knows.
+     * Every field may be empty; the panel leaves out what it doesn't have. */
+    var AV_CODEC_NAMES = { H264: 'H.264', AVC: 'H.264', HEVC: 'HEVC', H265: 'HEVC', HVC1: 'HEVC',
+                           AV1: 'AV1', VP9: 'VP9', VP8: 'VP8', MPEG2: 'MPEG-2', MPEG4: 'MPEG-4',
+                           EAC3: 'E-AC-3', AC3: 'AC-3', DTSHD: 'DTS-HD', TRUEHD: 'TrueHD' };
+    function prettyCodec(fourCC) {
+        var c = String(fourCC || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        return AV_CODEC_NAMES[c] || String(fourCC || '');
+    }
+    function describe() {
+        var d = { container: embeddedSubContainer((subsSource && subsSource.uri) || '') || '',
+                  duration: duration(), video: { codec: '', width: 0, height: 0 },
+                  audio: [], subtitles: 0, hdr: null };
+        if (backend === BACKEND_AVPLAY) {
+            try {
+                var info = av().getTotalTrackInfo();
+                for (var i = 0; i < info.length; i++) {
+                    if (info[i].type !== 'VIDEO') continue;
+                    var p = parseAvExtraInfo(info[i].extra_info);
+                    d.video = { codec: prettyCodec(p.codec), width: p.width, height: p.height };
+                    break;
+                }
+            } catch (e) {}
+        } else if (backend === BACKEND_HTML5) {
+            try { d.video.width = h5el().videoWidth || 0; d.video.height = h5el().videoHeight || 0; }
+            catch (e) {}
+        }
+        try {
+            var t = getTracks();
+            d.audio = t.audio.map(function (a) { return a.name; });
+            for (var si = 0; si < t.subtitle.length; si++)
+                if (!t.subtitle[si].off && !t.subtitle[si].muted) d.subtitles++;
+        } catch (e) {}
+        if (containerTracks.length && typeof MkvSubs !== 'undefined' && MkvSubs.describeHdr) {
+            var vt = null, aud = [];
+            for (var ci = 0; ci < containerTracks.length; ci++) {
+                if (!vt && MkvSubs.isVideoTrack(containerTracks[ci])) vt = containerTracks[ci];
+                if (MkvSubs.isAudioTrack(containerTracks[ci])) aud.push(containerTracks[ci]);
+            }
+            if (vt) {
+                if (!d.video.codec)  d.video.codec  = MkvSubs.codecName(vt.codec);
+                if (!d.video.width)  { d.video.width = vt.width; d.video.height = vt.height; }
+            }
+            if (!d.audio.length) d.audio = aud.map(function (a) {
+                return [(a.lang || '').toUpperCase(), MkvSubs.codecName(a.codec)].filter(Boolean).join(' · ');
+            });
+            d.hdr = MkvSubs.describeHdr(containerTracks);
+        }
+        return d;
     }
     function state() {
         if (backend === BACKEND_HTML5) {
@@ -2405,6 +2461,7 @@ var Player = (function () {
         seekTo:             seekTo,
         currentTime:        currentTime,
         duration:           duration,
+        describe:           describe,
         state:              state,
         getTracks:          getTracks,
         setAudioTrack:      setAudioTrack,

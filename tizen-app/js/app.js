@@ -408,6 +408,7 @@
             case 'open-aspect-picker': openAspectPicker(); break;
             case 'open-track-menu':    openTrackMenu(); break;
             case 'close-track-menu':   closeTrackMenu(); break;
+            case 'close-file-info':    closeTrackMenu(); break;
             case 'setting-ui-lang':       openUiLangPicker(); break;
             case 'setting-audio-lang':    openLangPicker('audioLang',    I18n.t('settings.audioLang'), LanguageList.forAudio());    break;
             case 'setting-subtitle-lang': openLangPicker('subtitleLang', I18n.t('settings.subtitleLang'), LanguageList.forSubtitle()); break;
@@ -2418,7 +2419,51 @@
     }
     function closeTrackMenu() {
         document.getElementById('track-menu').classList.add('hidden');
+        document.getElementById('file-info').classList.add('hidden');
         UI.refreshFocusables();
+    }
+
+    /* INFO (issue #128): what's playing, as far as the player can tell —
+     * codec and picture size, HDR (with a warning for Dolby Vision, which
+     * no Samsung TV decodes), the audio tracks, how many subtitle tracks,
+     * the duration.  Rows the player knows nothing about are left out. */
+    function toggleFileInfo() {
+        var panel = document.getElementById('file-info');
+        if (!panel.classList.contains('hidden')) { closeTrackMenu(); return; }
+        closeTrackMenu();
+        var d = Player.describe();
+        var dl = document.getElementById('file-info-list');
+        dl.innerHTML = '';
+        function row(label, value, warn) {
+            if (!value) return;
+            var dt = document.createElement('dt'), dd = document.createElement('dd');
+            dt.textContent = label;
+            if (Array.isArray(value)) value.forEach(function (v, i) {
+                if (i) dd.appendChild(document.createElement('br'));
+                dd.appendChild(document.createTextNode(v));
+            }); else dd.textContent = value;
+            if (warn) dd.className = 'warn';
+            dl.appendChild(dt); dl.appendChild(dd);
+        }
+        var size = d.video.width && d.video.height ? d.video.width + ' × ' + d.video.height : '';
+        row(I18n.t('info.video'), [d.video.codec, size].filter(Boolean).join(' · '));
+        if (d.hdr) {
+            var h = d.hdr, text, warn = false;
+            if (h.kind === 'DV') {
+                warn = true;
+                text = h.profile === 5 ? I18n.t('info.dv5') : I18n.t('info.dv', h.profile || '?');
+            } else text = I18n.t(h.kind === 'HDR10' ? 'info.hdr10' : h.kind === 'HLG' ? 'info.hlg' : 'info.sdr');
+            row(I18n.t('info.hdr'), text, warn);
+        }
+        row(I18n.t('tracks.audio'), d.audio.length ? d.audio : '');
+        row(I18n.t('tracks.subtitle'), d.subtitles ? String(d.subtitles) : I18n.t('info.none'));
+        row(I18n.t('info.duration'), d.duration > 0 ? fmtTime(d.duration) : '');
+        row(I18n.t('info.container'), d.container);
+        if (!dl.childElementCount) row(I18n.t('info.video'), I18n.t('info.unknown'));
+        panel.classList.remove('hidden');
+        UI.refreshFocusables();
+        UI.focusOn(panel.querySelector('button'));
+        if (typeof Debug !== 'undefined') Debug.player('file info: ' + JSON.stringify(d));
     }
 
     /* Type a digit from a remote number key (0-9) into the focused text field.
@@ -2546,7 +2591,8 @@
         var errorUp = !document.getElementById('error-overlay').classList.contains('hidden');
 
         // Track menu / settings picker open? Routes through normal focus.
-        var trackMenuOpen = !document.getElementById('track-menu').classList.contains('hidden');
+        var trackMenuOpen = !document.getElementById('track-menu').classList.contains('hidden') ||
+                            !document.getElementById('file-info').classList.contains('hidden');
         var pickerOpen    = !document.getElementById('picker').classList.contains('hidden');
         // OSD currently visible? Determines whether keys navigate within OSD
         // or perform seek shortcuts.
@@ -2623,6 +2669,9 @@
                 // landing on the field no longer does (config.xml, issue #111).
                 if (!UI.activateFocused() && isTextField(document.activeElement)) return false;
                 return true;
+            case K.INFO:
+                if (state.view === 'player' && !errorUp) { toggleFileInfo(); return true; }
+                return false;
             case K.BACK:
                 if (pickerOpen)                 { closePicker();     return true; }
                 if (trackMenuOpen)              { closeTrackMenu();  return true; }

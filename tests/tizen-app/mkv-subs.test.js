@@ -580,3 +580,69 @@ test('extractTrack stops reading when cancelled', async function () {
     await new Promise(function (r) { setTimeout(r, 50); });
     assert.strictEqual(reader.reads, afterCancel, 'reads continued after cancel');
 });
+
+/* ── What the header says about the picture (issue #128) ─────────── */
+
+ID.VIDEO = 0xE0; ID.PIXELWIDTH = 0xB0; ID.PIXELHEIGHT = 0xBA; ID.COLOUR = 0x55B0; ID.TRANSFER = 0x55BA;
+ID.BLOCKADDMAP = 0x41E4; ID.BLOCKADDTYPE = 0x41E7; ID.BLOCKADDEXTRA = 0x41ED;
+
+function u16(n) { return [(n >> 8) & 0xff, n & 0xff]; }
+function u32(n) { return [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]; }
+function hdrVideoTrack(opts) {
+    var video = concat(el(ID.PIXELWIDTH, u16(3840)), el(ID.PIXELHEIGHT, u16(2160)));
+    if (opts.transfer) video = concat(video, el(ID.COLOUR, el(ID.TRANSFER, u8(opts.transfer))));
+    var body = concat(el(ID.TRACKNUMBER, u8(1)), el(ID.TRACKTYPE, u8(1)),
+                      el(ID.CODECID, str('V_MPEGH/ISO/HEVC')), el(ID.VIDEO, video));
+    if (opts.dvProfile) {
+        // dvcC: version 1.0, then profile in the top 7 bits of the third byte.
+        var dvcC = [1, 0, opts.dvProfile << 1, 0x06];
+        body = concat(body, el(ID.BLOCKADDMAP, concat(el(ID.BLOCKADDTYPE, u32(0x64766343)),
+                                                      el(ID.BLOCKADDEXTRA, dvcC))));
+    }
+    return el(ID.TRACKENTRY, body);
+}
+function headerWith(track) {
+    return mkvFile(concat(el(ID.TRACKS, concat(track, audioTrack(2))), el(ID.CLUSTER, filler(16))));
+}
+
+test('the video track\'s size and transfer characteristics come out of the header', async function () {
+    var tracks = await listTracks(stubReader(headerWith(hdrVideoTrack({ transfer: 16 }))));
+    var v = tracks.filter(MkvSubs.isVideoTrack)[0];
+    assert.strictEqual(v.width, 3840);
+    assert.strictEqual(v.height, 2160);
+    assert.strictEqual(v.transfer, 16);
+    assert.strictEqual(v.dolbyVision, false);
+    assert.deepStrictEqual(MkvSubs.describeHdr(tracks), { kind: 'HDR10', profile: 0 });
+    assert.strictEqual(tracks.filter(MkvSubs.isAudioTrack).length, 1);
+});
+
+test('HLG, SDR and a file without a video track are told apart', async function () {
+    var hlg = await listTracks(stubReader(headerWith(hdrVideoTrack({ transfer: 18 }))));
+    assert.deepStrictEqual(MkvSubs.describeHdr(hlg), { kind: 'HLG', profile: 0 });
+    var sdr = await listTracks(stubReader(headerWith(hdrVideoTrack({ transfer: 1 }))));
+    assert.deepStrictEqual(MkvSubs.describeHdr(sdr), { kind: 'SDR', profile: 0 });
+    var none = await listTracks(stubReader(headerWith(hdrVideoTrack({}))));
+    assert.deepStrictEqual(MkvSubs.describeHdr(none), { kind: 'SDR', profile: 0 });
+    assert.strictEqual(MkvSubs.describeHdr([{ type: 2, codec: 'A_AAC' }]), null);
+});
+
+test('a Dolby Vision mapping is recognised with its profile, whatever the base layer says', async function () {
+    var dv8 = await listTracks(stubReader(headerWith(hdrVideoTrack({ transfer: 16, dvProfile: 8 }))));
+    assert.deepStrictEqual(MkvSubs.describeHdr(dv8), { kind: 'DV', profile: 8 });
+    var dv5 = await listTracks(stubReader(headerWith(hdrVideoTrack({ transfer: 16, dvProfile: 5 }))));
+    assert.deepStrictEqual(MkvSubs.describeHdr(dv5), { kind: 'DV', profile: 5 });
+});
+
+test('codec ids are named the way people know them', function () {
+    assert.strictEqual(MkvSubs.codecName('V_MPEGH/ISO/HEVC'), 'HEVC');
+    assert.strictEqual(MkvSubs.codecName('V_MPEG4/ISO/AVC'), 'H.264');
+    assert.strictEqual(MkvSubs.codecName('V_AV1'), 'AV1');
+    assert.strictEqual(MkvSubs.codecName('A_EAC3'), 'E-AC-3');
+    assert.strictEqual(MkvSubs.codecName('A_AC3'), 'AC-3');
+    assert.strictEqual(MkvSubs.codecName('A_DTS'), 'DTS');
+    assert.strictEqual(MkvSubs.codecName('A_TRUEHD'), 'TrueHD');
+    assert.strictEqual(MkvSubs.codecName('A_AAC/MPEG4/LC'), 'AAC');
+    // Something new keeps its id, minus the type prefix.
+    assert.strictEqual(MkvSubs.codecName('A_QUICKTIME/QDMC'), 'QUICKTIME/QDMC');
+    assert.strictEqual(MkvSubs.codecName(''), '');
+});

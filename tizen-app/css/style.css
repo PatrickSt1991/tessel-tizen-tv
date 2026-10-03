@@ -691,6 +691,18 @@ button:focus { outline: none; }
 }
 .track-section li.muted { color: var(--fg-dim); font-style: italic; }
 
+/* INFO panel (issue #128): label / value rows in the track menu's box. */
+.file-info dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 12px 28px;
+    margin: 0 0 8px;
+    font-size: 20px;
+}
+.file-info dt { color: var(--fg-mute); }
+.file-info dd { margin: 0; }
+.file-info dd.warn { color: #ffb74d; }
+
 /* ── Hints / footer ───────────────────────────────────────────────── */
 .hint {
     margin-top: 48px;
