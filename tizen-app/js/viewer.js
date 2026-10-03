@@ -143,35 +143,14 @@ var Viewer = (function () {
     }
 
     /* The TV counts a slideshow as idle — no key presses, no video — and
-     * puts its screensaver over it after a few minutes (issue #115).  Two
-     * things hold it off while the slideshow runs, because AppCommon's
-     * screensaver switch alone turned out not to on every TV (issue #126):
-     * the Power API's screen lock, which is what the platform offers for
-     * exactly this (privilege/power in config.xml), and that switch, for
-     * firmware that honours it instead.  Both are asked again with every
-     * picture, since some firmware lets them lapse, and both are let go
-     * when the slideshow stops; a single picture left on screen may still
-     * get the screensaver, which is what protects the panel.  What each
-     * one answers goes to the debug log, so a TV where the screensaver
-     * still comes can say which half failed. */
-    var awake = false;
+     * puts its screensaver over it after a few minutes (issues #115, #126).
+     * KeepAwake holds it off while the slideshow runs and is asked again
+     * with every picture, since some firmware lets the switches lapse; the
+     * hold is let go when the slideshow stops, so a single picture left on
+     * screen still gets the screensaver, which is what protects the panel. */
     function keepAwake(on) {
-        var changed = on !== awake;
-        awake = on;
-        function note(m) { if (changed && typeof Debug !== 'undefined') Debug.info('slideshow: ' + m); }
-        function why(e)  { return (e && (e.message || e.name)) || String(e); }
-        try {
-            if (on) tizen.power.request('SCREEN', 'SCREEN_NORMAL');
-            else    tizen.power.release('SCREEN');
-            note('power.' + (on ? 'request' : 'release') + '(SCREEN) ok');
-        } catch (e) { note('power.' + (on ? 'request' : 'release') + ' failed: ' + why(e)); }
-        try {
-            var ac = webapis.appcommon;
-            ac.setScreenSaver(on ? ac.AppCommonScreenSaverState.SCREEN_SAVER_OFF
-                                 : ac.AppCommonScreenSaverState.SCREEN_SAVER_ON,
-                function () { note('screensaver ' + (on ? 'off' : 'on')); },
-                function (e) { note('setScreenSaver failed: ' + why(e)); });
-        } catch (e) { note('setScreenSaver threw: ' + why(e)); }
+        if (typeof KeepAwake === 'undefined') return;
+        if (on) KeepAwake.hold('slideshow'); else KeepAwake.release();
     }
     /* The TV going to standby, or another app coming up, ends the
      * slideshow: nothing should hold the screen awake from the background. */
