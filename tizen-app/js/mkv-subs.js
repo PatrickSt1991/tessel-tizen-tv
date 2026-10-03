@@ -109,6 +109,19 @@ var MkvSubs = (function () {
     var ID_FLAGFORCED    = 0x55AA;
     var ID_FLAGHEARIMP   = 0x55AB;
     var ID_CODECPRIVATE  = 0x63A2;
+    /* Video settings and the two places HDR shows up in a header: the
+     * Colour element's transfer characteristics (16 = PQ/HDR10, 18 = HLG)
+     * and a Dolby Vision configuration carried as a block-addition mapping
+     * (issue #128). */
+    var ID_VIDEO         = 0xE0;
+    var ID_PIXELWIDTH    = 0xB0;
+    var ID_PIXELHEIGHT   = 0xBA;
+    var ID_COLOUR        = 0x55B0;
+    var ID_TRANSFER      = 0x55BA;
+    var ID_BLOCKADDMAP   = 0x41E4;
+    var ID_BLOCKADDTYPE  = 0x41E7;
+    var ID_BLOCKADDEXTRA = 0x41ED;
+    var DV_TYPES = { 0x64766343: 1, 0x64767643: 1, 0x64767743: 1 };   // 'dvcC' 'dvvC' 'dvwC'
     var ID_CLUSTER       = 0x1F43B675;
     var ID_TIMECODE      = 0xE7;
     var ID_SIMPLEBLOCK   = 0xA3;
@@ -135,10 +148,36 @@ var MkvSubs = (function () {
     function parseTrackEntry(view, off, end) {
         var t = {
             number: 0, type: 0, codec: '', lang: '', langIetf: '', name: '',
-            isDefault: false, forced: false, hearingImpaired: false, priv: ''
+            isDefault: false, forced: false, hearingImpaired: false, priv: '',
+            width: 0, height: 0, transfer: 0, dolbyVision: false, dvProfile: 0
         };
         walk(view, off, end, function (id, o, e) {
             switch (id) {
+                case ID_VIDEO:
+                    walk(view, o, e, function (vid, vo, ve) {
+                        switch (vid) {
+                            case ID_PIXELWIDTH:  t.width  = readUint(view, vo, ve - vo); break;
+                            case ID_PIXELHEIGHT: t.height = readUint(view, vo, ve - vo); break;
+                            case ID_COLOUR:
+                                walk(view, vo, ve, function (cid, co, ce) {
+                                    if (cid === ID_TRANSFER) t.transfer = readUint(view, co, ce - co);
+                                });
+                                break;
+                        }
+                    });
+                    break;
+                case ID_BLOCKADDMAP:
+                    var type = 0, extra = null, extraLen = 0;
+                    walk(view, o, e, function (mid, mo, me) {
+                        if (mid === ID_BLOCKADDTYPE)  type = readUint(view, mo, me - mo);
+                        if (mid === ID_BLOCKADDEXTRA) { extra = mo; extraLen = me - mo; }
+                    });
+                    if (DV_TYPES[type]) {
+                        t.dolbyVision = true;
+                        // dv_version_major, dv_version_minor, then 7 bits of profile.
+                        if (extra !== null && extraLen >= 3) t.dvProfile = view.getUint8(extra + 2) >> 1;
+                    }
+                    break;
                 case ID_TRACKNUMBER: t.number = readUint(view, o, e - o); break;
                 case ID_TRACKTYPE:   t.type   = readUint(view, o, e - o); break;
                 case ID_CODECID:     t.codec  = readAscii(view, o, e - o); break;
@@ -169,6 +208,41 @@ var MkvSubs = (function () {
     }
 
     function isSubtitleTrack(t) { return t.type === 17; }   // 17 = subtitle
+    function isVideoTrack(t)    { return t.type === 1; }
+    function isAudioTrack(t)    { return t.type === 2; }
+
+    /* The dynamic range the header declares for the (first) video track:
+     * { kind: 'DV' | 'HDR10' | 'HLG' | 'SDR', profile } — null without a
+     * video track.  HDR10+ can't be told from HDR10 here (it lives in the
+     * frames), and a file with no Colour element at all is taken as SDR,
+     * which is what every muxer leaves out for SDR and writes for HDR. */
+    function describeHdr(tracks) {
+        var v = null;
+        for (var i = 0; i < (tracks || []).length; i++)
+            if (isVideoTrack(tracks[i])) { v = tracks[i]; break; }
+        if (!v) return null;
+        if (v.dolbyVision)    return { kind: 'DV', profile: v.dvProfile || 0 };
+        if (v.transfer === 16) return { kind: 'HDR10', profile: 0 };
+        if (v.transfer === 18) return { kind: 'HLG', profile: 0 };
+        return { kind: 'SDR', profile: 0 };
+    }
+
+    /* 'V_MPEGH/ISO/HEVC' → 'HEVC': the name a person knows a codec by. */
+    var CODEC_NAMES = [
+        [/^V_MPEGH\/ISO\/HEVC/, 'HEVC'], [/^V_MPEG4\/ISO\/AVC/, 'H.264'], [/^V_AV1/, 'AV1'],
+        [/^V_VP9/, 'VP9'], [/^V_VP8/, 'VP8'], [/^V_MPEG2/, 'MPEG-2'], [/^V_MPEG4\/ISO/, 'MPEG-4'],
+        [/^V_MS\/VFW/, 'MPEG-4 (VfW)'], [/^V_/, ''],
+        [/^A_AAC/, 'AAC'], [/^A_EAC3/, 'E-AC-3'], [/^A_AC3/, 'AC-3'], [/^A_DTS/, 'DTS'],
+        [/^A_TRUEHD/, 'TrueHD'], [/^A_MLP/, 'MLP'], [/^A_FLAC/, 'FLAC'], [/^A_OPUS/, 'Opus'],
+        [/^A_VORBIS/, 'Vorbis'], [/^A_MPEG\/L3/, 'MP3'], [/^A_MPEG\/L2/, 'MP2'], [/^A_PCM/, 'PCM'],
+        [/^A_ALAC/, 'ALAC'], [/^A_/, '']
+    ];
+    function codecName(codecId) {
+        var id = String(codecId || '');
+        for (var i = 0; i < CODEC_NAMES.length; i++)
+            if (CODEC_NAMES[i][0].test(id)) return CODEC_NAMES[i][1] || id.replace(/^[AV]_/, '');
+        return id;
+    }
 
     /* Text subs this player can paint.  VobSub and PGS carry bitmaps, so
      * they get listed but never extracted. */
@@ -1099,6 +1173,10 @@ var MkvSubs = (function () {
         extractTrack:        extractTrack,
         listTracks:          listTracks,
         isSubtitleTrack:     isSubtitleTrack,
+        isVideoTrack:        isVideoTrack,
+        isAudioTrack:        isAudioTrack,
+        describeHdr:         describeHdr,
+        codecName:           codecName,
         isTextSubtitleTrack: isTextSubtitleTrack,
         writeSrtToTmp:       writeSrtToTmp,
         cuesToSrt:           cuesToSrt
