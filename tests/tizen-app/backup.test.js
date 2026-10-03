@@ -99,3 +99,95 @@ test('parse refuses files that are not a backup, or come from a newer Tessel', f
 test('a debug log export is named after the moment it was made (issue #126)', function () {
     assert.strictEqual(Backup.logFileName(new Date(2026, 9, 2, 8, 7)), 'tessel-log-20261002-0807.txt');
 });
+
+/* ── writing to the stick (issue #126: files vanished with the stick) ── */
+
+/* A fake tizen.filesystem: openFile() hands out a handle that records what
+ * is done to it; resolve(path) answers with the size the "stick" reports. */
+function fakeFs(opts) {
+    opts = opts || {};
+    var calls = [];
+    var fs = {
+        resolve: function (loc, ok, bad) {
+            calls.push('resolve ' + loc);
+            if (opts.resolveFails) { bad(new Error('not found')); return; }
+            if (loc === 'removable1') {
+                ok({ resolve: function (name) {
+                    return { openStream: function (mode, okS) {
+                        okS({ write: function (t) { calls.push('stream.write ' + t.length); },
+                              close: function () { calls.push('stream.close'); } });
+                    } };
+                } });
+                return;
+            }
+            ok({ fileSize: 'size' in opts ? opts.size : opts.written });
+        }
+    };
+    if (!opts.noOpenFile) fs.openFile = function (p, mode) {
+        calls.push('openFile ' + mode + ' ' + p);
+        var h = {
+            writeString: function (t) { opts.written = Buffer.byteLength(t, 'utf8'); calls.push('writeString'); },
+            close:       function () { calls.push('close'); }
+        };
+        if (!opts.noFlush) h.flush = function () { calls.push('flush'); };
+        if (!opts.noSync)  h.sync  = function () { calls.push('sync'); };
+        return h;
+    };
+    return { fs: fs, calls: calls };
+}
+function withFs(fake, fn) {
+    global.tizen = { filesystem: fake.fs };
+    try { fn(); } finally { delete global.tizen; }
+}
+var STICK = { name: 'removable1', fullPath: '/opt/media/USBDriveA1' };
+
+test('a file is flushed and synced to the stick before the handle closes, then looked up again', function () {
+    var fake = fakeFs(), result;
+    withFs(fake, function () {
+        Backup.writeFile(STICK, 'tessel-backup.json', '{"a":"ё"}', function (err, p) { result = [err, p]; });
+    });
+    assert.deepStrictEqual(fake.calls, [
+        'openFile w /opt/media/USBDriveA1/tessel-backup.json',
+        'writeString', 'flush', 'sync', 'close',
+        'resolve /opt/media/USBDriveA1/tessel-backup.json'
+    ]);
+    assert.deepStrictEqual(result, [null, '/opt/media/USBDriveA1/tessel-backup.json']);
+});
+
+test('firmware whose handle has no flush/sync still writes and closes', function () {
+    var fake = fakeFs({ noFlush: true, noSync: true }), result;
+    withFs(fake, function () {
+        Backup.writeFile(STICK, 'x.txt', 'hello', function (err) { result = err; });
+    });
+    assert.deepStrictEqual(fake.calls.slice(1, 3), ['writeString', 'close']);
+    assert.strictEqual(result, null);
+});
+
+test('a file the stick reports as empty is a failure, not a success toast', function () {
+    var fake = fakeFs({ size: 0 }), result;
+    withFs(fake, function () {
+        Backup.writeFile(STICK, 'x.txt', 'hello', function (err) { result = err; });
+    });
+    assert.ok(result instanceof Error, 'expected an error');
+    assert.match(result.message, /empty/);
+});
+
+test('a write the TV cannot look up again is taken on trust', function () {
+    var fake = fakeFs({ resolveFails: true }), result;
+    withFs(fake, function () {
+        Backup.writeFile(STICK, 'x.txt', 'hello', function (err) { result = err; });
+    });
+    assert.strictEqual(result, null);
+});
+
+test('older firmware without openFile() falls back to a FileStream and still verifies', function () {
+    var fake = fakeFs({ noOpenFile: true, size: 5 }), result;
+    withFs(fake, function () {
+        Backup.writeFile(STICK, 'x.txt', 'hello', function (err, p) { result = [err, p]; });
+    });
+    assert.deepStrictEqual(fake.calls, [
+        'resolve removable1', 'stream.write 5', 'stream.close',
+        'resolve /opt/media/USBDriveA1/x.txt'
+    ]);
+    assert.deepStrictEqual(result, [null, '/opt/media/USBDriveA1/x.txt']);
+});

@@ -21,6 +21,7 @@ zip -rq "${OUT}" \
     config.xml \
     index.html \
     icon.png \
+    assets \
     css \
     js \
     i18n \

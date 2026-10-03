@@ -197,16 +197,27 @@ var Backup = (function () {
     /* Write `text` as `name` at the top of the stick: cb(err, path).
      * Tizen 5.0+ has openFile(); older firmware only the File/FileStream
      * API the USB browser reads with.  Try the current one first and fall
-     * back, the same way the MP4 reader does. */
+     * back, the same way the MP4 reader does.
+     *
+     * A file that only sits in the TV's write cache is gone the moment the
+     * stick is pulled, and nobody "safely removes" a stick from a TV: the
+     * files 1.18.0 saved vanished with the stick (issue #126).  So the
+     * handle is flushed and synced to the stick before it is closed, and
+     * the file is then looked up again — its size on the stick is what the
+     * log shows and what success means. */
     function writeFile(root, name, text, cb) {
         var path = joinPath(root.fullPath, name);
+        var want = utf8Length(text);
         function fail(e) { cb(e, path); }
+        function done(how) { verifyWrite(path, want, how, cb); }
         if (tizen.filesystem.openFile) {
             try {
-                var h = tizen.filesystem.openFile(path, 'w');
+                var h = tizen.filesystem.openFile(path, 'w'), how = 'openFile';
                 h.writeString(text);
+                if (typeof h.flush === 'function') { h.flush(); how += '+flush'; }
+                if (typeof h.sync  === 'function') { h.sync();  how += '+sync'; }
                 h.close();
-                cb(null, path);
+                done(how);
                 return;
             } catch (e) {
                 log('openFile write failed (' + e.message + '), trying the File API');
@@ -220,11 +231,30 @@ var Backup = (function () {
                     try { f = dir.createFile(name); } catch (e2) { fail(e2); return; }
                 }
                 f.openStream('w', function (s) {
-                    try { s.write(text); s.close(); cb(null, path); }
+                    try { s.write(text); s.close(); done('FileStream'); }
                     catch (e) { try { s.close(); } catch (x) {} fail(e); }
                 }, fail, 'UTF-8');
             }, fail, 'rw');
         } catch (e) { fail(e); }
+    }
+    function utf8Length(s) {
+        try { return unescape(encodeURIComponent(String(s))).length; }
+        catch (e) { return String(s).length; }
+    }
+    /* The file as the stick now has it.  Empty is a failure; a size the
+     * TV can't report is taken on trust (older firmware), but logged. */
+    function verifyWrite(path, want, how, cb) {
+        function trust(m) { log('wrote ' + path + ' via ' + how + '; ' + m); cb(null, path); }
+        try {
+            tizen.filesystem.resolve(path, function (f) {
+                var size = f.fileSize;
+                if (typeof size !== 'number') { trust('size unknown'); return; }
+                log('wrote ' + path + ' via ' + how + ': ' + size + ' bytes on the stick' +
+                    (size === want ? '' : ' (expected ' + want + ')'));
+                if (size === 0) cb(new Error('the file is empty on the stick'), path);
+                else cb(null, path);
+            }, function (e) { trust('could not look it up again: ' + (e && e.message || e)); }, 'r');
+        } catch (e) { trust('could not look it up again: ' + (e && e.message || e)); }
     }
 
     /* Save `text` as `name` on a USB stick, asking which one (under
@@ -397,7 +427,7 @@ var Backup = (function () {
     }
 
     return { FILE_NAME: FILE_NAME, build: build, parse: parse, restore: restore,
-             logFileName: logFileName };
+             logFileName: logFileName, writeFile: writeFile };
 })();
 
 // Ignored by the Tizen/browser build; lets Node tests require these helpers.

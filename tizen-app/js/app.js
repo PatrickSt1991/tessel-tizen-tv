@@ -938,9 +938,15 @@
                 ? function () { var was = pv.group; pv.group = null; renderPlaylist('group:' + was); }
                 : pv.src.back;
             var items = pv.entries.filter(function (e) {
-                if (query) return foldText(e.title).indexOf(query) >= 0;
+                if (query) return foldText(e.title).indexOf(query) >= 0 ||
+                                  (grouped && foldText(groupName(e.group)).indexOf(query) >= 0);
                 return !grouped || (e.group || '') === pv.group;
             });
+            // What the keyboard really typed, for a layout that doesn't find
+            // what it should (Cyrillic was reported, issue #126).
+            if (query && typeof Debug !== 'undefined')
+                Debug.info('playlist filter ' + describeText(pv.filter) + ' (' + (lastFilterEvent || '?') +
+                           '): ' + items.length + ' of ' + pv.entries.length);
             if (!items.length) {
                 ul.innerHTML = '<li data-playlist="1"><span class="icon">i</span><span class="name">' +
                                escapeHtml(I18n.t('playlist.noMatches', pv.filter.trim())) + '</span></li>';
@@ -978,8 +984,18 @@
         try { s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
         return s.trim();
     }
-    var filterTimer = null;
-    function onPlaylistFilterInput() {
+    /* `"Спорт" [U+0421 U+043F …]`: text with its code points, for the log —
+     * the one way to see what a keyboard layout really put in a field. */
+    function describeText(s) {
+        s = String(s || '');
+        var cps = [];
+        for (var i = 0; i < s.length && i < 16; i++)
+            cps.push('U+' + ('000' + s.charCodeAt(i).toString(16).toUpperCase()).slice(-4));
+        return JSON.stringify(s) + ' [' + cps.join(' ') + (s.length > 16 ? ' …' : '') + ']';
+    }
+    var filterTimer = null, lastFilterEvent = '';
+    function onPlaylistFilterInput(ev) {
+        lastFilterEvent = (ev && ev.type) || '';
         clearTimeout(filterTimer);
         filterTimer = setTimeout(function () {
             var pv = state.playlistView;
@@ -2485,8 +2501,15 @@
         if (state.view === 'browse' && code === K.IME_DONE && document.activeElement &&
             document.activeElement.id === 'playlist-filter' && state.playlistView) {
             clearTimeout(filterTimer);
-            state.playlistView.filter = document.activeElement.value;
-            renderPlaylist();
+            // A composing keyboard layout may still be committing its last
+            // word when Done arrives, so the field is read a moment later.
+            var field = document.activeElement;
+            lastFilterEvent = 'done';
+            setTimeout(function () {
+                if (!state.playlistView || state.view !== 'browse') return;
+                state.playlistView.filter = field.value;
+                renderPlaylist();
+            }, 50);
             return true;
         }
 
