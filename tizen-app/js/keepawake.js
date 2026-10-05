@@ -13,11 +13,15 @@
  *     ignores (1) and (2): it is the "same still image for 2 minutes"
  *     protection from Samsung's support pages, and nothing in the settings
  *     turns it off.  What it does respect is media playback, so while a
- *     hold is on, AVPlay plays assets/keepawake.mp4 — a black 176×144 clip
- *     at one frame a second, 35 KB for half an hour — behind the opaque
- *     picture view.  It restarts when it runs out and stops with release().
- *     The player's own AVPlay session is never touched: when music is on in
- *     the background, that playback is the hold.
+ *     hold is on, assets/keepawake.mp4 — a black 176×144 clip at one frame
+ *     a second, 35 KB for half an hour — plays behind the opaque picture
+ *     view.  AVPlay is asked first, with each way of naming the file it
+ *     might take; an OLED set answered the plain path with
+ *     PLAYER_ERROR_INVALID_URI (issue #132), so when AVPlay takes none of
+ *     them a muted, looping <video> plays it instead — the page can always
+ *     read its own files.  The clip restarts when it runs out and stops
+ *     with release().  The player's own AVPlay session is never touched:
+ *     when music is on in the background, that playback is the hold.
  *
  * Everything each step answers goes to the debug log, so a TV where the
  * screensaver still comes can say which of the three gave way. */
@@ -26,8 +30,10 @@ var KeepAwake = (function () {
     var VIDEO = 'assets/keepawake.mp4';
 
     var held = false;        // a hold is on
-    var videoOn = false;     // our clip is playing in AVPlay
+    var videoOn = false;     // our clip is playing (or being started)
     var videoFailed = false; // the clip wouldn't play this hold; don't keep trying
+    var attempt = 0;         // bumped per start/stop, so a stale callback is ignored
+    var element = null;      // the <video> when AVPlay took none of the paths
     var reason = '';
 
     function log(m) { if (typeof Debug !== 'undefined' && Debug.info) Debug.info('keepawake: ' + m); }
@@ -44,6 +50,31 @@ var KeepAwake = (function () {
             try { s = decodeURIComponent(s); } catch (e) {}
         }
         return s;
+    }
+    /* Every name for the clip AVPlay might take, most likely first: the
+     * plain path, the same as a file:// URI, and both again for where the
+     * filesystem API says the package is (it can name the real folder
+     * behind the one the page was loaded from). */
+    function videoCandidates(packageUri) {
+        var list = [];
+        function add(s) { if (s && list.indexOf(s) < 0) list.push(s); }
+        function both(p) {
+            add(p);
+            if (p.charAt(0) === '/') add('file://' + p);
+        }
+        both(videoPath());
+        if (packageUri) both(videoPath(packageUri.replace(/\/?$/, '/')));
+        return list;
+    }
+    /* cb(uri of the package folder, or '') — never throws, always answers. */
+    function packageUri(cb) {
+        try {
+            tizen.filesystem.resolve('wgt-package', function (dir) {
+                var u = '';
+                try { u = dir.toURI(); } catch (e) {}
+                cb(u);
+            }, function () { cb(''); }, 'r');
+        } catch (e) { cb(''); }
     }
 
     function avplay() {
@@ -80,31 +111,50 @@ var KeepAwake = (function () {
     function startVideo() {
         if (videoOn || videoFailed) return;
         var av = avplay();
-        if (!av) { videoFailed = true; log('no AVPlay for the keep-awake clip'); return; }
-        if (playerBusy()) { log('player has AVPlay (' + Player.state() + '); its playback is the hold'); return; }
-        var path = videoPath();
-        function failed(what) {
-            videoFailed = true; videoOn = false;
-            log('keep-awake clip ' + what);
+        if (av && playerBusy()) { log('player has AVPlay (' + Player.state() + '); its playback is the hold'); return; }
+        videoOn = true;
+        var token = ++attempt;
+        if (!av) { log('no AVPlay for the keep-awake clip'); startElement(token); return; }
+        packageUri(function (pkg) {
+            if (token === attempt) tryAvplay(videoCandidates(pkg), 0, token);
+        });
+    }
+    function giveUp(what) {
+        videoFailed = true; videoOn = false;
+        log('keep-awake clip ' + what);
+    }
+    /* Path `i` of `list` in AVPlay; one it won't take moves on to the next,
+     * and when none is left, to the <video>.  An error once the clip plays
+     * ends the clip for this hold. */
+    function tryAvplay(list, i, token) {
+        if (i >= list.length) { startElement(token); return; }
+        var av = avplay(), path = list[i], playing = false, done = false;
+        function current() { return token === attempt && !done; }
+        function rejected(what) {
+            if (!current()) return;
+            done = true;
             try { av.close(); } catch (e) {}
+            if (playing) { giveUp('error: ' + what); return; }
+            log('keep-awake clip ' + path + ': ' + what);
+            tryAvplay(list, i + 1, token);
         }
         try {
             try { av.close(); } catch (e) {}
             av.open(path);
             av.setListener({
-                onstreamcompleted: function () { if (videoOn) restartVideo(); },
-                onerror:           function (e) { failed('error: ' + why(e)); },
-                onerrormsg:        function (c, m) { failed('error: ' + (m || c)); }
+                onstreamcompleted: function () { if (current()) restartVideo(); },
+                onerror:           function (e) { rejected(why(e)); },
+                onerrormsg:        function (c, m) { rejected(m || c); }
             });
-            videoOn = true;   // set before prepare so a sync play path counts
             var play = function () {
-                try { av.play(); log('keep-awake clip playing (' + path + ')'); }
-                catch (e) { failed('play() threw: ' + why(e)); }
+                if (!current()) return;
+                try { av.play(); playing = true; log('keep-awake clip playing (' + path + ')'); }
+                catch (e) { rejected('play() threw: ' + why(e)); }
             };
             if (typeof av.prepareAsync === 'function') {
-                av.prepareAsync(play, function (e) { failed('prepareAsync failed: ' + why(e)); });
+                av.prepareAsync(play, function (e) { rejected('prepareAsync failed: ' + why(e)); });
             } else { av.prepare(); play(); }
-        } catch (e) { failed('open failed: ' + why(e)); }
+        } catch (e) { rejected('open failed: ' + why(e)); }
     }
     function restartVideo() {
         var av = avplay();
@@ -112,9 +162,49 @@ var KeepAwake = (function () {
         try { av.stop(); av.prepare(); av.play(); log('keep-awake clip restarted'); }
         catch (e) { videoOn = false; log('keep-awake clip restart failed: ' + why(e)); }
     }
+    /* The clip in a muted, looping <video>, out of sight behind the views. */
+    function startElement(token) {
+        if (typeof document === 'undefined' || !document.body) { giveUp('has nowhere to play'); return; }
+        var v = document.createElement('video');
+        v.muted = true;
+        v.loop = true;
+        v.setAttribute('muted', '');
+        v.setAttribute('playsinline', '');
+        v.setAttribute('aria-hidden', 'true');
+        v.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;' +
+                          'pointer-events:none;z-index:-1';
+        function failed(what) {
+            if (token !== attempt || element !== v) return;
+            removeElement();
+            giveUp('in <video> ' + what);
+        }
+        v.addEventListener('playing', function () {
+            if (token === attempt && element === v) log('keep-awake clip playing in <video> (' + VIDEO + ')');
+        });
+        v.addEventListener('error', function () {
+            failed('error ' + ((v.error && v.error.code) || '?'));
+        });
+        element = v;
+        v.src = VIDEO;
+        document.body.appendChild(v);
+        try {
+            var p = v.play();
+            if (p && typeof p.then === 'function') p.then(null, function (e) { failed('play() refused: ' + why(e)); });
+        } catch (e) { failed('play() threw: ' + why(e)); }
+    }
+    function removeElement() {
+        var v = element;
+        element = null;
+        if (!v) return;
+        try { v.pause(); } catch (e) {}
+        try { v.removeAttribute('src'); v.load(); } catch (e) {}
+        try { if (v.parentNode) v.parentNode.removeChild(v); } catch (e) {}
+    }
     function stopVideo() {
+        attempt++;
         if (!videoOn) return;
         videoOn = false;
+        if (element) { removeElement(); log('keep-awake clip stopped'); return; }
         var av = avplay();
         if (!av) return;
         try { av.stop(); } catch (e) {}
@@ -146,7 +236,8 @@ var KeepAwake = (function () {
     }
     function isHeld() { return held; }
 
-    return { hold: hold, release: release, isHeld: isHeld, videoPath: videoPath };
+    return { hold: hold, release: release, isHeld: isHeld,
+             videoPath: videoPath, videoCandidates: videoCandidates };
 })();
 
 // Ignored by the Tizen/browser build; lets Node tests require the module.

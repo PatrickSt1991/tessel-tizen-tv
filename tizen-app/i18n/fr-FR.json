@@ -37,6 +37,7 @@
   "tracks.subtitle": "Sous-titres",
   "info.title": "Infos du fichier",
   "info.video": "Vidéo",
+  "info.bitrate": "Débit binaire",
   "info.hdr": "HDR",
   "info.duration": "Durée",
   "info.container": "Conteneur",

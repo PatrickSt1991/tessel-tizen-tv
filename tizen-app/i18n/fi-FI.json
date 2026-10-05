@@ -37,6 +37,7 @@
   "tracks.subtitle": "Tekstitys",
   "info.title": "Tiedoston tiedot",
   "info.video": "Video",
+  "info.bitrate": "Bittinopeus",
   "info.hdr": "HDR",
   "info.duration": "Kesto",
   "info.container": "Säiliö",

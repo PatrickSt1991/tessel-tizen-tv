@@ -37,6 +37,7 @@
   "tracks.subtitle": "Altyazı",
   "info.title": "Dosya bilgisi",
   "info.video": "Video",
+  "info.bitrate": "Bit hızı",
   "info.hdr": "HDR",
   "info.duration": "Süre",
   "info.container": "Kapsayıcı",

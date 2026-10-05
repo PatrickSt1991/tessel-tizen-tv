@@ -37,6 +37,7 @@
   "tracks.subtitle": "Υπότιτλοι",
   "info.title": "Πληροφορίες αρχείου",
   "info.video": "Βίντεο",
+  "info.bitrate": "Ρυθμός bit",
   "info.hdr": "HDR",
   "info.duration": "Διάρκεια",
   "info.container": "Container",

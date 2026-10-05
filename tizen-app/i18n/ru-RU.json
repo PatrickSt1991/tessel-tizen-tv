@@ -37,6 +37,7 @@
   "tracks.subtitle": "Субтитры",
   "info.title": "Сведения о файле",
   "info.video": "Видео",
+  "info.bitrate": "Битрейт",
   "info.hdr": "HDR",
   "info.duration": "Длительность",
   "info.container": "Контейнер",

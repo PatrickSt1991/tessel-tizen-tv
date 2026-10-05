@@ -37,6 +37,7 @@
   "tracks.subtitle": "Legendas",
   "info.title": "Informações do ficheiro",
   "info.video": "Vídeo",
+  "info.bitrate": "Taxa de bits",
   "info.hdr": "HDR",
   "info.duration": "Duração",
   "info.container": "Contentor",

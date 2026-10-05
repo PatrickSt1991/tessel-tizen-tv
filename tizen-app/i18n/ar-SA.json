@@ -37,6 +37,7 @@
   "tracks.subtitle": "الترجمة",
   "info.title": "معلومات الملف",
   "info.video": "الفيديو",
+  "info.bitrate": "معدل البت",
   "info.hdr": "HDR",
   "info.duration": "المدة",
   "info.container": "الحاوية",

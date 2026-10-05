@@ -37,6 +37,7 @@
   "tracks.subtitle": "Undertekst",
   "info.title": "Filoplysninger",
   "info.video": "Video",
+  "info.bitrate": "Bithastighed",
   "info.hdr": "HDR",
   "info.duration": "Varighed",
   "info.container": "Container",

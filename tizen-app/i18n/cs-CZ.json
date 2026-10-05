@@ -37,6 +37,7 @@
   "tracks.subtitle": "Titulky",
   "info.title": "Informace o souboru",
   "info.video": "Video",
+  "info.bitrate": "Datový tok",
   "info.hdr": "HDR",
   "info.duration": "Délka",
   "info.container": "Kontejner",

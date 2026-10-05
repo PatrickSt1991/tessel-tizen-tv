@@ -37,6 +37,7 @@
   "tracks.subtitle": "Phụ đề",
   "info.title": "Thông tin tệp",
   "info.video": "Video",
+  "info.bitrate": "Tốc độ bit",
   "info.hdr": "HDR",
   "info.duration": "Thời lượng",
   "info.container": "Định dạng chứa",

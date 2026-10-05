@@ -37,6 +37,7 @@
   "tracks.subtitle": "Титл",
   "info.title": "Informacije o fajlu",
   "info.video": "Video",
+  "info.bitrate": "Битска брзина",
   "info.hdr": "HDR",
   "info.duration": "Trajanje",
   "info.container": "Kontejner",

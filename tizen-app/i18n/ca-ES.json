@@ -37,6 +37,7 @@
   "tracks.subtitle": "Subtítols",
   "info.title": "Informació del fitxer",
   "info.video": "Vídeo",
+  "info.bitrate": "Taxa de bits",
   "info.hdr": "HDR",
   "info.duration": "Durada",
   "info.container": "Contenidor",

@@ -1581,7 +1581,7 @@ var Player = (function () {
     }
     function describe() {
         var d = { container: embeddedSubContainer((subsSource && subsSource.uri) || '') || '',
-                  duration: duration(), video: { codec: '', width: 0, height: 0 },
+                  duration: duration(), video: { codec: '', width: 0, height: 0, bitrate: 0 },
                   audio: [], subtitles: 0, hdr: null };
         if (backend === BACKEND_AVPLAY) {
             try {
@@ -1589,7 +1589,8 @@ var Player = (function () {
                 for (var i = 0; i < info.length; i++) {
                     if (info[i].type !== 'VIDEO') continue;
                     var p = parseAvExtraInfo(info[i].extra_info);
-                    d.video = { codec: prettyCodec(p.codec), width: p.width, height: p.height };
+                    d.video = { codec: prettyCodec(p.codec), width: p.width, height: p.height,
+                                bitrate: p.bitrate };
                     break;
                 }
             } catch (e) {}
@@ -1669,7 +1670,7 @@ var Player = (function () {
      * for audio, and similar for subtitles.  Older firmwares hand back
      * a plain string instead.  Return {label, lang, codec} either way. */
     function parseAvExtraInfo(raw) {
-        if (!raw) return { label: '', lang: '', codec: '' };
+        if (!raw) return { label: '', lang: '', codec: '', bitrate: 0 };
         var s = String(raw).trim();
         var obj = null;
         if (s.charAt(0) === '{') {
@@ -1679,10 +1680,14 @@ var Player = (function () {
             // Not JSON — use as-is, and look for a 3-letter ISO code in it
             var m = s.match(/\b([a-z]{2,3})\b/i);
             return { label: s, lang: m ? m[1].toLowerCase() : '', codec: s, channels: 0,
-                     width: 0, height: 0 };
+                     width: 0, height: 0, bitrate: 0 };
         }
+        // Firmware differs in how it spells the keys ("Width", "Bit_rate").
+        var lower = {};
+        for (var k in obj) if (Object.prototype.hasOwnProperty.call(obj, k)) lower[k.toLowerCase()] = obj[k];
+        obj = lower;
         var lang  = (obj.language || obj.lang || obj.track_lang || '').toString().toLowerCase();
-        var codec = (obj.fourCC || obj.codec || '').toString();
+        var codec = (obj.fourcc || obj.codec || '').toString();
         var parts = [];
         if (lang) parts.push(lang.toUpperCase());
         if (codec) parts.push(codec);
@@ -1692,7 +1697,8 @@ var Player = (function () {
             label: parts.join(' · ') || s, lang: lang, codec: codec, channels: channels,
             // VIDEO entries carry the frame size; the crop modes need it.
             width:  parseInt(obj.width,  10) || 0,
-            height: parseInt(obj.height, 10) || 0
+            height: parseInt(obj.height, 10) || 0,
+            bitrate: parseInt(obj.bit_rate || obj.bitrate, 10) || 0   // bits/s, VIDEO entries
         };
     }
 

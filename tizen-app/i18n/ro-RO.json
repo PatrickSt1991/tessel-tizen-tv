@@ -37,6 +37,7 @@
   "tracks.subtitle": "Subtitrare",
   "info.title": "Informații fișier",
   "info.video": "Video",
+  "info.bitrate": "Rată de biți",
   "info.hdr": "HDR",
   "info.duration": "Durată",
   "info.container": "Container",

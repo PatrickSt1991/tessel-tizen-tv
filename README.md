@@ -15,7 +15,7 @@ through Samsung's AVPlay.
 - **Every embedded track selectable**, even past the TV demuxer's 32-track limit
 - **Resume or start over** — a half-watched file asks *Continue* or *Start from the beginning*; number keys jump by tenths
 - **Transcode server** for files the TV can't decode (DivX, DTS, TrueHD) and for real 5.1 to a soundbar — see [transcode-server](transcode-server/)
-- **INFO shows what's playing** — codec, picture size, HDR type with a warning for Dolby Vision (which Samsung TVs don't decode), audio and subtitle tracks
+- **INFO shows what's playing** — from the remote's INFO key or the INFO button in the player: codec, picture size and bitrate (where the stream declares one), HDR type with a warning for Dolby Vision (which Samsung TVs don't decode), audio and subtitle tracks
 - **Full remote support** — D-pad, media keys, aspect ratio, speed, repeat, shuffle, recent history
 
 ## Install

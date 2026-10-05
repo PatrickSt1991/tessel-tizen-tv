@@ -37,6 +37,7 @@
   "tracks.subtitle": "字幕",
   "info.title": "ファイル情報",
   "info.video": "映像",
+  "info.bitrate": "ビットレート",
   "info.hdr": "HDR",
   "info.duration": "長さ",
   "info.container": "コンテナ",

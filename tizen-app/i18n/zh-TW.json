@@ -37,6 +37,7 @@
   "tracks.subtitle": "字幕",
   "info.title": "檔案資訊",
   "info.video": "影片",
+  "info.bitrate": "位元率",
   "info.hdr": "HDR",
   "info.duration": "長度",
   "info.container": "封裝格式",

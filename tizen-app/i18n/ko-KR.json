@@ -37,6 +37,7 @@
   "tracks.subtitle": "자막",
   "info.title": "파일 정보",
   "info.video": "비디오",
+  "info.bitrate": "비트레이트",
   "info.hdr": "HDR",
   "info.duration": "길이",
   "info.container": "컨테이너",
