@@ -379,6 +379,7 @@
             case 'open-url':           openUrlView(); break;
             case 'browse-usb':         openBrowserAtRoot(); break;
             case 'browse-smb':         SMB.openBrowser(); break;
+            case 'browse-dlna':        DLNA.openBrowser(); break;
             case 'browse-recent':      openRecent(); break;
             case 'open-settings':      openSettings(); break;
             case 'open-current-url': {
@@ -1494,7 +1495,9 @@
             }
             if (i === state.playlistIndex) return -1;   // all the way round
             var it = state.playlist[i];
-            if (!state.background || FileTypes.kind(it.title || it.uri) === 'audio') return i;
+            // A DLNA title has no extension; its URL usually does.
+            if (!state.background || FileTypes.kind(it.title || '') === 'audio' ||
+                FileTypes.kind(String(it.uri).split('?')[0]) === 'audio') return i;
         }
         return -1;
     }
@@ -1595,6 +1598,7 @@
     function restorePlayer() {
         if (!state.background) return;
         if (typeof SMB !== 'undefined' && SMB.detach) SMB.detach();   // its BACK would steer the player
+        if (typeof DLNA !== 'undefined' && DLNA.detach) DLNA.detach();
         state.listBack = null;
         state.background = false;
         hideMiniPlayer();
