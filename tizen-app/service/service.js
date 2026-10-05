@@ -13,6 +13,9 @@
  *                       → { ok:true, shares:[{ name, remark }] }, the disk
  *                         shares the server lists (see listShares)
  *   GET  /smb/ping                    → { ok:true, connected } liveness check
+ *   GET  /dlna/discover, POST /dlna/browse
+ *                       → DLNA media servers on the LAN and their folders
+ *                         (see the DLNA block near the bottom)
  *
  * It also hosts the optional *local relay* (see the block near the bottom):
  * a second listener, on the LAN rather than loopback, that serves files off
@@ -1574,6 +1577,260 @@ function handleDiscover(req, res, query) {
     });
 }
 
+/* ============================================================================
+ * DLNA media servers (issue #131)
+ * ----------------------------------------------------------------------------
+ * miniDLNA, Plex, Jellyfin, Serviio, a NAS's own media server: anything that
+ * is a UPnP MediaServer with a ContentDirectory.  The web app can't send UDP,
+ * so finding them is done here, and browsing too, so both halves log in one
+ * place:
+ *
+ *   GET  /dlna/discover               → { ok, servers:[{ id, name, control }] }
+ *   POST /dlna/browse { control, id } → { ok, entries:[{ id, title, isDir,
+ *                                         kind, url, size, duration, art }] }
+ *
+ * Discovery is SSDP: an M-SEARCH to the multicast group, answered by unicast
+ * to our socket, so no group needs joining.  Each answer's LOCATION is the
+ * device description, which names the server and its ContentDirectory's
+ * control URL.  Browsing is that service's Browse action over SOAP; the items
+ * it lists carry plain http URLs on the server, which AVPlay plays directly —
+ * the service is not in the way of the bytes.
+ *
+ * The XML is read with regular expressions.  It is machine-written, one
+ * shape per server, and a parser is more than this ES5, dependency-free
+ * service wants to carry.
+ * ------------------------------------------------------------------------- */
+var dgram = null;
+try { dgram = require('dgram'); } catch (e) {}
+
+var SSDP_ADDR        = '239.255.255.250';
+var SSDP_PORT        = 1900;
+var DLNA_SEARCH_MS   = 3000;   // how long M-SEARCH answers are collected
+var DLNA_HTTP_MS     = 8000;   // per description / Browse request
+var DLNA_PAGE        = 200;    // Browse page size
+var DLNA_MAX_ENTRIES = 5000;   // one folder; beyond this the list is cut
+var DLNA_MAX_BYTES   = 8 * 1024 * 1024;
+var DLNA_TARGETS     = ['urn:schemas-upnp-org:device:MediaServer:1',
+                        'urn:schemas-upnp-org:service:ContentDirectory:1'];
+
+function xmlUnescape(s) {
+    return String(s || '').replace(/&(lt|gt|quot|apos|amp|#(\d+)|#x([0-9a-fA-F]+));/g, function (m, n, dec, hex) {
+        if (dec || hex) {
+            var c = dec ? parseInt(dec, 10) : parseInt(hex, 16);
+            if (c > 0xFFFF) { c -= 0x10000; return String.fromCharCode(0xD800 + (c >> 10), 0xDC00 + (c & 0x3FF)); }
+            return String.fromCharCode(c);
+        }
+        return { lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' }[n];
+    });
+}
+/* The body of the first <name> (any namespace prefix), unescaped, or ''. */
+function xmlText(xml, name) {
+    var m = new RegExp('<(?:[\\w.-]+:)?' + name + '(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[\\w.-]+:)?' + name + '\\s*>', 'i')
+        .exec(xml || '');
+    return m ? xmlUnescape(m[1]).trim() : '';
+}
+/* Every <name …>…</name> or <name …/>: [{ attrs, body }]. */
+function xmlElements(xml, name) {
+    var out = [], m;
+    var re = new RegExp('<(?:[\\w.-]+:)?' + name + '\\b([^>]*?)(?:/>|>([\\s\\S]*?)</(?:[\\w.-]+:)?' + name + '\\s*>)', 'gi');
+    while ((m = re.exec(xml || ''))) out.push({ attrs: m[1] || '', body: m[2] || '' });
+    return out;
+}
+function xmlAttr(attrs, name) {
+    var m = new RegExp('(?:^|\\s)' + name + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\')', 'i').exec(attrs || '');
+    return m ? xmlUnescape(m[1] !== undefined ? m[1] : m[2]) : '';
+}
+
+/* An SSDP answer's headers, lower-cased names; null when it isn't one. */
+function parseSsdp(text) {
+    var lines = String(text || '').split(/\r?\n/);
+    if (!/^HTTP\/1\.[01] 200|^NOTIFY /i.test(lines[0] || '')) return null;
+    var h = {};
+    for (var i = 1; i < lines.length; i++) {
+        var c = lines[i].indexOf(':');
+        if (c > 0) h[lines[i].slice(0, c).trim().toLowerCase()] = lines[i].slice(c + 1).trim();
+    }
+    return h;
+}
+
+/* A device description → { id, name, control } for its ContentDirectory,
+ * or null when it has none.  Relative URLs are against URLBase if given,
+ * else the description's own address. */
+function parseDeviceDescription(xml, location) {
+    var services = xmlElements(xml, 'service'), control = '';
+    for (var i = 0; i < services.length && !control; i++)
+        if (/:ContentDirectory:/i.test(xmlText(services[i].body, 'serviceType')))
+            control = xmlText(services[i].body, 'controlURL');
+    if (!control) return null;
+    var base = xmlText(xml, 'URLBase') || location;
+    var urlMod = require('url');
+    var abs = urlMod.resolve(base, control);
+    if (!/^https?:\/\//i.test(abs)) return null;
+    var host = urlMod.parse(abs).hostname || '';
+    return { id: xmlText(xml, 'UDN') || location,
+             name: xmlText(xml, 'friendlyName') || host,
+             control: abs };
+}
+
+function didlKind(cls) {
+    cls = String(cls || '');
+    if (/videoItem/i.test(cls)) return 'video';
+    if (/audioItem/i.test(cls)) return 'audio';
+    if (/imageItem/i.test(cls)) return 'image';
+    return 'other';
+}
+/* "1:23:45.000" → seconds. */
+function didlDuration(s) {
+    var m = /^(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)/.exec(String(s || ''));
+    return m ? (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]) : 0;
+}
+/* A Browse Result (DIDL-Lite, already unescaped once) → the app's entries.
+ * An item keeps its first http resource; one without any is left out. */
+function parseDidl(didl) {
+    var out = [];
+    xmlElements(didl, 'container').forEach(function (c) {
+        out.push({ id: xmlAttr(c.attrs, 'id'), title: xmlText(c.body, 'title') || '?', isDir: true,
+                   count: parseInt(xmlAttr(c.attrs, 'childCount'), 10) || 0 });
+    });
+    xmlElements(didl, 'item').forEach(function (it) {
+        var res = xmlElements(it.body, 'res'), pick = null;
+        for (var i = 0; i < res.length && !pick; i++) {
+            var url = xmlUnescape(res[i].body).trim();
+            if (/^https?:\/\//i.test(url) && /^http-get:/i.test(xmlAttr(res[i].attrs, 'protocolInfo') || 'http-get:'))
+                pick = { url: url, attrs: res[i].attrs };
+        }
+        if (!pick) return;
+        out.push({ id: xmlAttr(it.attrs, 'id'), title: xmlText(it.body, 'title') || '?', isDir: false,
+                   kind: didlKind(xmlText(it.body, 'class')), url: pick.url,
+                   size: parseInt(xmlAttr(pick.attrs, 'size'), 10) || 0,
+                   duration: didlDuration(xmlAttr(pick.attrs, 'duration')),
+                   art: xmlText(it.body, 'albumArtURI') });
+    });
+    return out;
+}
+
+/* One HTTP request with a body limit and a timeout: cb(err, status, text). */
+function httpText(target, method, headers, body, cb) {
+    var done = false, req, urlMod = require('url'), u = urlMod.parse(target);
+    function finish(err, status, text) { if (done) return; done = true; cb(err, status, text); }
+    try {
+        req = http.request({ host: u.hostname, port: u.port || 80, path: u.path, method: method,
+                             headers: headers || {}, agent: false }, function (res) {
+            var chunks = [], size = 0;
+            res.on('data', function (c) {
+                size += c.length;
+                if (size > DLNA_MAX_BYTES) { try { req.abort(); } catch (e) {} return finish(new Error('reply too large')); }
+                chunks.push(c);
+            });
+            res.on('end', function () { finish(null, res.statusCode, Buffer.concat(chunks).toString('utf8')); });
+        });
+        req.setTimeout(DLNA_HTTP_MS, function () { try { req.abort(); } catch (e) {} finish(new Error('timeout')); });
+        req.on('error', function (e) { finish(e); });
+        req.end(body || undefined);
+    } catch (e) { finish(e); }
+}
+
+function browseRequest(objectId, start, count) {
+    return '<?xml version="1.0" encoding="utf-8"?>' +
+        '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">' +
+        '<s:Body><u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">' +
+        '<ObjectID>' + String(objectId).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</ObjectID>' +
+        '<BrowseFlag>BrowseDirectChildren</BrowseFlag><Filter>*</Filter>' +
+        '<StartingIndex>' + start + '</StartingIndex><RequestedCount>' + count + '</RequestedCount>' +
+        '<SortCriteria></SortCriteria></u:Browse></s:Body></s:Envelope>';
+}
+/* A Browse reply → { entries, returned, total }, or { error }. */
+function parseBrowseReply(status, xml) {
+    if (status !== 200) {
+        var why = xmlText(xml, 'errorDescription') || xmlText(xml, 'faultstring') || ('HTTP ' + status);
+        return { error: why };
+    }
+    var result = xmlText(xml, 'Result');
+    return { entries: parseDidl(result),
+             returned: parseInt(xmlText(xml, 'NumberReturned'), 10) || 0,
+             total: parseInt(xmlText(xml, 'TotalMatches'), 10) || 0 };
+}
+/* Every child of `objectId`, page by page: cb(err, entries). */
+function dlnaBrowse(control, objectId, cb) {
+    var all = [];
+    (function page(start) {
+        httpText(control, 'POST', {
+            'Content-Type': 'text/xml; charset="utf-8"',
+            'SOAPACTION': '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"'
+        }, browseRequest(objectId, start, DLNA_PAGE), function (err, status, text) {
+            if (err) return cb(err);
+            var r = parseBrowseReply(status, text);
+            if (r.error) return cb(new Error(r.error));
+            all = all.concat(r.entries);
+            var next = start + r.returned;
+            if (r.returned > 0 && next < r.total && next < DLNA_MAX_ENTRIES) return page(next);
+            cb(null, all);
+        });
+    })(0);
+}
+
+/* GET /dlna/discover */
+function handleDlnaDiscover(req, res) {
+    if (!dgram) return sendJson(res, 200, { ok: false, error: 'no UDP on this TV' });
+    var locations = [], sock;
+    try { sock = dgram.createSocket('udp4'); }
+    catch (e) { log('DLNA_SOCKET_ERR', e.message); return sendJson(res, 200, { ok: false, error: e.message }); }
+    sock.on('message', function (msg) {
+        var h = parseSsdp(msg.toString('utf8'));
+        if (h && h.location && /^https?:\/\//i.test(h.location) && locations.indexOf(h.location) < 0) locations.push(h.location);
+    });
+    sock.on('error', function (e) { log('DLNA_SOCKET_ERR', e.message); });
+    function search() {
+        DLNA_TARGETS.forEach(function (st) {
+            var m = Buffer.from('M-SEARCH * HTTP/1.1\r\nHOST: ' + SSDP_ADDR + ':' + SSDP_PORT +
+                                '\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ' + st + '\r\n\r\n');
+            try { sock.send(m, 0, m.length, SSDP_PORT, SSDP_ADDR); } catch (e) { log('DLNA_SEND_ERR', e.message); }
+        });
+    }
+    try {
+        sock.bind(function () {
+            log('DLNA_SEARCH_START');
+            search();
+            setTimeout(search, 800);   // UDP gets lost; ask twice
+        });
+    } catch (e) { log('DLNA_BIND_ERR', e.message); return sendJson(res, 200, { ok: false, error: e.message }); }
+
+    setTimeout(function () {
+        try { sock.close(); } catch (e) {}
+        log('DLNA_SEARCH_ANSWERS', locations);
+        var found = [];
+        eachLimited(locations, 8, function (loc, done) {
+            httpText(loc, 'GET', null, null, function (err, status, xml) {
+                var d = !err && status === 200 ? parseDeviceDescription(xml, loc) : null;
+                if (!d) log('DLNA_DESCRIPTION_SKIP', loc + ' ' + (err ? err.message : 'HTTP ' + status + ' / no ContentDirectory'));
+                else if (!found.some(function (f) { return f.id === d.id; })) found.push(d);
+                done();
+            });
+        }, function () {
+            found.sort(function (a, b) { return a.name.localeCompare(b.name); });
+            log('DLNA_SERVERS', found);
+            sendJson(res, 200, { ok: true, servers: found });
+        });
+    }, DLNA_SEARCH_MS);
+}
+
+/* POST /dlna/browse { control, id } — id '0' is a server's root. */
+function handleDlnaBrowse(req, res) {
+    var raw = '';
+    req.on('data', function (c) { raw += c; });
+    req.on('end', function () {
+        var q;
+        try { q = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { ok: false, error: 'bad json' }); }
+        if (!/^https?:\/\//i.test(q.control || '')) return sendJson(res, 400, { ok: false, error: 'control URL required' });
+        var id = q.id === undefined || q.id === '' ? '0' : String(q.id);
+        dlnaBrowse(q.control, id, function (err, entries) {
+            if (err) { log('DLNA_BROWSE_ERR', id + ' @ ' + q.control + ': ' + err.message); return sendJson(res, 200, { ok: false, error: err.message }); }
+            log('DLNA_BROWSE', id + ': ' + entries.length + ' entries');
+            sendJson(res, 200, { ok: true, entries: entries });
+        });
+    });
+}
+
 var server = http.createServer(function (req, res) {
     var u = require('url').parse(req.url, true);
     if (req.method === 'OPTIONS') { cors(res, 204, 'text/plain'); return res.end(); }
@@ -1594,6 +1851,10 @@ var server = http.createServer(function (req, res) {
 
     // LAN discovery — replaces typing a pairing code between two screens.
     if (u.pathname === '/discover') return handleDiscover(req, res, u.query);
+
+    // DLNA media servers (issue #131).
+    if (u.pathname === '/dlna/discover') return handleDlnaDiscover(req, res);
+    if (u.pathname === '/dlna/browse' && req.method === 'POST') return handleDlnaBrowse(req, res);
 
     cors(res, 404, 'text/plain'); res.end('Not Found');
 });

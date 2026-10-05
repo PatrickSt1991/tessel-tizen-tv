@@ -1,13 +1,14 @@
 # Tessel
 
-A media player for Samsung Tizen TVs. Network streams, USB drives
-and SMB shares, with a remote-friendly UI and hardware-accelerated playback
+A media player for Samsung Tizen TVs. Network streams, USB drives,
+SMB shares and DLNA media servers, with a remote-friendly UI and hardware-accelerated playback
 through Samsung's AVPlay.
 
 ## Features
 
 - **Plays almost anything the TV can decode** — H.264 / HEVC / VP9, AAC / MP3 / AC3 / EAC3, HLS / DASH / RTSP / RTMP
 - **USB, internal storage and SMB shares** — browse and stream from a NAS, Windows or Samba, with as many servers as you like
+- **DLNA media servers** — miniDLNA, Plex, Jellyfin, Serviio or a NAS's own server, found on the LAN without setting anything up
 - **Music that plays on while you browse** — title, artist, album and cover art from ID3, FLAC, Ogg/Opus and M4A tags, a mini-player, repeat one / all, CH± to skip
 - **Pictures, text and playlists too** — a photo viewer with slideshow, a text viewer that reads Cyrillic and Western legacy encodings, and M3U / PLS lists (IPTV channels grouped by category) off a URL, USB or a share
 - **Cast a URL from your phone** — scan a QR once, paste a link, it plays. No account, no app
@@ -29,7 +30,7 @@ through Samsung's AVPlay.
    sdb install tessel.wgt
    ```
 
-Works on Tizen TVs from 2017 onward. SMB shares need Tizen 4.0+ (2018 sets and later). Tested on a 2019 RU7020 and a 2023 S90C.
+Works on Tizen TVs from 2017 onward. SMB shares and DLNA servers need Tizen 4.0+ (2018 sets and later). Tested on a 2019 RU7020 and a 2023 S90C.
 
 ## Docs
 
