@@ -110,7 +110,7 @@ button:focus { outline: none; }
 /* ── Home tiles ───────────────────────────────────────────────────── */
 .home-tiles {
     display: grid; grid-gap: 28px;   /* grid-gap, not gap: TV WebView is Chromium 63 */
-    grid-template-columns: repeat(5, 280px);   /* 5×280 + 4×28 = 1512px, fits 1080p */
+    grid-template-columns: repeat(6, 260px);   /* 6×260 + 5×28 = 1700px, fits 1080p */
     justify-content: center;
 }
 
@@ -118,7 +118,7 @@ button:focus { outline: none; }
     background: var(--bg-card);
     border: 3px solid var(--border);
     border-radius: var(--r);
-    padding: 56px 40px;
+    padding: 56px 20px;   /* six tiles: 260px leaves ~214px for a label */
     text-align: center;
     transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
     color: var(--fg);
@@ -143,13 +143,15 @@ button:focus { outline: none; }
     margin: 0 auto 28px;
     letter-spacing: 1px;
 }
+.tile-icon.long { font-size: 26px; letter-spacing: 0; }   /* four letters: DLNA */
 .tile:focus .tile-icon, .tile.focused .tile-icon {
     background: var(--accent);
     color: #102035;
 }
 
 .tile-label {
-    font-size: 28px;
+    font-size: 26px;
+    word-break: break-word;   /* a single long word (ru "Медиасерверы") wraps rather than spills */
     font-weight: 500;
     color: var(--fg);
     margin-bottom: 10px;

@@ -379,6 +379,7 @@
             case 'open-url':           openUrlView(); break;
             case 'browse-usb':         openBrowserAtRoot(); break;
             case 'browse-smb':         SMB.openBrowser(); break;
+            case 'browse-dlna':        DLNA.openBrowser(); break;
             case 'browse-recent':      openRecent(); break;
             case 'open-settings':      openSettings(); break;
             case 'open-current-url': {
@@ -408,6 +409,7 @@
             case 'open-aspect-picker': openAspectPicker(); break;
             case 'open-track-menu':    openTrackMenu(); break;
             case 'close-track-menu':   closeTrackMenu(); break;
+            case 'open-file-info':     toggleFileInfo(); break;
             case 'close-file-info':    closeTrackMenu(); break;
             case 'setting-ui-lang':       openUiLangPicker(); break;
             case 'setting-audio-lang':    openLangPicker('audioLang',    I18n.t('settings.audioLang'), LanguageList.forAudio());    break;
@@ -978,13 +980,10 @@
     }
 
     /* The playlist filter (issue #122): what's typed matches anywhere in a
-     * title, ignoring case and accents, across every group.  Redrawn a
-     * moment after typing stops, so a 10 000-channel list keeps up. */
-    function foldText(s) {
-        s = String(s).toLowerCase();
-        try { s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
-        return s.trim();
-    }
+     * title, folded the same way on both sides (Playlist.foldText), across
+     * every group.  Redrawn a moment after typing stops, so a 10 000-channel
+     * list keeps up. */
+    var foldText = Playlist.foldText;
     /* `"Спорт" [U+0421 U+043F …]`: text with its code points, for the log —
      * the one way to see what a keyboard layout really put in a field. */
     function describeText(s) {
@@ -1496,7 +1495,9 @@
             }
             if (i === state.playlistIndex) return -1;   // all the way round
             var it = state.playlist[i];
-            if (!state.background || FileTypes.kind(it.title || it.uri) === 'audio') return i;
+            // A DLNA title has no extension; its URL usually does.
+            if (!state.background || FileTypes.kind(it.title || '') === 'audio' ||
+                FileTypes.kind(String(it.uri).split('?')[0]) === 'audio') return i;
         }
         return -1;
     }
@@ -1597,6 +1598,7 @@
     function restorePlayer() {
         if (!state.background) return;
         if (typeof SMB !== 'undefined' && SMB.detach) SMB.detach();   // its BACK would steer the player
+        if (typeof DLNA !== 'undefined' && DLNA.detach) DLNA.detach();
         state.listBack = null;
         state.background = false;
         hideMiniPlayer();
@@ -2447,6 +2449,8 @@
         }
         var size = d.video.width && d.video.height ? d.video.width + ' × ' + d.video.height : '';
         row(I18n.t('info.video'), [d.video.codec, size].filter(Boolean).join(' · '));
+        // As the stream declares it; AVPlay doesn't report one for every file.
+        if (d.video.bitrate > 0) row(I18n.t('info.bitrate'), (d.video.bitrate / 1e6).toFixed(1) + ' Mbps');
         if (d.hdr) {
             var h = d.hdr, text, warn = false;
             if (h.kind === 'DV') {

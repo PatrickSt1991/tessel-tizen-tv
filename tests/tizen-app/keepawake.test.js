@@ -12,11 +12,13 @@ function load(opts) {
     opts = opts || {};
     var calls = [], logs = [];
     var av = {
-        open:        function (p) { calls.push('open ' + p); },
+        open:        function (p) { av.opened = p; calls.push('open ' + p); },
         setListener: function (l) { av.listener = l; calls.push('setListener'); },
         prepareAsync: function (ok, bad) {
             calls.push('prepareAsync');
-            if (opts.prepareFails) bad(new Error('nope')); else ok();
+            if (opts.prepareFails || (opts.rejects && opts.rejects.test(av.opened)))
+                bad(new Error(opts.prepareFails ? 'nope' : 'PLAYER_ERROR_INVALID_URI'));
+            else ok();
         },
         prepare:     function () { calls.push('prepare'); },
         play:        function () { calls.push('play'); },
@@ -35,6 +37,33 @@ function load(opts) {
         Player:   opts.player || { getBackend: function () { return 'none'; }, state: function () { return 'NONE'; } },
         module:   { exports: {} }
     };
+    if (opts.packageUri) {
+        sandbox.tizen = { filesystem: { resolve: function (what, ok) {
+            calls.push('resolve ' + what);
+            ok({ toURI: function () { return opts.packageUri; } });
+        } } };
+    }
+    if (opts.document) {
+        var videos = [];
+        sandbox.document = {
+            body: { appendChild: function (v) { v.parentNode = sandbox.document.body; calls.push('<video> ' + v.src); },
+                    removeChild: function (v) { v.parentNode = null; calls.push('<video> removed'); } },
+            createElement: function () {
+                var handlers = {};
+                var v = { style: {}, attrs: {},
+                          setAttribute: function (k, val) { v.attrs[k] = val; },
+                          removeAttribute: function (k) { delete v.attrs[k]; },
+                          addEventListener: function (ev, fn) { handlers[ev] = fn; },
+                          fire: function (ev) { if (handlers[ev]) handlers[ev](); },
+                          play: function () { calls.push('<video> play'); },
+                          pause: function () { calls.push('<video> pause'); },
+                          load: function () {} };
+                videos.push(v);
+                return v;
+            }
+        };
+        sandbox.videos = videos;
+    }
     if (opts.power) {
         sandbox.tizen = { power: {
             request: function (r, s) { calls.push('power.request ' + r + ' ' + s); },
@@ -43,7 +72,7 @@ function load(opts) {
     }
     vm.createContext(sandbox);
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../../tizen-app/js/keepawake.js'), 'utf8'), sandbox);
-    return { K: sandbox.KeepAwake, calls: calls, logs: logs, av: av };
+    return { K: sandbox.KeepAwake, calls: calls, logs: logs, av: av, videos: sandbox.videos };
 }
 
 test('the clip\'s path is next to index.html, as a plain path for AVPlay', function () {
@@ -106,13 +135,72 @@ test('a clip that will not play is logged once and not retried until the next ho
     var t = load({ prepareFails: true });
     t.K.hold('slideshow');
     t.K.hold('slideshow');
-    assert.strictEqual(t.calls.filter(function (c) { return c === 'prepareAsync'; }).length, 1);
+    // Both names for the file were tried once; nothing is left to play it in.
+    assert.strictEqual(t.calls.filter(function (c) { return c === 'prepareAsync'; }).length, 2);
     assert.ok(t.logs.some(function (m) { return /prepareAsync failed: nope/.test(m); }), t.logs.join('\n'));
+    assert.ok(t.logs.some(function (m) { return /nowhere to play/.test(m); }), t.logs.join('\n'));
     // The screensaver switch is still asked each time; it is what's left.
     assert.strictEqual(t.calls.filter(function (c) { return c === 'screensaver OFF'; }).length, 2);
     t.K.release();
     t.K.hold('slideshow');
-    assert.strictEqual(t.calls.filter(function (c) { return c === 'prepareAsync'; }).length, 2);
+    assert.strictEqual(t.calls.filter(function (c) { return c === 'prepareAsync'; }).length, 4);
+});
+
+test('the clip is offered to AVPlay as a path and a URI, also where the package really is', function () {
+    var t = load({ packageUri: 'file:///opt/usr/globalapps/madebypatk.vlcweb/res/wgt' });
+    assert.deepStrictEqual(Array.from(t.K.videoCandidates('file:///opt/usr/globalapps/madebypatk.vlcweb/res/wgt')), [
+        '/opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
+        'file:///opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
+        '/opt/usr/globalapps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
+        'file:///opt/usr/globalapps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4'
+    ]);
+    // The same folder twice is offered once.
+    assert.strictEqual(t.K.videoCandidates('file:///opt/usr/apps/madebypatk.vlcweb/res/wgt/').length, 2);
+});
+
+test('a path AVPlay calls an invalid URI is logged with the path, and the next one is tried', function () {
+    var t = load({ rejects: /^\//, packageUri: 'file:///opt/usr/globalapps/x/res/wgt' });
+    t.K.hold('slideshow');
+    var opened = t.calls.filter(function (c) { return /^open /.test(c); });
+    assert.deepStrictEqual(opened, ['open /opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
+                                    'open file:///opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4']);
+    assert.ok(t.logs.some(function (m) {
+        return m.indexOf('/opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4: prepareAsync failed: PLAYER_ERROR_INVALID_URI') >= 0;
+    }), t.logs.join('\n'));
+    assert.ok(t.logs.some(function (m) { return /clip playing \(file:\/\//.test(m); }), t.logs.join('\n'));
+    // A late error from the rejected attempt doesn't stop the one that plays.
+    t.calls.length = 0;
+    t.K.release();
+    assert.deepStrictEqual(t.calls, ['stop', 'close', 'screensaver ON']);
+});
+
+test('when AVPlay takes none of the paths the clip loops in a muted <video>, removed on release', function () {
+    var t = load({ rejects: /./, document: true });
+    t.K.hold('slideshow');
+    assert.strictEqual(t.videos.length, 1);
+    var v = t.videos[0];
+    assert.ok(v.muted && v.loop, 'muted, looping');
+    assert.strictEqual(v.src, 'assets/keepawake.mp4');
+    assert.ok(t.calls.indexOf('<video> play') > t.calls.lastIndexOf('prepareAsync'));
+    v.fire('playing');
+    assert.ok(t.logs.some(function (m) { return /playing in <video>/.test(m); }), t.logs.join('\n'));
+    // Holding again leaves it alone.
+    t.K.hold('slideshow');
+    assert.strictEqual(t.videos.length, 1);
+    t.calls.length = 0;
+    t.K.release();
+    assert.ok(t.calls.indexOf('<video> removed') >= 0, t.calls.join(', '));
+    assert.ok(t.calls.indexOf('stop') < 0, 'AVPlay is not touched');
+});
+
+test('a <video> that errors is given up on for this hold', function () {
+    var t = load({ noAvplay: true, document: true });
+    t.K.hold('slideshow');
+    t.videos[0].error = { code: 4 };
+    t.videos[0].fire('error');
+    assert.ok(t.logs.some(function (m) { return /in <video> error 4/.test(m); }), t.logs.join('\n'));
+    t.K.hold('slideshow');
+    assert.strictEqual(t.videos.length, 1);
 });
 
 test('the player\'s own AVPlay session is left alone', function () {
@@ -133,6 +221,7 @@ test('firmware without prepareAsync, or without AVPlay at all, still gets the sc
     u.K.hold('slideshow');
     assert.deepStrictEqual(u.calls, ['screensaver OFF']);
     assert.ok(u.logs.some(function (m) { return /no AVPlay/.test(m); }));
+    assert.ok(u.logs.some(function (m) { return /nowhere to play/.test(m); }));
     u.K.release();
     assert.deepStrictEqual(u.calls, ['screensaver OFF', 'screensaver ON']);
 });

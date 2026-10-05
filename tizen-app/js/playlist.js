@@ -125,7 +125,25 @@ var Playlist = (function () {
         catch (e) { return null; }
     }
 
-    return { parse: parse, groups: groups, isPlaylistUrl: isPlaylistUrl, resolveUrl: resolveUrl };
+    /* Text as the playlist filter compares it (issues #122, #132): lower
+     * case, without accents, and with the Cyrillic letters that look like
+     * Latin ones read as those Latin ones.  A Russian keyboard on the TV
+     * was seen typing "Белар" as Б, Latin e, л, Latin a, Latin p, which
+     * matched no channel; folded, both sides spell the same.  The
+     * lookalikes are the ones a layout could plausibly swap, upper case
+     * included (Т, Н, М, В, К are only alike as capitals). */
+    var LOOKALIKES = { 'а': 'a', 'в': 'b', 'е': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o',
+                       'р': 'p', 'с': 'c', 'т': 't', 'у': 'y', 'х': 'x',
+                       'і': 'i', 'ј': 'j', 'ѕ': 's' };
+    function foldText(s) {
+        s = String(s).toLowerCase();
+        try { s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
+        s = s.replace(/[авекмнорстухіјѕ]/g, function (c) { return LOOKALIKES[c]; });
+        return s.trim();
+    }
+
+    return { parse: parse, groups: groups, isPlaylistUrl: isPlaylistUrl, resolveUrl: resolveUrl,
+             foldText: foldText };
 })();
 
 // Ignored by the Tizen/browser build; lets Node tests drive the module.
