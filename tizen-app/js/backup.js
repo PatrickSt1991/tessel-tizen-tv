@@ -1,11 +1,15 @@
 /* Back up and restore Tessel's own data as tessel-backup.json on a USB stick
- * (issue #115).
+ * (issue #115) or at the top of an SMB share (issue #132).
  *
  * Everything Tessel remembers lives in localStorage, and uninstalling the
- * app wipes it, so the backup has to leave the TV: the root of a USB stick
- * is the one place the app can write to that the user can carry to another
- * TV.  No new privilege is needed, filesystem.write and externalstorage are
- * already in config.xml for the USB browser.
+ * app wipes it, so the backup has to leave the TV.  The root of a USB stick
+ * was the one place the app could write to that the user can carry to
+ * another TV — until a 2024 set turned out to keep what apps write on a
+ * stick only until the stick is pulled, flushed and synced or not.  A share
+ * the TV already reads films from is the other place: the service's SMB
+ * client writes the file there, and a second TV with the same server set up
+ * restores from it.  No new privilege is needed, filesystem.write and
+ * externalstorage are already in config.xml for the USB browser.
  *
  * What goes in:
  *   - Settings, minus the cast pairing code.  A second TV restored from the
@@ -20,9 +24,9 @@
  *   - The debug listener.
  *   - Recents, watched marks and resume positions, unless the user leaves
  *     them out.
- * The same USB plumbing writes the debug log out as tessel-log-<when>.txt
- * (Settings → Debug logging → Save debug log to USB, issue #126), so a
- * problem can be reported after the fact without a listener running.
+ * The same plumbing writes the debug log out as tessel-log-<when>.txt
+ * (Settings → Debug logging → Save debug log, issue #126), so a problem can
+ * be reported after the fact without a listener running.
  * What stays out: caches that rebuild themselves (the TV locale, the list of
  * files direct play failed on) and the relay secret, which is minted again
  * on first use.
@@ -257,18 +261,56 @@ var Backup = (function () {
         } catch (e) { trust('could not look it up again: ' + (e && e.message || e)); }
     }
 
-    /* Save `text` as `name` on a USB stick, asking which one (under
-     * `chooseTitle`) when more than one is plugged in.  No stick: a toast,
-     * and cb isn't called.  Otherwise cb(err, path). */
-    function saveToUsb(name, text, chooseTitle, cb) {
+    /* ── where a file can go: USB sticks and SMB servers alike ─────────── */
+
+    /* Every place a backup can be written to or read from, sticks first:
+     * cb([{ kind: 'usb', root } | { kind: 'smb', server }]). */
+    function destinations(cb) {
         usbRoots(function (roots) {
-            if (!roots.length) { toast(I18n.t('backup.noUsb')); return; }
-            function go(root) { writeFile(root, name, text, cb); }
-            if (roots.length === 1) { go(roots[0]); return; }
-            pick(chooseTitle, roots.map(function (r, i) {
-                return { code: String(i), name: driveLabel(r) };
-            }), function (i) { go(roots[+i]); });
+            var out = roots.map(function (r) { return { kind: 'usb', root: r }; });
+            var servers = [];
+            try { if (typeof SMB !== 'undefined' && SMB.servers) servers = SMB.servers() || []; } catch (e) {}
+            servers.forEach(function (sv) { out.push({ kind: 'smb', server: sv }); });
+            cb(out);
         });
+    }
+    function destLabel(d) {
+        if (d.kind === 'usb') return driveLabel(d.root);
+        return SMB.serverLabel(d.server);
+    }
+    /* The file's name for a toast: the stick's path, or \\host\share\name. */
+    function destPath(d, name) {
+        if (d.kind === 'usb') return joinPath(d.root.fullPath, name);
+        return SMB.serverLabel(d.server) + '\\' + name;
+    }
+    /* Write `text` as `name` at the top of destination d: cb(err, path). */
+    function saveTo(d, name, text, cb) {
+        if (d.kind === 'usb') { writeFile(d.root, name, text, cb); return; }
+        var path = destPath(d, name);
+        SMB.writeText(d.server.id || '', '/' + name, text, function (err, size) {
+            if (!err) log('wrote ' + path + ': ' + size + ' bytes on the share');
+            cb(err, path);
+        });
+    }
+    /* The text of `name` at the top of destination d: cb(err, text). */
+    function readFrom(d, name, cb) {
+        if (d.kind === 'usb') { readText(d.root, cb); return; }
+        SMB.readText(d.server.id || '', '/' + name, cb);
+    }
+    /* One destination, asked for (under `title`) when there is a choice:
+     * cb(d).  None at all: a toast, and cb isn't called. */
+    function chooseDestination(title, cb) {
+        destinations(function (list) {
+            if (!list.length) { toast(I18n.t('backup.noDestination')); return; }
+            if (list.length === 1) { cb(list[0]); return; }
+            pick(title, list.map(function (d, i) {
+                return { code: String(i), name: destLabel(d) };
+            }), function (i) { cb(list[+i]); });
+        });
+    }
+    /* Save `text` as `name` where the user says: cb(err, path). */
+    function saveSomewhere(name, text, chooseTitle, cb) {
+        chooseDestination(chooseTitle, function (d) { saveTo(d, name, text, cb); });
     }
 
     function readText(root, cb) {
@@ -290,22 +332,6 @@ var Backup = (function () {
                 }, function () { modern(); }, 'UTF-8');
             }, function (e) { cb(e); }, 'r');
         } catch (e) { cb(e); }
-    }
-
-    /* Every readable backup at the top of a USB stick:
-     * cb([{ root, backup }], firstError) */
-    function findBackups(roots, cb) {
-        var found = [], firstErr = null, pending = roots.length;
-        if (!pending) { cb(found, null); return; }
-        roots.forEach(function (root) {
-            readText(root, function (err, text) {
-                if (!err) {
-                    try { found.push({ root: root, backup: parse(text) }); }
-                    catch (e) { if (!firstErr) firstErr = e; }
-                }
-                if (--pending === 0) cb(found, firstErr);
-            });
-        });
     }
 
     /* ── Settings rows ────────────────────────────────────────────────── */
@@ -333,7 +359,7 @@ var Backup = (function () {
     function startSave() {
         var b = build(localStorage, { passwords: includePasswords, history: includeHistory,
                                       appVersion: appVersion() });
-        saveToUsb(FILE_NAME, JSON.stringify(b, null, 2), I18n.t('backup.chooseDrive'), function (err, path) {
+        saveSomewhere(FILE_NAME, JSON.stringify(b, null, 2), I18n.t('backup.chooseDrive'), function (err, path) {
             if (err) {
                 log('write to ' + path + ' failed: ' + (err.message || err));
                 toast(I18n.t('backup.saveFailed', err.message || String(err)));
@@ -366,7 +392,7 @@ var Backup = (function () {
             'TV':         tvModel(),
             'User-Agent': (typeof navigator !== 'undefined') ? navigator.userAgent : ''
         });
-        saveToUsb(logFileName(), text, I18n.t('dbg.chooseDrive'), function (err, path) {
+        saveSomewhere(logFileName(), text, I18n.t('dbg.chooseDrive'), function (err, path) {
             if (err) {
                 log('log export to ' + path + ' failed: ' + (err.message || err));
                 toast(I18n.t('dbg.exportFailed', err.message || String(err)));
@@ -377,22 +403,25 @@ var Backup = (function () {
         });
     }
 
+    /* Restore: pick where from, read the file there, then confirm what it
+     * is (when it was made, by which Tessel) before anything is replaced. */
     function startRestore() {
-        usbRoots(function (roots) {
-            if (!roots.length) { toast(I18n.t('backup.noUsb')); return; }
-            findBackups(roots, function (found, err) {
-                if (!found.length) {
-                    if (!err) toast(I18n.t('backup.notFound'));
-                    else toast(I18n.t(err.code === 'newer' ? 'backup.err.newer' : 'backup.err.notBackup'));
+        chooseDestination(I18n.t('backup.chooseSource'), function (d) {
+            readFrom(d, FILE_NAME, function (err, text) {
+                if (err) {
+                    log('no backup at ' + destPath(d, FILE_NAME) + ': ' + (err.message || err));
+                    toast(I18n.t('backup.notFound', destLabel(d)));
                     return;
                 }
-                pick(I18n.t('backup.restoreTitle'), found.map(function (f, i) {
-                    return { code: String(i),
-                             name: I18n.t('backup.entry', when(f.backup.exportedAt),
-                                          f.backup.tesselVersion || '?', driveLabel(f.root)) };
-                }), function (i) {
-                    restore(localStorage, found[+i].backup);
-                    log('restored from ' + found[+i].root.fullPath);
+                var b;
+                try { b = parse(text); }
+                catch (e) { toast(I18n.t(e.code === 'newer' ? 'backup.err.newer' : 'backup.err.notBackup')); return; }
+                pick(I18n.t('backup.restoreTitle'), [{
+                    code: '0',
+                    name: I18n.t('backup.entry', when(b.exportedAt), b.tesselVersion || '?', destLabel(d))
+                }], function () {
+                    restore(localStorage, b);
+                    log('restored from ' + destPath(d, FILE_NAME));
                     toast(I18n.t('backup.restored'));
                     // Every module read its storage at start-up, so start
                     // again rather than chase each one.  Soon, before any
@@ -427,7 +456,10 @@ var Backup = (function () {
     }
 
     return { FILE_NAME: FILE_NAME, build: build, parse: parse, restore: restore,
-             logFileName: logFileName, writeFile: writeFile };
+             logFileName: logFileName, writeFile: writeFile,
+             // The places a file can go, for the Node tests.
+             destinations: destinations, destLabel: destLabel, destPath: destPath,
+             saveTo: saveTo, readFrom: readFrom };
 })();
 
 // Ignored by the Tizen/browser build; lets Node tests require these helpers.

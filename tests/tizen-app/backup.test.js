@@ -191,3 +191,57 @@ test('older firmware without openFile() falls back to a FileStream and still ver
     ]);
     assert.deepStrictEqual(result, [null, '/opt/media/USBDriveA1/x.txt']);
 });
+
+/* ── where a backup can go: USB sticks and SMB servers (issue #132) ──── */
+
+var SHARE = { id: 'k3j9x2ab', host: 'nas', share: 'Media' };
+function withPlaces(opts, fn) {
+    opts = opts || {};
+    var calls = [];
+    global.Browser = { listRoots: function (cb) { cb(null, opts.roots || []); } };
+    global.SMB = {
+        servers:     function () { return opts.servers || []; },
+        serverLabel: function (c) { return '\\\\' + c.host + '\\' + c.share; },
+        writeText:   function (id, p, text, cb) { calls.push('write ' + id + ' ' + p + ' ' + text.length); cb(opts.writeErr || null, text.length); },
+        readText:    function (id, p, cb) { calls.push('read ' + id + ' ' + p); cb(opts.readErr || null, opts.text || ''); }
+    };
+    global.I18n = { t: function (k) { return k; } };
+    try { fn(calls); } finally { delete global.Browser; delete global.SMB; delete global.I18n; }
+}
+
+test('the places a backup can go are the sticks first, then every SMB server', function (t, done) {
+    withPlaces({ roots: [STICK, { name: 'internal0', fullPath: '/opt/usr' }], servers: [SHARE, { id: '', host: '10.0.0.2', share: 'Films' }] }, function () {
+        Backup.destinations(function (list) {
+            assert.deepStrictEqual(list.map(function (d) { return d.kind; }), ['usb', 'smb', 'smb']);
+            assert.strictEqual(Backup.destLabel(list[1]), '\\\\nas\\Media');
+            assert.strictEqual(Backup.destPath(list[1], 'tessel-backup.json'), '\\\\nas\\Media\\tessel-backup.json');
+            assert.strictEqual(Backup.destPath(list[0], 'tessel-backup.json'), '/opt/media/USBDriveA1/tessel-backup.json');
+            done();
+        });
+    });
+});
+
+test('a backup written to a share goes to the top of that share through the service, and is read back from there', function (t, done) {
+    withPlaces({ servers: [SHARE], text: '{"format":"tessel-backup"}' }, function (calls) {
+        Backup.saveTo({ kind: 'smb', server: SHARE }, 'tessel-backup.json', 'hello', function (err, p) {
+            assert.ifError(err);
+            assert.strictEqual(p, '\\\\nas\\Media\\tessel-backup.json');
+            Backup.readFrom({ kind: 'smb', server: SHARE }, 'tessel-backup.json', function (e2, text) {
+                assert.ifError(e2);
+                assert.strictEqual(text, '{"format":"tessel-backup"}');
+                assert.deepStrictEqual(calls, ['write k3j9x2ab /tessel-backup.json 5', 'read k3j9x2ab /tessel-backup.json']);
+                done();
+            });
+        });
+    });
+});
+
+test('a share that will not take the file reports the error with the path', function (t, done) {
+    withPlaces({ servers: [SHARE], writeErr: new Error('open "/tessel-backup.json": STATUS_ACCESS_DENIED') }, function () {
+        Backup.saveTo({ kind: 'smb', server: SHARE }, 'tessel-backup.json', 'x', function (err, p) {
+            assert.ok(/ACCESS_DENIED/.test(err.message));
+            assert.strictEqual(p, '\\\\nas\\Media\\tessel-backup.json');
+            done();
+        });
+    });
+});

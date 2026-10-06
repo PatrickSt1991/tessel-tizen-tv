@@ -221,6 +221,37 @@ var SMB = (function () {
         });
     }
 
+    /* A small text file on server `id`, written or read whole: the backup
+     * and the debug log (issue #132).  Both bring the connection up first,
+     * so they work straight after a restart. */
+    function writeText(id, path, text, cb) {
+        ensureConnected(id, function (err) {
+            if (err) return cb(err);
+            postJson(BASE + '/smb/write' + (id ? '?srv=' + encodeURIComponent(id) : ''),
+                     { path: path, text: text }, function (e2, res) {
+                if (e2) return cb(e2);
+                if (!res.ok) return cb(new Error(res.error || 'write failed'));
+                dbg('wrote ' + path + (id ? ' [' + id + ']' : '') + ': ' + res.size + ' bytes on the share');
+                cb(null, res.size);
+            });
+        });
+    }
+    function readText(id, path, cb) {
+        ensureConnected(id, function (err) {
+            if (err) return cb(err);
+            var x = new XMLHttpRequest();
+            x.open('GET', streamUrl(path, id), true);
+            x.timeout = 20000;
+            x.onload = function () {
+                if (x.status === 200) cb(null, x.responseText);
+                else cb(new Error(x.status === 404 ? 'not found' : (x.responseText || 'HTTP ' + x.status)));
+            };
+            x.onerror = function () { cb(new Error('service unreachable')); };
+            x.ontimeout = function () { cb(new Error('timeout')); };
+            x.send();
+        });
+    }
+
     function list(path, cb) {
         getJson(BASE + '/smb/list?path=' + encodeURIComponent(path || '') + srvParam(current), function (err, res) {
             if (err) return cb(err);
@@ -883,7 +914,11 @@ var SMB = (function () {
         serverById:      serverById,
         servers:         servers,
         // Used by server.js to copy the transcode box's other shares down.
-        mergeServers:    mergeServers
+        mergeServers:    mergeServers,
+        // Used by backup.js: a share as the place a backup goes (issue #132).
+        serverLabel:     serverLabel,
+        writeText:       writeText,
+        readText:        readText
     };
 })();
 

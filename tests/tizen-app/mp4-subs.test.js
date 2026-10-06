@@ -418,3 +418,75 @@ test('non-http sources still go to the filesystem readers', async function () {
         assert.deepStrictEqual(server.requests, []);
     });
 });
+
+/* ── what the moov says about the picture (INFO panel, issue #132) ──── */
+
+/* A video trak with the given sample entry fourcc and child boxes inside
+ * the entry — the fixed 78 bytes of a VisualSampleEntry are zero but for
+ * the picture size. */
+function videoTrack(codec, children) {
+    var fixed = new Uint8Array(78);
+    fixed[24] = 0x0F; fixed[25] = 0x00;   // width 3840
+    fixed[26] = 0x08; fixed[27] = 0x70;   // height 2160
+    var entry = box(codec, bytes(fixed, children || new Uint8Array(0)));
+    var stsd = fullBox('stsd', bytes(u32(1), entry));
+    var hdlr = fullBox('hdlr', bytes(u32(0), ascii('vide'), u32(0), u32(0), u32(0), ascii('VideoHandler\0')));
+    var mdhd = fullBox('mdhd', bytes(u32(0), u32(0), u32(90000), u32(0), u16(packedLang('und')), u16(0)));
+    var stbl = box('stbl', stsd);
+    var mdia = box('mdia', bytes(mdhd, hdlr, box('minf', stbl)));
+    return box('trak', bytes(fullBox('tkhd', bytes(u32(0), u32(0), u32(1))), mdia));
+}
+function colr(transfer) { return box('colr', bytes(ascii('nclx'), u16(9), u16(transfer), u16(9), new Uint8Array([0x80]))); }
+function dvcC(profile) {
+    var rec = new Uint8Array(24);
+    rec[0] = 1; rec[1] = 0; rec[2] = profile << 1;
+    return box('dvcC', rec);
+}
+function moovOf() { return box('moov', bytes.apply(null, arguments)).buffer; }
+
+test('an HDR10 MP4 is told by its colr box, a Dolby Vision one by dvcC or its sample entry (issue #132)', function () {
+    var hdr10 = Mp4Subs._parseMp4(moovOf(videoTrack('hvc1', colr(16))));
+    assert.deepStrictEqual(Mp4Subs.describeHdr(hdr10), { kind: 'HDR10', profile: 0 });
+    assert.strictEqual(Mp4Subs.codecName(Mp4Subs.videoTrack(hdr10).video.codec), 'HEVC');
+    assert.strictEqual(Mp4Subs.videoTrack(hdr10).video.width, 3840);
+    assert.strictEqual(Mp4Subs.videoTrack(hdr10).video.height, 2160);
+
+    assert.deepStrictEqual(Mp4Subs.describeHdr(Mp4Subs._parseMp4(moovOf(videoTrack('hvc1', colr(18))))),
+                           { kind: 'HLG', profile: 0 });
+    // Profile 8.1 carried in the dvcC next to an ordinary hvc1 entry.
+    assert.deepStrictEqual(Mp4Subs.describeHdr(Mp4Subs._parseMp4(moovOf(videoTrack('hvc1', bytes(colr(16), dvcC(8)))))),
+                           { kind: 'DV', profile: 8 });
+    // Profile 5 in its own dvh1 entry; the fourcc alone says Dolby Vision.
+    var dv5 = Mp4Subs._parseMp4(moovOf(videoTrack('dvh1', dvcC(5))));
+    assert.deepStrictEqual(Mp4Subs.describeHdr(dv5), { kind: 'DV', profile: 5 });
+    assert.strictEqual(Mp4Subs.codecName('dvh1'), 'HEVC');
+    assert.deepStrictEqual(Mp4Subs.describeHdr(Mp4Subs._parseMp4(moovOf(videoTrack('dvhe')))), { kind: 'DV', profile: 0 });
+});
+
+test('no colr box means SDR, and a file without a video track says nothing', function () {
+    assert.deepStrictEqual(Mp4Subs.describeHdr(Mp4Subs._parseMp4(moovOf(videoTrack('avc1')))), { kind: 'SDR', profile: 0 });
+    assert.strictEqual(Mp4Subs.codecName('avc1'), 'H.264');
+    assert.strictEqual(Mp4Subs.codecName('zzzz'), '');
+    var textOnly = Mp4Subs._parseMp4(box('moov', makeTrack([100, 200], [10, 10])).buffer);
+    assert.strictEqual(Mp4Subs.describeHdr(textOnly), null);
+    assert.strictEqual(Mp4Subs.videoTrack(textOnly), null);
+    // The text track is still the one the subtitle reader wants.
+    assert.strictEqual(textOnly.length, 1);
+    assert.strictEqual(textOnly[0].codec, 'tx3g');
+});
+
+test('the moov hands every track to onContainer before the subtitle work starts', async function () {
+    var data = fixture();
+    var reader = { readRange: function (off, len, cb) { cb(null, data.slice(off, off + len).buffer); },
+                   getSize: function (cb) { cb(null, data.length); } };
+    var got = null;
+    await new Promise(function (resolve, reject) {
+        Mp4Subs.extractIncremental(reader, {
+            onContainer: function (tracks) { got = tracks; },
+            onComplete: function () { resolve(); },
+            onError: function (e) { reject(e); }
+        });
+    });
+    assert.ok(got && got.length === 1, 'onContainer saw the track list');
+    assert.strictEqual(got[0].codec, 'tx3g');
+});
