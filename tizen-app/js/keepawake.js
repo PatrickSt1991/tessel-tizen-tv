@@ -52,9 +52,13 @@ var KeepAwake = (function () {
         return s;
     }
     /* Every name for the clip AVPlay might take, most likely first: the
-     * plain path, the same as a file:// URI, and both again for where the
-     * filesystem API says the package is (it can name the real folder
-     * behind the one the page was loaded from). */
+     * plain path under where the filesystem API says the package is, the
+     * same as a file:// URI, then both again under the folder the page was
+     * loaded from.  The package folder goes first because the page's can
+     * be a virtual one (a 2024 set loaded index.html from file:/// and
+     * AVPlay rejected /assets/keepawake.mp4, then took the real path under
+     * /home/owner/apps_rw, issue #132); where the two are the same folder
+     * the list is just shorter. */
     function videoCandidates(packageUri) {
         var list = [];
         function add(s) { if (s && list.indexOf(s) < 0) list.push(s); }
@@ -62,8 +66,8 @@ var KeepAwake = (function () {
             add(p);
             if (p.charAt(0) === '/') add('file://' + p);
         }
-        both(videoPath());
         if (packageUri) both(videoPath(packageUri.replace(/\/?$/, '/')));
+        both(videoPath());
         return list;
     }
     /* cb(uri of the package folder, or '') — never throws, always answers. */

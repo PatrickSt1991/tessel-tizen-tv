@@ -20,7 +20,8 @@ function loadService() {
     };
     vm.runInNewContext(SRC + '\nmodule.exports = { parseSsdp: parseSsdp, ' +
         'parseDeviceDescription: parseDeviceDescription, parseDidl: parseDidl, ' +
-        'parseBrowseReply: parseBrowseReply, browseRequest: browseRequest, xmlUnescape: xmlUnescape };',
+        'parseBrowseReply: parseBrowseReply, browseRequest: browseRequest, xmlUnescape: xmlUnescape, ' +
+        'ssdpSearchMessage: ssdpSearchMessage, ssdpSearchPlan: ssdpSearchPlan, ip4Broadcast: ip4Broadcast };',
         sandbox);
     return sandbox.module.exports;
 }
@@ -141,4 +142,34 @@ test('the player gets the folder\'s video and audio, music with its cover', func
         { uri: 'http://s/1.mkv', title: 'Film', art: null, tagSrc: null },
         { uri: 'http://s/3.mp3', title: 'Song', art: 'http://s/c.jpg', tagSrc: 'http://s/3.mp3' }
     ]);
+});
+
+test('the M-SEARCH names the group and the target, however it travels', function () {
+    var m = svc.ssdpSearchMessage('urn:schemas-upnp-org:device:MediaServer:1').toString('utf8');
+    assert.ok(/^M-SEARCH \* HTTP\/1\.1\r\n/.test(m));
+    assert.ok(m.indexOf('HOST: 239.255.255.250:1900\r\n') > 0);
+    assert.ok(m.indexOf('MAN: "ssdp:discover"\r\n') > 0);
+    assert.ok(m.indexOf('ST: urn:schemas-upnp-org:device:MediaServer:1\r\n') > 0);
+    assert.ok(/\r\n\r\n$/.test(m));
+});
+
+test('a /24 is searched by multicast, broadcast and every host; a /16 by the first two only', function () {
+    var plan = svc.ssdpSearchPlan([{ address: '192.168.0.118', netmask: '255.255.255.0' },
+                                   { address: '10.0.0.5',      netmask: '255.255.0.0' }]);
+    assert.strictEqual(plan.length, 2);
+    assert.strictEqual(plan[0].broadcast, '192.168.0.255');
+    assert.strictEqual(plan[0].hosts.length, 253);           // 254 minus ourselves
+    assert.strictEqual(plan[0].hosts[0], '192.168.0.1');
+    assert.ok(plan[0].hosts.indexOf('192.168.0.118') < 0);
+    assert.ok(plan[0].hosts.indexOf('192.168.0.239') >= 0);  // the miniDLNA box of issue #131
+    assert.strictEqual(plan[1].broadcast, '10.0.255.255');
+    assert.strictEqual(plan[1].hosts.length, 0);
+    assert.strictEqual(svc.ssdpSearchPlan([]).length, 0);
+});
+
+test('the broadcast address survives the high bit; junk gives nothing', function () {
+    assert.strictEqual(svc.ip4Broadcast('192.168.1.37', '255.255.255.0'), '192.168.1.255');
+    assert.strictEqual(svc.ip4Broadcast('172.16.5.9', '255.255.252.0'), '172.16.7.255');
+    assert.strictEqual(svc.ip4Broadcast('fe80::1', '255.255.255.0'), '');
+    assert.strictEqual(svc.ip4Broadcast('192.168.1.37', ''), '');
 });

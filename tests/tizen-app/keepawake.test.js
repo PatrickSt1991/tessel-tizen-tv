@@ -146,13 +146,13 @@ test('a clip that will not play is logged once and not retried until the next ho
     assert.strictEqual(t.calls.filter(function (c) { return c === 'prepareAsync'; }).length, 4);
 });
 
-test('the clip is offered to AVPlay as a path and a URI, also where the package really is', function () {
+test('the clip is offered to AVPlay where the package really is first, then under the page, as a path and a URI', function () {
     var t = load({ packageUri: 'file:///opt/usr/globalapps/madebypatk.vlcweb/res/wgt' });
     assert.deepStrictEqual(Array.from(t.K.videoCandidates('file:///opt/usr/globalapps/madebypatk.vlcweb/res/wgt')), [
-        '/opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
-        'file:///opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
         '/opt/usr/globalapps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
-        'file:///opt/usr/globalapps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4'
+        'file:///opt/usr/globalapps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
+        '/opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
+        'file:///opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4'
     ]);
     // The same folder twice is offered once.
     assert.strictEqual(t.K.videoCandidates('file:///opt/usr/apps/madebypatk.vlcweb/res/wgt/').length, 2);
@@ -162,10 +162,10 @@ test('a path AVPlay calls an invalid URI is logged with the path, and the next o
     var t = load({ rejects: /^\//, packageUri: 'file:///opt/usr/globalapps/x/res/wgt' });
     t.K.hold('slideshow');
     var opened = t.calls.filter(function (c) { return /^open /.test(c); });
-    assert.deepStrictEqual(opened, ['open /opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4',
-                                    'open file:///opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4']);
+    assert.deepStrictEqual(opened, ['open /opt/usr/globalapps/x/res/wgt/assets/keepawake.mp4',
+                                    'open file:///opt/usr/globalapps/x/res/wgt/assets/keepawake.mp4']);
     assert.ok(t.logs.some(function (m) {
-        return m.indexOf('/opt/usr/apps/madebypatk.vlcweb/res/wgt/assets/keepawake.mp4: prepareAsync failed: PLAYER_ERROR_INVALID_URI') >= 0;
+        return m.indexOf('/opt/usr/globalapps/x/res/wgt/assets/keepawake.mp4: prepareAsync failed: PLAYER_ERROR_INVALID_URI') >= 0;
     }), t.logs.join('\n'));
     assert.ok(t.logs.some(function (m) { return /clip playing \(file:\/\//.test(m); }), t.logs.join('\n'));
     // A late error from the rejected attempt doesn't stop the one that plays.

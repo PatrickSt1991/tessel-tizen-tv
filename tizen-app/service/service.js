@@ -1423,31 +1423,40 @@ var SCAN_CONNECT_MS  = 500;    // per-address TCP timeout
 var SCAN_HTTP_MS     = 2500;   // per-candidate HTTP timeout
 var SCAN_MAX_HOSTS   = 1024;   // refuse to sweep something enormous
 
+/* "192.168.1.37" ⇄ 3232235813.  Addresses are kept as plain numbers, not
+ * bit patterns: anything from 128.0.0.0 up exceeds 2^31, and JavaScript's
+ * bitwise operators would silently reinterpret it as a negative int32.
+ * `>>> 0` puts the genuinely bitwise steps back into unsigned space; the
+ * rest is arithmetic.  -1 for anything that isn't a dotted quad. */
+function ip4ToInt(a) {
+    var p = String(a || '').split('.');
+    if (p.length !== 4) return -1;
+    var n = 0;
+    for (var i = 0; i < 4; i++) {
+        var v = parseInt(p[i], 10);
+        if (!(v >= 0 && v <= 255)) return -1;
+        n = (n * 256) + v;
+    }
+    return n;
+}
+function ip4ToStr(n) {
+    return [Math.floor(n / 16777216) % 256, Math.floor(n / 65536) % 256,
+            Math.floor(n / 256) % 256, n % 256].join('.');
+}
+/* The directed broadcast address of ip/mask ("192.168.1.255"), or '' when
+ * either isn't a dotted quad. */
+function ip4Broadcast(ip, mask) {
+    var ipN = ip4ToInt(ip), maskN = ip4ToInt(mask);
+    if (ipN < 0 || maskN < 0) return '';
+    return ip4ToStr(((ipN & maskN) >>> 0) + ((~maskN) >>> 0));
+}
+
 /* Turn "192.168.1.37" + "255.255.255.0" into every host address on that subnet,
  * minus the network, broadcast and our own address. Returns null when the mask
  * is too wide to sweep politely — the caller then tells the user to type the
  * address instead of hammering 65k hosts. */
 function subnetHosts(ip, mask) {
-    function toInt(a) {
-        var p = String(a || '').split('.');
-        if (p.length !== 4) return -1;
-        var n = 0;
-        for (var i = 0; i < 4; i++) {
-            var v = parseInt(p[i], 10);
-            if (!(v >= 0 && v <= 255)) return -1;
-            n = (n * 256) + v;
-        }
-        return n;
-    }
-    // Addresses are kept as plain numbers, not bit patterns: anything from
-    // 128.0.0.0 up exceeds 2^31, and JavaScript's bitwise operators would
-    // silently reinterpret it as a negative int32.  `>>> 0` puts the two
-    // genuinely bitwise steps back into unsigned space; the rest is arithmetic.
-    function toStr(n) {
-        return [Math.floor(n / 16777216) % 256, Math.floor(n / 65536) % 256,
-                Math.floor(n / 256) % 256, n % 256].join('.');
-    }
-    var ipN = toInt(ip), maskN = toInt(mask);
+    var ipN = ip4ToInt(ip), maskN = ip4ToInt(mask);
     if (ipN < 0 || maskN < 0) return null;
 
     var network = (ipN & maskN) >>> 0;
@@ -1457,7 +1466,7 @@ function subnetHosts(ip, mask) {
     var out = [];
     for (var i = 1; i < size - 1; i++) {    // skip network + broadcast
         var addr = network + i;
-        if (addr !== ipN) out.push(toStr(addr));
+        if (addr !== ipN) out.push(ip4ToStr(addr));
     }
     return out;
 }
@@ -1589,8 +1598,18 @@ function handleDiscover(req, res, query) {
  *   POST /dlna/browse { control, id } → { ok, entries:[{ id, title, isDir,
  *                                         kind, url, size, duration, art }] }
  *
- * Discovery is SSDP: an M-SEARCH to the multicast group, answered by unicast
- * to our socket, so no group needs joining.  Each answer's LOCATION is the
+ * Discovery is SSDP: an M-SEARCH, answered by unicast to our socket, so no
+ * group needs joining.  The search goes out three ways, because the
+ * multicast group alone proved unreliable from a TV (issue #131: a set on
+ * Wi-Fi found its Sonos speakers but never the miniDLNA box on the wire —
+ * the switch's IGMP snooping, or the access point, kept the group packet
+ * off that port): to the multicast group, to the subnet's broadcast
+ * address, and as a plain unicast to every host of a small subnet, the
+ * same sweep the transcode-server scan does.  A UPnP 1.1 device answers a
+ * unicast M-SEARCH like a multicast one; miniDLNA, Plex, Jellyfin and
+ * Serviio all do.  One socket per interface, bound to its address, so the
+ * multicast and broadcast packets leave on that interface rather than
+ * whichever one the default route picks.  Each answer's LOCATION is the
  * device description, which names the server and its ContentDirectory's
  * control URL.  Browsing is that service's Browse action over SOAP; the items
  * it lists carry plain http URLs on the server, which AVPlay plays directly —
@@ -1769,34 +1788,93 @@ function dlnaBrowse(control, objectId, cb) {
     })(0);
 }
 
+/* The M-SEARCH for search target `st`.  HOST names the group whichever way
+ * the packet travels; devices don't check it against the destination. */
+function ssdpSearchMessage(st) {
+    return Buffer.from('M-SEARCH * HTTP/1.1\r\nHOST: ' + SSDP_ADDR + ':' + SSDP_PORT +
+                       '\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ' + st + '\r\n\r\n');
+}
+
+/* Where a search goes from each interface: [{ address, netmask, broadcast,
+ * hosts }].  `hosts` is every other address on the subnet, or [] when the
+ * subnet is too wide to sweep (then multicast and broadcast have to do). */
+function ssdpSearchPlan(ifaces) {
+    return (ifaces || []).map(function (i) {
+        return { address: i.address, netmask: i.netmask,
+                 broadcast: ip4Broadcast(i.address, i.netmask),
+                 hosts: subnetHosts(i.address, i.netmask) || [] };
+    });
+}
+
 /* GET /dlna/discover */
 function handleDlnaDiscover(req, res) {
     if (!dgram) return sendJson(res, 200, { ok: false, error: 'no UDP on this TV' });
-    var locations = [], sock;
-    try { sock = dgram.createSocket('udp4'); }
-    catch (e) { log('DLNA_SOCKET_ERR', e.message); return sendJson(res, 200, { ok: false, error: e.message }); }
-    sock.on('message', function (msg) {
-        var h = parseSsdp(msg.toString('utf8'));
-        if (h && h.location && /^https?:\/\//i.test(h.location) && locations.indexOf(h.location) < 0) locations.push(h.location);
-    });
-    sock.on('error', function (e) { log('DLNA_SOCKET_ERR', e.message); });
-    function search() {
-        DLNA_TARGETS.forEach(function (st) {
-            var m = Buffer.from('M-SEARCH * HTTP/1.1\r\nHOST: ' + SSDP_ADDR + ':' + SSDP_PORT +
-                                '\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: ' + st + '\r\n\r\n');
-            try { sock.send(m, 0, m.length, SSDP_PORT, SSDP_ADDR); } catch (e) { log('DLNA_SEND_ERR', e.message); }
-        });
+    var locations = [], sockets = [], sendErrors = 0, finished = false;
+    var plan = ssdpSearchPlan(localIPv4s());
+
+    function onMessage(where) {
+        return function (msg, rinfo) {
+            var h = parseSsdp(msg.toString('utf8'));
+            if (!h || !h.location || !/^https?:\/\//i.test(h.location) || locations.indexOf(h.location) >= 0) return;
+            locations.push(h.location);
+            log('DLNA_SEARCH_ANSWER', { from: (rinfo && rinfo.address) || '?', on: where,
+                                       st: h.st || h.nt || '', location: h.location });
+        };
     }
-    try {
-        sock.bind(function () {
-            log('DLNA_SEARCH_START');
-            search();
-            setTimeout(search, 800);   // UDP gets lost; ask twice
+    function send(sock, msg, port, addr) {
+        try {
+            sock.send(msg, 0, msg.length, port, addr, function (err) {
+                if (err && sendErrors++ < 5) log('DLNA_SEND_ERR', addr + ':' + port + ' ' + err.message);
+            });
+        } catch (e) { if (sendErrors++ < 5) log('DLNA_SEND_ERR', addr + ':' + port + ' ' + e.message); }
+    }
+    /* One round of searching from `sock`; `iface` is its plan entry, or
+     * null for the unbound socket, which only asks the group. */
+    function search(sock, iface) {
+        DLNA_TARGETS.forEach(function (st) {
+            var m = ssdpSearchMessage(st);
+            send(sock, m, SSDP_PORT, SSDP_ADDR);
+            if (!iface) return;
+            if (iface.broadcast) send(sock, m, SSDP_PORT, iface.broadcast);
+            send(sock, m, SSDP_PORT, '255.255.255.255');
         });
-    } catch (e) { log('DLNA_BIND_ERR', e.message); return sendJson(res, 200, { ok: false, error: e.message }); }
+        if (!iface) return;
+        var one = ssdpSearchMessage(DLNA_TARGETS[0]);
+        iface.hosts.forEach(function (h) { send(sock, one, SSDP_PORT, h); });
+    }
+    /* A socket bound to `iface.address` (or to any address, iface null),
+     * searching as soon as it is up.  A bind that fails is logged and
+     * that socket is dropped; the others carry on. */
+    function open(iface) {
+        var where = iface ? iface.address : '*', sock, up = false;
+        try { sock = dgram.createSocket('udp4'); }
+        catch (e) { log('DLNA_SOCKET_ERR', where + ' ' + e.message); return; }
+        sockets.push(sock);
+        sock.on('message', onMessage(where));
+        sock.on('error', function (e) {
+            log(up ? 'DLNA_SOCKET_ERR' : 'DLNA_BIND_ERR', where + ' ' + e.message);
+            try { sock.close(); } catch (x) {}
+        });
+        function ready() {
+            up = true;
+            if (iface) { try { sock.setBroadcast(true); } catch (e) { log('DLNA_SOCKET_ERR', where + ' setBroadcast: ' + e.message); } }
+            search(sock, iface);
+            setTimeout(function () { if (!finished) search(sock, iface); }, 800);   // UDP gets lost; ask twice
+        }
+        try { if (iface) sock.bind(0, iface.address, ready); else sock.bind(ready); }
+        catch (e) { log('DLNA_BIND_ERR', where + ' ' + e.message); }
+    }
+
+    log('DLNA_SEARCH_START', plan.map(function (i) {
+        return i.address + '/' + i.netmask + ' (' + (i.hosts.length ? i.hosts.length + ' hosts' : 'multicast + broadcast only') + ')';
+    }));
+    open(null);
+    plan.forEach(open);
+    if (!sockets.length) return sendJson(res, 200, { ok: false, error: 'no UDP socket on this TV' });
 
     setTimeout(function () {
-        try { sock.close(); } catch (e) {}
+        finished = true;
+        sockets.forEach(function (s) { try { s.close(); } catch (e) {} });
         log('DLNA_SEARCH_ANSWERS', locations);
         var found = [];
         eachLimited(locations, 8, function (loc, done) {
