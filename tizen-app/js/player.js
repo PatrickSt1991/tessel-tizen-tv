@@ -785,6 +785,7 @@ var Player = (function () {
      * big the movie is, and it is the list the CC menu counts. */
     var containerSubTracks     = [];
     var containerTracks        = [];   // every track the MKV header lists (describe())
+    var mp4Tracks              = [];   // every track the MP4 moov lists (describe())
     var lastContainerListToken = 0;
 
     /* Which container an embedded-subtitle extractor exists for — 'MP4',
@@ -1244,6 +1245,7 @@ var Player = (function () {
     function extractAndAppendEmbeddedSubs(url, file) {
         var label = embeddedSubContainer(url);
         var extractor;
+        mp4Tracks = [];
         if (label === 'MP4' && typeof Mp4Subs !== 'undefined')      extractor = Mp4Subs;
         else if (label === 'MKV' && typeof MkvSubs !== 'undefined') extractor = MkvSubs;
         else return;
@@ -1264,6 +1266,12 @@ var Player = (function () {
         if (extractor.extractIncremental) {
             var entriesByTrack = {};
             activeEmbeddedSubExtraction = extractor.extractIncremental(file || url, {
+                /* The MP4 moov, every track: what the INFO panel shows for
+                 * HDR comes from here (issue #132). */
+                onContainer: function (tracks) {
+                    if (token !== lastExtractToken || label !== 'MP4') return;
+                    mp4Tracks = tracks || [];
+                },
                 onTracks: function (tracks) {
                     if (token !== lastExtractToken) return;
                     var languageHints = label === 'MP4' ? getAvSubtitleLanguageHints() : [];
@@ -1569,8 +1577,9 @@ var Player = (function () {
     }
 
     /* What's playing, for the INFO panel (issue #128): what AVPlay reports,
-     * filled in from the MKV header where AVPlay says nothing — the codec's
-     * name, the picture size, and HDR, which only the container knows.
+     * filled in from the container header (MKV, or the MP4 moov, issue #132)
+     * where AVPlay says nothing — the codec's name, the picture size, and
+     * HDR, which only the container knows.
      * Every field may be empty; the panel leaves out what it doesn't have. */
     var AV_CODEC_NAMES = { H264: 'H.264', AVC: 'H.264', HEVC: 'HEVC', H265: 'HEVC', HVC1: 'HEVC',
                            AV1: 'AV1', VP9: 'VP9', VP8: 'VP8', MPEG2: 'MPEG-2', MPEG4: 'MPEG-4',
@@ -1618,6 +1627,13 @@ var Player = (function () {
                 return [(a.lang || '').toUpperCase(), MkvSubs.codecName(a.codec)].filter(Boolean).join(' · ');
             });
             d.hdr = MkvSubs.describeHdr(containerTracks);
+        } else if (mp4Tracks.length && typeof Mp4Subs !== 'undefined' && Mp4Subs.describeHdr) {
+            var mv = Mp4Subs.videoTrack(mp4Tracks);
+            if (mv) {
+                if (!d.video.codec) d.video.codec = Mp4Subs.codecName(mv.video.codec);
+                if (!d.video.width) { d.video.width = mv.video.width; d.video.height = mv.video.height; }
+            }
+            d.hdr = Mp4Subs.describeHdr(mp4Tracks);
         }
         return d;
     }

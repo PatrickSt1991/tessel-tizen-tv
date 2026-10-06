@@ -12,6 +12,10 @@
  *   POST /smb/shares  { host, user, pass, domain?, port? }
  *                       → { ok:true, shares:[{ name, remark }] }, the disk
  *                         shares the server lists (see listShares)
+ *   POST /smb/write?srv=<id> { path, text }
+ *                       → { ok, path, size }: the text as a file on the
+ *                         share, overwritten if it exists (the backup and
+ *                         the debug log, issue #132)
  *   GET  /smb/ping                    → { ok:true, connected } liveness check
  *   GET  /dlna/discover, POST /dlna/browse
  *                       → DLNA media servers on the LAN and their folders
@@ -30,9 +34,10 @@
  * bundle or transpile for the ancient Node build on the TV.  Pure ES5.
  *
  * Scope of the embedded SMB2 client: SMB 2.0.2 / 2.1, NTLMv2 auth, optional
- * HMAC-SHA256 signing (used only when the server marks it required), read-only
+ * HMAC-SHA256 signing (used only when the server marks it required), reading
  * (NEGOTIATE / SESSION_SETUP / TREE_CONNECT / CREATE / QUERY_DIRECTORY / READ /
- * CLOSE).  Enough to browse a share and stream files — plus IOCTL on the
+ * CLOSE) plus one kind of writing: a whole small file at once (WRITE), for
+ * the backup.  Enough to browse a share and stream files — plus IOCTL on the
  * srvsvc pipe, which is how /smb/shares lists what a server offers.
  * ==========================================================================*/
 
@@ -176,12 +181,12 @@ function readU64LE(b, off)     { return b.readUInt32LE(off) + b.readUInt32LE(off
 var SMB2 = {
     NEGOTIATE: 0x0000, SESSION_SETUP: 0x0001, LOGOFF: 0x0002,
     TREE_CONNECT: 0x0003, TREE_DISCONNECT: 0x0004, CREATE: 0x0005,
-    CLOSE: 0x0006, READ: 0x0008, IOCTL: 0x000B, QUERY_DIRECTORY: 0x000E
+    CLOSE: 0x0006, READ: 0x0008, WRITE: 0x0009, IOCTL: 0x000B, QUERY_DIRECTORY: 0x000E
 };
 var SMB2_NAME = {
     0x0000: 'NEGOTIATE', 0x0001: 'SESSION_SETUP', 0x0002: 'LOGOFF',
     0x0003: 'TREE_CONNECT', 0x0004: 'TREE_DISCONNECT', 0x0005: 'CREATE',
-    0x0006: 'CLOSE', 0x0008: 'READ', 0x000B: 'IOCTL', 0x000E: 'QUERY_DIRECTORY'
+    0x0006: 'CLOSE', 0x0008: 'READ', 0x0009: 'WRITE', 0x000B: 'IOCTL', 0x000E: 'QUERY_DIRECTORY'
 };
 var ST = {
     SUCCESS:               0x00000000,
@@ -263,6 +268,7 @@ function SmbConnection(opts) {
     this.dead    = false;
     this.dialect = 0;
     this.maxRead = 65536;         // server's MaxReadSize; 64 KiB until NEGOTIATE
+    this.maxWrite = 65536;        // server's MaxWriteSize, likewise
 }
 
 SmbConnection.prototype._frame = function () {
@@ -426,7 +432,9 @@ SmbConnection.prototype._negotiate = function (cb) {
         // MaxReadSize@32. Clamp our per-READ size to it so we never exceed the
         // server's limit (64 KiB on 2.0.2 → single-credit; larger on 2.1).
         self.maxRead = resp.readUInt32LE(32) || 65536;
-        log('SMB_NEGOTIATE', { dialect: '0x' + self.dialect.toString(16), signingRequired: self.signing, maxRead: self.maxRead });
+        self.maxWrite = resp.readUInt32LE(36) || 65536;   // MaxWriteSize@36
+        log('SMB_NEGOTIATE', { dialect: '0x' + self.dialect.toString(16), signingRequired: self.signing,
+                               maxRead: self.maxRead, maxWrite: self.maxWrite });
         cb(null);
     });
 };
@@ -672,8 +680,12 @@ function smbName(path) {
 }
 
 /* CREATE (open) — returns { fileId(Buffer16), size }. isDir picks the option;
- * access overrides the read-only DesiredAccess (a named pipe is written to). */
-SmbConnection.prototype.open = function (path, isDir, cb, access) {
+ * access overrides the read-only DesiredAccess (a named pipe is written to),
+ * disposition the FILE_OPEN default (a file being written is created or
+ * overwritten: FILE_OVERWRITE_IF). */
+var ACCESS_WRITE_FILE = 0x00100183;   // READ_DATA|WRITE_DATA|READ_ATTR|WRITE_ATTR|SYNCHRONIZE
+var DISPOSITION_OVERWRITE_IF = 5;
+SmbConnection.prototype.open = function (path, isDir, cb, access, disposition) {
     var name = utf16le(smbName(path));
     var body = Buffer.alloc(56 + Math.max(name.length, 1));
     body.writeUInt16LE(57, 0);            // StructureSize (fixed 56 + 1 var)
@@ -685,7 +697,7 @@ SmbConnection.prototype.open = function (path, isDir, cb, access) {
     body.writeUInt32LE(access || 0x00100081, 24); // DesiredAccess: READ_DATA|READ_ATTR|SYNCHRONIZE
     body.writeUInt32LE(0, 28);            // FileAttributes
     body.writeUInt32LE(0x00000007, 32);   // ShareAccess: READ|WRITE|DELETE
-    body.writeUInt32LE(1, 36);            // CreateDisposition = FILE_OPEN
+    body.writeUInt32LE(disposition || 1, 36); // CreateDisposition = FILE_OPEN unless told otherwise
     body.writeUInt32LE(isDir ? 0x00000001 : 0x00000040, 40); // DIRECTORY_FILE / NON_DIRECTORY_FILE
     body.writeUInt16LE(64 + 56, 44);      // NameOffset
     body.writeUInt16LE(name.length, 46);  // NameLength
@@ -786,6 +798,59 @@ SmbConnection.prototype.read = function (fileId, offset, length, cb) {
         var dataLen = resp.readUInt32LE(4);
         cb(null, resp.slice(dataOff, dataOff + dataLen));
     });
+};
+
+/* Single SMB2 WRITE of `data` at offset → the count the server took.
+ * `data` must fit the server's MaxWriteSize; putFile() cuts to size. */
+SmbConnection.prototype.write = function (fileId, offset, data, cb) {
+    var charge = Math.max(1, Math.ceil(data.length / 65536));
+    var body = Buffer.alloc(48 + data.length);
+    body.writeUInt16LE(49, 0);            // StructureSize (fixed 48 + 1 var)
+    body.writeUInt16LE(64 + 48, 2);       // DataOffset, from the SMB2 header start
+    body.writeUInt32LE(data.length, 4);   // Length
+    writeU64LE(body, 8, offset);          // Offset
+    fileId.copy(body, 16);                // FileId
+    body.writeUInt32LE(0, 32);            // Channel
+    body.writeUInt32LE(0, 36);            // RemainingBytes
+    body.writeUInt16LE(0, 40);            // WriteChannelInfoOffset
+    body.writeUInt16LE(0, 42);            // WriteChannelInfoLength
+    body.writeUInt32LE(0, 44);            // Flags
+    data.copy(body, 48);
+
+    this._send(SMB2.WRITE, body, charge, function (status, hdr, resp) {
+        if (status !== ST.SUCCESS) return cb(new Error('write: ' + ntText(status)));
+        // WRITE response: StructureSize(2), Reserved(2), Count(4)@4.
+        cb(null, resp.readUInt32LE(4));
+    });
+};
+
+/* The whole of `data` as the file at `path`, created or overwritten, then
+ * looked up again: cb(err, size on the share).  Written in pieces no
+ * larger than the server's MaxWriteSize, each one waited for. */
+SmbConnection.prototype.putFile = function (path, data, cb) {
+    var self = this;
+    this.open(path, false, function (err, file) {
+        if (err) return cb(err);
+        var pos = 0;
+        function next() {
+            if (pos >= data.length) {
+                return self.close(file.fileId, function () {
+                    self.open(path, false, function (e2, again) {
+                        if (e2) return cb(null, -1);     // written, but can't be looked up again
+                        self.close(again.fileId, function () { cb(null, again.size); });
+                    });
+                });
+            }
+            var piece = data.slice(pos, pos + Math.min(self.maxWrite, 1048576));
+            self.write(file.fileId, pos, piece, function (we, count) {
+                if (we) return self.close(file.fileId, function () { cb(we); });
+                if (!(count > 0)) return self.close(file.fileId, function () { cb(new Error('write: the server took nothing')); });
+                pos += count;
+                next();
+            });
+        }
+        next();
+    }, ACCESS_WRITE_FILE, DISPOSITION_OVERWRITE_IF);
 };
 
 /* ── share list: NetrShareEnum over the srvsvc pipe ─────────────────────────
@@ -1150,6 +1215,33 @@ function handleList(req, res, query) {
                 return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
             });
             sendJson(res, 200, { ok: true, path: path, entries: entries });
+        });
+    });
+}
+
+var WRITE_MAX_BYTES = 8 * 1024 * 1024;   // a backup is kilobytes; a debug log at most a few MB
+
+/* POST /smb/write?srv=<id> { path, text } — the text, UTF-8, as the file at
+ * path on the share, created or overwritten (issue #132: a USB stick
+ * doesn't keep what the TV writes on it; a share does). */
+function handleWrite(req, res, query) {
+    var creds = credsFor(query);
+    if (!creds) return sendJson(res, 409, { ok: false, error: 'not connected' });
+    var raw = '', over = false;
+    req.on('data', function (c) { if (over) return; raw += c; if (raw.length > WRITE_MAX_BYTES) over = true; });
+    req.on('end', function () {
+        if (over) return sendJson(res, 413, { ok: false, error: 'too large' });
+        var q;
+        try { q = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { ok: false, error: 'bad json' }); }
+        if (!q.path || typeof q.text !== 'string') return sendJson(res, 400, { ok: false, error: 'path and text required' });
+        var data = Buffer.from(q.text, 'utf8');
+        getConn(creds, function (err, c) {
+            if (err) return sendJson(res, 502, { ok: false, error: err.message });
+            c.putFile(q.path, data, function (e2, size) {
+                if (e2) { log('SMB_WRITE_FAIL', { path: q.path, error: e2.message }); return sendJson(res, 502, { ok: false, error: e2.message }); }
+                log('SMB_WRITE_OK', { path: q.path, bytes: data.length, size: size });
+                sendJson(res, 200, { ok: true, path: q.path, size: size });
+            });
         });
     });
 }
@@ -1918,6 +2010,7 @@ var server = http.createServer(function (req, res) {
     if (u.pathname === '/smb/connect' && req.method === 'POST') return handleConnect(req, res);
     if (u.pathname === '/smb/shares' && req.method === 'POST')  return handleShares(req, res);
     if (u.pathname === '/smb/list')        return handleList(req, res, u.query);
+    if (u.pathname === '/smb/write' && req.method === 'POST') return handleWrite(req, res, u.query);
     if (u.pathname === '/smb/stream')      return handleStream(req, res, u.query);
 
     // Local relay control plane — only reachable on loopback, because the LAN

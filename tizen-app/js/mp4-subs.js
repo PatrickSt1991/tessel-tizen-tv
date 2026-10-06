@@ -101,9 +101,42 @@ var Mp4Subs = (function () {
         var entryCount = view.getUint32(off + 4);
         if (entryCount < 1) return '';
         // First SampleEntry starts at off+8: u32 size, u32 codec
-        return String.fromCharCode(
-            view.getUint8(off+12), view.getUint8(off+13),
-            view.getUint8(off+14), view.getUint8(off+15));
+        return fourcc(view, off + 12);
+    }
+    function fourcc(view, at) {
+        return String.fromCharCode(view.getUint8(at), view.getUint8(at + 1),
+                                   view.getUint8(at + 2), view.getUint8(at + 3));
+    }
+    /* The first VisualSampleEntry of a video track's stsd: its picture size
+     * and the two places HDR shows up (issue #132, as the MKV reader does
+     * it): a colr box's transfer characteristics (16 = PQ/HDR10, 18 = HLG)
+     * and a Dolby Vision configuration box (dvcC / dvvC / dvwC) with the
+     * profile, which a dvh1 / dvhe / dva1 / dvav sample entry implies too.
+     * The fixed part of a visual entry is 78 bytes after the 8-byte box
+     * header; the child boxes follow.  null when there is no entry. */
+    function parseVisualSampleEntry(view, off, end) {
+        if (off + 8 > end || view.getUint32(off + 4) < 1) return null;
+        var e = off + 8;
+        if (e + 86 > end) return null;
+        var size = view.getUint32(e), entryEnd = Math.min(end, e + size);
+        var v = { codec: fourcc(view, e + 4), width: view.getUint16(e + 32), height: view.getUint16(e + 34),
+                  transfer: 0, dolbyVision: false, dvProfile: 0 };
+        var p = e + 86;
+        while (p + 8 <= entryEnd) {
+            var bs = view.getUint32(p), bt = fourcc(view, p + 4);
+            if (bs < 8 || p + bs > entryEnd) break;
+            if (bt === 'colr') {
+                var ct = fourcc(view, p + 8);
+                if ((ct === 'nclx' || ct === 'nclc') && p + 16 <= entryEnd) v.transfer = view.getUint16(p + 14);
+            } else if (bt === 'dvcC' || bt === 'dvvC' || bt === 'dvwC') {
+                v.dolbyVision = true;
+                // dv_version_major, dv_version_minor, then 7 bits of profile.
+                if (p + 11 <= entryEnd) v.dvProfile = view.getUint8(p + 10) >> 1;
+            }
+            p += bs;
+        }
+        if (/^dv(h1|he|a1|av)$/.test(v.codec)) v.dolbyVision = true;
+        return v;
     }
     function parseStts(view, off) {
         var n = view.getUint32(off + 4);
@@ -242,7 +275,12 @@ var Mp4Subs = (function () {
                     cur.lang      = m.lang;
                     break;
                 case 'hdlr': cur.handler = parseHdlr(view, off); break;
-                case 'stsd': cur.codec   = parseStsd(view, off); break;
+                case 'stsd':
+                    cur.codec = parseStsd(view, off);
+                    if (cur.handler === 'vide') {
+                        try { cur.video = parseVisualSampleEntry(view, off, end); } catch (e) { cur.video = null; }
+                    }
+                    break;
                 case 'stts': cur.stts    = parseStts(view, off); break;
                 case 'stsz': cur.sampleSizes = parseStsz(view, off); break;
                 case 'stco': cur.chunkOffsets = parseStco(view, off, false); break;
@@ -253,6 +291,33 @@ var Mp4Subs = (function () {
         if (cur) tracks.push(cur);
         return tracks;
     }
+
+    /* ── what the header says about the picture (INFO panel, issue #132) ── */
+
+    function isVideoTrack(t) { return !!(t && t.handler === 'vide' && t.video); }
+    function videoTrack(tracks) {
+        for (var i = 0; i < (tracks || []).length; i++) if (isVideoTrack(tracks[i])) return tracks[i];
+        return null;
+    }
+    /* The dynamic range the header declares for the (first) video track:
+     * { kind: 'DV' | 'HDR10' | 'HLG' | 'SDR', profile } — null without a
+     * video track.  The same shape MkvSubs.describeHdr gives, so the panel
+     * doesn't care which container it came from.  HDR10+ lives in the
+     * frames and can't be told from HDR10 here. */
+    function describeHdr(tracks) {
+        var t = videoTrack(tracks);
+        if (!t) return null;
+        var v = t.video;
+        if (v.dolbyVision)     return { kind: 'DV', profile: v.dvProfile || 0 };
+        if (v.transfer === 16) return { kind: 'HDR10', profile: 0 };
+        if (v.transfer === 18) return { kind: 'HLG', profile: 0 };
+        return { kind: 'SDR', profile: 0 };
+    }
+    /* 'hvc1' → 'HEVC': the name a person knows a codec by; '' when unsure. */
+    var CODEC_NAMES = { hvc1: 'HEVC', hev1: 'HEVC', dvh1: 'HEVC', dvhe: 'HEVC',
+                        avc1: 'H.264', avc3: 'H.264', dva1: 'H.264', dvav: 'H.264',
+                        av01: 'AV1', vp09: 'VP9', vp08: 'VP8', mp4v: 'MPEG-4' };
+    function codecName(fourCC) { return CODEC_NAMES[String(fourCC || '')] || ''; }
 
     /* Filter tracks → just the text subtitles we can decode + extract their cues. */
     function extractCueLists(buf) {
@@ -1024,13 +1089,17 @@ var Mp4Subs = (function () {
                     return;
                 }
 
-                var textTrackMetadata;
+                var textTrackMetadata, allTracks;
                 try {
-                    textTrackMetadata = parseMp4(buffer).filter(isSupportedTextTrack);
+                    allTracks = parseMp4(buffer);
+                    textTrackMetadata = allTracks.filter(isSupportedTextTrack);
                 } catch (e) {
                     fail(e);
                     return;
                 }
+                /* Every track the header lists, video included, before the
+                 * subtitle work starts: the INFO panel reads HDR off it. */
+                safeCallback('onContainer', allTracks);
 
                 var liveTracks = textTrackMetadata.map(makeIncrementalTrack);
                 publishTracksOnce(liveTracks);
@@ -1361,7 +1430,13 @@ var Mp4Subs = (function () {
         },
         cuesToSrt:     cuesToSrt,
         _extractCueLists: extractCueLists,
-        writeSrtToTmp: writeSrtToTmp
+        _parseMp4:     parseMp4,
+        writeSrtToTmp: writeSrtToTmp,
+        // For the INFO panel (issue #132): what the header says about the picture.
+        isVideoTrack:  isVideoTrack,
+        videoTrack:    videoTrack,
+        describeHdr:   describeHdr,
+        codecName:     codecName
     };
 })();
 
