@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets"
         xmlns="http://www.w3.org/ns/widgets"
         id="http://madebypatrick.com/vlctv"
-        version="1.24.1"
+        version="1.24.2"
         viewmodes="maximized">
     <tizen:application id="madebypatk.vlcweb"
                        package="madebypatk"
@@ -50,17 +50,18 @@
     <!-- Privileges — internet for streams, mediastorage/externalstorage for USB
          file enumeration, download for future remote-file caching. -->
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
-    <tizen:privilege name="http://tizen.org/privilege/network.public"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
     <tizen:privilege name="http://tizen.org/privilege/mediastorage"/>
     <tizen:privilege name="http://tizen.org/privilege/externalstorage"/>
     <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
     <tizen:privilege name="http://tizen.org/privilege/filesystem.write"/>
     <tizen:privilege name="http://tizen.org/privilege/download"/>
-    <!-- tizen.power.request('SCREEN', 'SCREEN_NORMAL') keeps the screensaver
-         off during a picture slideshow on firmware that has the Power API
-         (issue #126; most TVs don't, see js/keepawake.js). -->
-    <tizen:privilege name="http://tizen.org/privilege/power"/>
+    <!-- No http://tizen.org/privilege/power here on purpose: Samsung's TV
+         privilege list doesn't have it, and Tizen 5.0 (2019) sets refuse the
+         whole package with "Security error : Invalid function parameter"
+         when it is declared. tizen.power is undefined on retail TVs anyway;
+         js/keepawake.js holds the screensaver off with a hidden clip. -->
     <!-- Required for tizen.tvinputdevice.registerKey(); without it the TV keeps
          Play/Pause/FF/RW and the colour keys for itself and shows a
          "not supported" toast when they're pressed. -->
