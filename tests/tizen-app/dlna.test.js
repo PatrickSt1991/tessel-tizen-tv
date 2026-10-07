@@ -27,7 +27,7 @@ function loadService(extra) {
         'parseDeviceDescription: parseDeviceDescription, parseDidl: parseDidl, ' +
         'parseBrowseReply: parseBrowseReply, browseRequest: browseRequest, xmlUnescape: xmlUnescape, ' +
         'ssdpSearchMessage: ssdpSearchMessage, ssdpSearchPlan: ssdpSearchPlan, ip4Broadcast: ip4Broadcast, ' +
-        'mergeServers: mergeServers, startDlnaPassive: startDlnaPassive, passiveServers: passiveServers };',
+        'mergeServers: mergeServers, startDlnaPassive: startDlnaPassive, passiveServers: passiveServers, LOGS: LOGS };',
         sandbox);
     return sandbox.module.exports;
 }
@@ -246,8 +246,26 @@ test('passive discovery joins the group on each interface and resolves an announ
         name: 'nas: minidlna', control: 'http://192.168.1.10:8200/ctl/ContentDir' }]);
     assert.strictEqual(requests.length, 1, 'reads the announced description once');
 
+    var logged = passive.LOGS.length;
     handlers.message(announce, { address: '192.168.1.10' });
     assert.strictEqual(requests.length, 1, 'a repeated announcement is not read again');
+    assert.strictEqual(passive.LOGS.length, logged, 'nor logged: only a read description is');
     assert.strictEqual(passive.mergeServers([], passive.passiveServers).length, 1,
                        'the announced server reaches the list a search returns');
+
+    // Shutting down: one byebye per device and service type, and a device we never listed.
+    function byebye(usn) {
+        return Buffer.from('NOTIFY * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n' +
+            'NT: upnp:rootdevice\r\nNTS: ssdp:byebye\r\nUSN: ' + usn + '\r\n\r\n');
+    }
+    logged = passive.LOGS.length;
+    handlers.message(byebye('uuid:someone-else::upnp:rootdevice'), { address: '192.168.1.20' });
+    handlers.message(byebye('uuid:4d696e69-444c-164e-9d41-001e06aabbcc::upnp:rootdevice'), { address: '192.168.1.10' });
+    handlers.message(byebye('uuid:4d696e69-444c-164e-9d41-001e06aabbcc'), { address: '192.168.1.10' });
+    assert.deepStrictEqual(Object.keys(passive.passiveServers), [], 'byebye drops the server');
+    assert.strictEqual(passive.LOGS.length, logged + 1, 'one line per departure, not per packet');
+
+    handlers.message(announce, { address: '192.168.1.10' });
+    assert.strictEqual(requests.length, 2, 'its next ssdp:alive is read again at once');
+    assert.strictEqual(Object.keys(passive.passiveServers).length, 1);
 });

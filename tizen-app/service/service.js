@@ -2012,6 +2012,7 @@ function handleDlnaBrowse(req, res) {
  * server it hears about, and merge those with whatever a search turns up. */
 var passiveServers   = {};      // id -> { id, name, control }
 var passiveLocations = {};      // location -> when its description was last read
+var passiveIds       = {};      // id -> the location it was read from, for byebye
 var PASSIVE_RETRY_MS = 300000;  // re-read a description at most this often
 
 /* What a search found, plus what the announcements taught us, one entry per
@@ -2024,16 +2025,34 @@ function mergeServers(found, remembered) {
     return out.sort(function (a, b) { return a.name.localeCompare(b.name); });
 }
 
-function passiveRemember(location) {
+/* Only a description actually read is logged: every UPnP device on the LAN
+ * announces, often, and a line per NOTIFY would push the SMB trail out of the
+ * ring buffer. */
+function passiveRemember(location, from) {
     var now = Date.now();
     if (passiveLocations[location] && now - passiveLocations[location] < PASSIVE_RETRY_MS) return;
     passiveLocations[location] = now;
     httpText(location, 'GET', null, null, function (err, status, xml) {
+        if (passiveLocations[location] !== now) return;     // said byebye while we were reading
         var d = !err && status === 200 ? parseDeviceDescription(xml, location) : null;
-        if (!d) { log('DLNA_PASSIVE_SKIP', location + ' ' + (err ? err.message : 'HTTP ' + status + ' / no ContentDirectory')); return; }
-        if (!passiveServers[d.id]) log('DLNA_PASSIVE_SERVER', d);
+        log('DLNA_PASSIVE_READ', { from: from || '?', location: location,
+                                   server: d ? d.name : (err ? err.message : 'HTTP ' + status + ' / no ContentDirectory') });
+        if (!d) return;
         passiveServers[d.id] = d;
+        passiveIds[d.id] = location;
     });
+}
+
+/* ssdp:byebye names the device by USN ("uuid:…" or "uuid:…::urn:…"), which
+ * carries the description's UDN.  Drop the server and forget its location,
+ * so its next ssdp:alive is read again at once. */
+function passiveForget(usn) {
+    var id = String(usn || '').split('::')[0];
+    if (!passiveServers[id] && !passiveIds[id]) return;     // a device we never listed, or a repeat
+    log('DLNA_PASSIVE_BYEBYE', id);
+    delete passiveLocations[passiveIds[id]];
+    delete passiveIds[id];
+    delete passiveServers[id];
 }
 
 function startDlnaPassive(ifaces) {
@@ -2043,10 +2062,10 @@ function startDlnaPassive(ifaces) {
     catch (e) { log('DLNA_PASSIVE_ERR', 'socket: ' + (e && e.message)); return; }
     sock.on('message', function (msg, rinfo) {
         var h = parseSsdp(msg.toString('utf8'));
-        if (!h || !h.location || !/^https?:\/\//i.test(h.location)) return;
-        log('DLNA_PASSIVE_ANSWER', { from: (rinfo && rinfo.address) || '?',
-                                     nt: h.nt || h.st || '', location: h.location });
-        passiveRemember(h.location);
+        if (!h) return;
+        if (/ssdp:byebye/i.test(h.nts || '')) return passiveForget(h.usn);
+        if (!h.location || !/^https?:\/\//i.test(h.location)) return;
+        passiveRemember(h.location, rinfo && rinfo.address);
     });
     sock.on('error', function (e) { log('DLNA_PASSIVE_ERR', String(e && e.message)); });
     try {
