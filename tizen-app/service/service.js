@@ -1717,6 +1717,13 @@ try { dgram = require('dgram'); } catch (e) {}
 var SSDP_ADDR        = '239.255.255.250';
 var SSDP_PORT        = 1900;
 var DLNA_SEARCH_MS   = 3000;   // how long M-SEARCH answers are collected
+/* Unicast targets per socket.  A datagram to an address nobody holds waits
+ * in the kernel for ARP to give up (about 3s) and counts against its socket's
+ * send buffer meanwhile, so one socket sweeping a /24 fills up after ~200 and
+ * libuv queues the rest behind them; closing the socket at DLNA_SEARCH_MS
+ * then cancels those with ECANCELED, never sent.  64 per socket stays well
+ * inside the default buffer, so every M-SEARCH leaves at once. */
+var DLNA_SWEEP_CHUNK = 64;
 var DLNA_HTTP_MS     = 8000;   // per description / Browse request
 var DLNA_PAGE        = 200;    // Browse page size
 var DLNA_MAX_ENTRIES = 5000;   // one folder; beyond this the list is cut
@@ -1920,9 +1927,15 @@ function handleDlnaDiscover(req, res) {
             });
         } catch (e) { if (sendErrors++ < 5) log('DLNA_SEND_ERR', addr + ':' + port + ' ' + e.message); }
     }
-    /* One round of searching from `sock`; `iface` is its plan entry, or
-     * null for the unbound socket, which only asks the group. */
-    function search(sock, iface) {
+    /* One round of searching from `sock`: `hosts` given, a unicast M-SEARCH
+     * to each; otherwise the group, and with `iface` (its plan entry) the
+     * broadcast addresses too.  The unbound socket only asks the group. */
+    function search(sock, iface, hosts) {
+        if (hosts) {
+            var one = ssdpSearchMessage(DLNA_TARGETS[0]);
+            hosts.forEach(function (h) { send(sock, one, SSDP_PORT, h); });
+            return;
+        }
         DLNA_TARGETS.forEach(function (st) {
             var m = ssdpSearchMessage(st);
             send(sock, m, SSDP_PORT, SSDP_ADDR);
@@ -1930,15 +1943,13 @@ function handleDlnaDiscover(req, res) {
             if (iface.broadcast) send(sock, m, SSDP_PORT, iface.broadcast);
             send(sock, m, SSDP_PORT, '255.255.255.255');
         });
-        if (!iface) return;
-        var one = ssdpSearchMessage(DLNA_TARGETS[0]);
-        iface.hosts.forEach(function (h) { send(sock, one, SSDP_PORT, h); });
     }
     /* A socket bound to `iface.address` (or to any address, iface null),
-     * searching as soon as it is up.  A bind that fails is logged and
-     * that socket is dropped; the others carry on. */
-    function open(iface) {
-        var where = iface ? iface.address : '*', sock, up = false;
+     * searching as soon as it is up — the group and broadcast, or with
+     * `hosts` one slice of the unicast sweep.  A bind that fails is logged
+     * and that socket is dropped; the others carry on. */
+    function open(iface, hosts) {
+        var where = (iface ? iface.address : '*') + (hosts ? ' sweep ' + hosts[0] + '..' : ''), sock, up = false;
         try { sock = dgram.createSocket('udp4'); }
         catch (e) { log('DLNA_SOCKET_ERR', where + ' ' + e.message); return; }
         sockets.push(sock);
@@ -1949,9 +1960,9 @@ function handleDlnaDiscover(req, res) {
         });
         function ready() {
             up = true;
-            if (iface) { try { sock.setBroadcast(true); } catch (e) { log('DLNA_SOCKET_ERR', where + ' setBroadcast: ' + e.message); } }
-            search(sock, iface);
-            setTimeout(function () { if (!finished) search(sock, iface); }, 800);   // UDP gets lost; ask twice
+            if (iface && !hosts) { try { sock.setBroadcast(true); } catch (e) { log('DLNA_SOCKET_ERR', where + ' setBroadcast: ' + e.message); } }
+            search(sock, iface, hosts);
+            setTimeout(function () { if (!finished) search(sock, iface, hosts); }, 800);   // UDP gets lost; ask twice
         }
         try { if (iface) sock.bind(0, iface.address, ready); else sock.bind(ready); }
         catch (e) { log('DLNA_BIND_ERR', where + ' ' + e.message); }
@@ -1961,7 +1972,10 @@ function handleDlnaDiscover(req, res) {
         return i.address + '/' + i.netmask + ' (' + (i.hosts.length ? i.hosts.length + ' hosts' : 'multicast + broadcast only') + ')';
     }));
     open(null);
-    plan.forEach(open);
+    plan.forEach(function (i) {
+        open(i);
+        for (var k = 0; k < i.hosts.length; k += DLNA_SWEEP_CHUNK) open(i, i.hosts.slice(k, k + DLNA_SWEEP_CHUNK));
+    });
     if (!sockets.length) return sendJson(res, 200, { ok: false, error: 'no UDP socket on this TV' });
 
     setTimeout(function () {
