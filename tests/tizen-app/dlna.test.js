@@ -8,20 +8,26 @@ var path   = require('path');
 
 var SRC = fs.readFileSync(path.join(__dirname, '../../tizen-app/service/service.js'), 'utf8');
 
-/* Same loader as smb-shares.test.js: servers that never bind. */
-function loadService() {
+/* Same loader as smb-shares.test.js: servers that never bind.  `extra` lets a
+ * test stand in for a module the code under test would otherwise talk to. */
+function loadService(extra) {
     var fakeHttp = { createServer: function () { return { listen: function () {} }; } };
     var sandbox = {
         module: { exports: {} },
         Buffer: Buffer, console: console,
         setTimeout: setTimeout, clearTimeout: clearTimeout,
         process: { on: function () {} },
-        require: function (name) { return name === 'http' ? fakeHttp : require(name); }
+        require: function (name) {
+            if (name === 'http') return (extra && extra.http) || fakeHttp;
+            if (extra && extra[name]) return extra[name];
+            return require(name);
+        }
     };
     vm.runInNewContext(SRC + '\nmodule.exports = { parseSsdp: parseSsdp, ' +
         'parseDeviceDescription: parseDeviceDescription, parseDidl: parseDidl, ' +
         'parseBrowseReply: parseBrowseReply, browseRequest: browseRequest, xmlUnescape: xmlUnescape, ' +
-        'ssdpSearchMessage: ssdpSearchMessage, ssdpSearchPlan: ssdpSearchPlan, ip4Broadcast: ip4Broadcast };',
+        'ssdpSearchMessage: ssdpSearchMessage, ssdpSearchPlan: ssdpSearchPlan, ip4Broadcast: ip4Broadcast, ' +
+        'mergeServers: mergeServers, startDlnaPassive: startDlnaPassive, passiveServers: passiveServers, LOGS: LOGS };',
         sandbox);
     return sandbox.module.exports;
 }
@@ -172,4 +178,94 @@ test('the broadcast address survives the high bit; junk gives nothing', function
     assert.strictEqual(svc.ip4Broadcast('172.16.5.9', '255.255.252.0'), '172.16.7.255');
     assert.strictEqual(svc.ip4Broadcast('fe80::1', '255.255.255.0'), '');
     assert.strictEqual(svc.ip4Broadcast('192.168.1.37', ''), '');
+});
+
+/* ── passive discovery: the servers a search cannot reach (issue #131) ── */
+test('a search result and a remembered announcement become one list, by id', function () {
+    var searched = [{ id: 'uuid:a', name: 'Zeta', control: 'http://a/ctl' }];
+    var remembered = {
+        'uuid:a': { id: 'uuid:a', name: 'Stale', control: 'http://a/old' },
+        'uuid:b': { id: 'uuid:b', name: 'Alpha', control: 'http://b/ctl' }
+    };
+    assert.deepStrictEqual(plain(svc.mergeServers(searched, remembered)), [
+        { id: 'uuid:b', name: 'Alpha', control: 'http://b/ctl' },
+        { id: 'uuid:a', name: 'Zeta', control: 'http://a/ctl' }   // the search's copy, not the remembered one
+    ]);
+    assert.deepStrictEqual(plain(svc.mergeServers([], null)), []);
+    assert.strictEqual(svc.mergeServers(null, remembered).length, 2);
+});
+
+test('passive discovery joins the group on each interface and resolves an announcement', function () {
+    var requests = [], joins = [], ports = [], handlers = {};
+    var httpStub = {
+        createServer: function () { return { listen: function () {} }; },
+        request: function (opts, onResponse) {
+            requests.push(opts.host + ':' + opts.port + opts.path);
+            var req = {
+                setTimeout: function () { return req; },
+                on: function () { return req; },
+                abort: function () { return req; },
+                end: function () {
+                    var res = { statusCode: 200, on: function (ev, fn) {
+                        if (ev === 'data') fn(Buffer.from(MINIDLNA_DESC));
+                        if (ev === 'end') fn();
+                        return res;
+                    } };
+                    onResponse(res);
+                }
+            };
+            return req;
+        }
+    };
+    var dgramStub = { createSocket: function () {
+        var sock = {
+            on: function (ev, fn) { handlers[ev] = fn; return sock; },
+            bind: function (port, cb) { ports.push(port); cb(); return sock; },
+            addMembership: function (group, address) { joins.push(group + ' ' + address); },
+            close: function () {}
+        };
+        return sock;
+    } };
+    var passive = loadService({ http: httpStub, dgram: dgramStub });
+    passive.startDlnaPassive([{ address: '192.168.0.118' }, { address: '10.0.0.5' }]);
+
+    assert.deepStrictEqual(ports, [1900], 'binds the SSDP port');
+    assert.deepStrictEqual(joins, ['239.255.255.250 192.168.0.118', '239.255.255.250 10.0.0.5'],
+                       'joins the group on every interface');
+    assert.strictEqual(typeof handlers.message, 'function');
+
+    // miniDLNA's periodic announcement — the half that survives a network
+    // which drops the client's own M-SEARCH.
+    var announce = Buffer.from('NOTIFY * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n' +
+        'NT: urn:schemas-upnp-org:device:MediaServer:1\r\nNTS: ssdp:alive\r\n' +
+        'LOCATION: http://192.168.1.10:8200/rootDesc.xml\r\n\r\n');
+    handlers.message(announce, { address: '192.168.1.10' });
+
+    var remembered = Object.keys(passive.passiveServers).map(function (k) { return passive.passiveServers[k]; });
+    assert.deepStrictEqual(plain(remembered), [{ id: 'uuid:4d696e69-444c-164e-9d41-001e06aabbcc',
+        name: 'nas: minidlna', control: 'http://192.168.1.10:8200/ctl/ContentDir' }]);
+    assert.strictEqual(requests.length, 1, 'reads the announced description once');
+
+    var logged = passive.LOGS.length;
+    handlers.message(announce, { address: '192.168.1.10' });
+    assert.strictEqual(requests.length, 1, 'a repeated announcement is not read again');
+    assert.strictEqual(passive.LOGS.length, logged, 'nor logged: only a read description is');
+    assert.strictEqual(passive.mergeServers([], passive.passiveServers).length, 1,
+                       'the announced server reaches the list a search returns');
+
+    // Shutting down: one byebye per device and service type, and a device we never listed.
+    function byebye(usn) {
+        return Buffer.from('NOTIFY * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n' +
+            'NT: upnp:rootdevice\r\nNTS: ssdp:byebye\r\nUSN: ' + usn + '\r\n\r\n');
+    }
+    logged = passive.LOGS.length;
+    handlers.message(byebye('uuid:someone-else::upnp:rootdevice'), { address: '192.168.1.20' });
+    handlers.message(byebye('uuid:4d696e69-444c-164e-9d41-001e06aabbcc::upnp:rootdevice'), { address: '192.168.1.10' });
+    handlers.message(byebye('uuid:4d696e69-444c-164e-9d41-001e06aabbcc'), { address: '192.168.1.10' });
+    assert.deepStrictEqual(Object.keys(passive.passiveServers), [], 'byebye drops the server');
+    assert.strictEqual(passive.LOGS.length, logged + 1, 'one line per departure, not per packet');
+
+    handlers.message(announce, { address: '192.168.1.10' });
+    assert.strictEqual(requests.length, 2, 'its next ssdp:alive is read again at once');
+    assert.strictEqual(Object.keys(passive.passiveServers).length, 1);
 });

@@ -1977,7 +1977,8 @@ function handleDlnaDiscover(req, res) {
                 done();
             });
         }, function () {
-            found.sort(function (a, b) { return a.name.localeCompare(b.name); });
+            /* Whatever the search could not reach, the announcements may have. */
+            found = mergeServers(found, passiveServers);
             log('DLNA_SERVERS', found);
             sendJson(res, 200, { ok: true, servers: found });
         });
@@ -1999,6 +2000,84 @@ function handleDlnaBrowse(req, res) {
             sendJson(res, 200, { ok: true, entries: entries });
         });
     });
+}
+
+/* ── passive discovery (issue #131) ────────────────────────────────────────
+ * A server that only ever answers multicast is invisible to an active search
+ * whenever the client's own M-SEARCH does not survive the trip — a wireless
+ * client whose AP drops 239.x towards the wired LAN, or a switch doing IGMP
+ * snooping without a querier on that group.  The same networks still deliver
+ * the server's periodic NOTIFY announcements, which is how the TV's own DLNA
+ * browser finds it.  So keep one socket joined to the group and remember every
+ * server it hears about, and merge those with whatever a search turns up. */
+var passiveServers   = {};      // id -> { id, name, control }
+var passiveLocations = {};      // location -> when its description was last read
+var passiveIds       = {};      // id -> the location it was read from, for byebye
+var PASSIVE_RETRY_MS = 300000;  // re-read a description at most this often
+
+/* What a search found, plus what the announcements taught us, one entry per
+ * server id, by name.  A search result wins: it is the fresher description. */
+function mergeServers(found, remembered) {
+    var out = (found || []).slice();
+    Object.keys(remembered || {}).forEach(function (id) {
+        if (!out.some(function (f) { return f.id === id; })) out.push(remembered[id]);
+    });
+    return out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+}
+
+/* Only a description actually read is logged: every UPnP device on the LAN
+ * announces, often, and a line per NOTIFY would push the SMB trail out of the
+ * ring buffer. */
+function passiveRemember(location, from) {
+    var now = Date.now();
+    if (passiveLocations[location] && now - passiveLocations[location] < PASSIVE_RETRY_MS) return;
+    passiveLocations[location] = now;
+    httpText(location, 'GET', null, null, function (err, status, xml) {
+        if (passiveLocations[location] !== now) return;     // said byebye while we were reading
+        var d = !err && status === 200 ? parseDeviceDescription(xml, location) : null;
+        log('DLNA_PASSIVE_READ', { from: from || '?', location: location,
+                                   server: d ? d.name : (err ? err.message : 'HTTP ' + status + ' / no ContentDirectory') });
+        if (!d) return;
+        passiveServers[d.id] = d;
+        passiveIds[d.id] = location;
+    });
+}
+
+/* ssdp:byebye names the device by USN ("uuid:…" or "uuid:…::urn:…"), which
+ * carries the description's UDN.  Drop the server and forget its location,
+ * so its next ssdp:alive is read again at once. */
+function passiveForget(usn) {
+    var id = String(usn || '').split('::')[0];
+    if (!passiveServers[id] && !passiveIds[id]) return;     // a device we never listed, or a repeat
+    log('DLNA_PASSIVE_BYEBYE', id);
+    delete passiveLocations[passiveIds[id]];
+    delete passiveIds[id];
+    delete passiveServers[id];
+}
+
+function startDlnaPassive(ifaces) {
+    if (!dgram) { log('DLNA_PASSIVE_ERR', 'no UDP on this TV'); return; }
+    var sock;
+    try { sock = dgram.createSocket({ type: 'udp4', reuseAddr: true }); }
+    catch (e) { log('DLNA_PASSIVE_ERR', 'socket: ' + (e && e.message)); return; }
+    sock.on('message', function (msg, rinfo) {
+        var h = parseSsdp(msg.toString('utf8'));
+        if (!h) return;
+        if (/ssdp:byebye/i.test(h.nts || '')) return passiveForget(h.usn);
+        if (!h.location || !/^https?:\/\//i.test(h.location)) return;
+        passiveRemember(h.location, rinfo && rinfo.address);
+    });
+    sock.on('error', function (e) { log('DLNA_PASSIVE_ERR', String(e && e.message)); });
+    try {
+        sock.bind(SSDP_PORT, function () {
+            var joined = [];
+            (ifaces || localIPv4s()).forEach(function (i) {
+                try { sock.addMembership(SSDP_ADDR, i.address); joined.push(i.address); }
+                catch (e) { log('DLNA_PASSIVE_JOIN_ERR', i.address + ' ' + (e && e.message)); }
+            });
+            log('DLNA_PASSIVE_START', joined.length ? joined.join(', ') : 'no interface joined the group');
+        });
+    } catch (e) { log('DLNA_PASSIVE_BIND_ERR', e && e.message); }
 }
 
 var server = http.createServer(function (req, res) {
@@ -2031,6 +2110,9 @@ var server = http.createServer(function (req, res) {
 });
 
 server.listen(PORT, LISTEN_HOST, function () { log('SMB_PROXY_LISTENING', LISTEN_HOST + ':' + PORT); });
+/* Not under the unit-test loader: there `process` is a stub and a real socket
+ * would be bound for the lifetime of the test run. */
+if (typeof process !== 'undefined' && process && typeof process.pid === 'number') startDlnaPassive();
 
 process.on('uncaughtException', function (e) {
     var where = (e && e.stack) ? String(e.stack).split('\n').slice(0, 4).join(' <- ') : '';

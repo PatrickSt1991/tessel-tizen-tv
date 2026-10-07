@@ -119,6 +119,11 @@ var DLNA = (function () {
                 }
                 found = res.servers || [];
                 dbg('found ' + found.length + ' server(s): ' + found.map(function (s) { return s.name; }).join(', '));
+                /* Pull the service's DLNA_ lines here too, not only on failure.
+                 * A search that "succeeds" with the wrong servers is exactly the
+                 * case where those lines are needed, and they are otherwise
+                 * unreachable from off the TV. */
+                if (SMB.dumpServiceLogs) SMB.dumpServiceLogs('dlna search');
                 if (found.length === 1) openServer(found[0]);
                 else showServers();
             });
