@@ -467,7 +467,15 @@ var SMB = (function () {
                 li.innerHTML =
                     '<span class="icon">' + FileTypes.icon(kind) + '</span>' +
                     '<span class="name">' + esc(e.name) + '</span>' +
-                    (e.isDir ? '' : subBadge + '<span class="meta">' + humanSize(e.size) + '</span>');
+                    (e.isDir ? '<span class="fav-mark">♥</span>'
+                             : subBadge + '<span class="meta">' + humanSize(e.size) + '</span>');
+                // A folder row can be pinned to Favorites with ► (issue #140);
+                // app.js reads what to pin off the row.
+                if (e.isDir) {
+                    var fav = { kind: 'smb', srv: current, path: join(path, e.name), name: e.name };
+                    li.dataset.fav = JSON.stringify(fav);
+                    if (typeof Favorites !== 'undefined' && Favorites.find(fav)) li.classList.add('is-fav');
+                }
                 if (focusName && e.name === focusName) focus = li;
                 if (!e.isDir && isPlayable(e.name)) li.dataset.uri = playableUrl(join(path, e.name), current);
                 li.addEventListener('click', function () {
@@ -609,9 +617,21 @@ var SMB = (function () {
         UI.focusOn(focus || ul.firstElementChild);
     }
 
-    function openServer(id) {
+    /* The folders above `path` on a share, share root first: the way back
+     * up from a folder opened directly, as Favorites does (issue #140). */
+    function parentPaths(path) {
+        var out = [], parts = String(path || '').split('/').filter(Boolean);
+        var at = '';
+        for (var i = 0; i < parts.length; i++) { out.push(at); at += '/' + parts[i]; }
+        return out;
+    }
+
+    /* Connect to server `id` and list `path` on it ('' or absent: the share
+     * root), with the way up through the folders above it. */
+    function openServer(id, path) {
         pickingServer = false;
         current = id;
+        path = path || '';
         UI.showView('view-browse');
         document.getElementById('browse-title').textContent = I18n.t('smb.title');
         document.getElementById('browse-path').textContent = I18n.t('common.connecting');
@@ -622,9 +642,9 @@ var SMB = (function () {
         // on the "connecting" and error screens too — otherwise Back falls
         // through to the app's global handler, which still thinks we're on the
         // home view and can't exit here.
-        pathStack = [];
+        pathStack = parentPaths(path);
 
-        dbg('openBrowser' + (id ? ' [' + id + ']' : ''));
+        dbg('openBrowser' + (id ? ' [' + id + ']' : '') + (path ? ' ' + JSON.stringify(path) : ''));
         ensureService(function (err) {
             if (err) { dbg('ensureService failed: ' + err.message); showError(err.message); return; }
             dumpServiceLogs('service start');
@@ -635,9 +655,20 @@ var SMB = (function () {
                     return;
                 }
                 dumpServiceLogs('connect');
-                render('');
+                render(path);
             });
         });
+    }
+
+    /* A pinned folder from the Favorites tile (issue #140): straight into
+     * `path` on saved server `srv`.  false when that server is no longer
+     * saved, so the caller can say so. */
+    function openFolder(srv, path) {
+        var c = serverById(srv);
+        if (!c || !c.host || !c.share) return false;
+        setupBack();
+        openServer(srv, path);
+        return true;
     }
 
     /* Wire the Settings form (inputs + Save button) once the DOM is ready. */
@@ -887,6 +918,8 @@ var SMB = (function () {
 
     return {
         openBrowser:     openBrowser,
+        openFolder:      openFolder,
+        parentPaths:     parentPaths,       // exposed for the Node tests
         // The app's full player is coming up over this folder: its BACK
         // belongs to the player now.
         detach:          teardownBack,

@@ -109,8 +109,8 @@ button:focus { outline: none; }
 
 /* ── Home tiles ───────────────────────────────────────────────────── */
 .home-tiles {
-    display: grid; grid-gap: 28px;   /* grid-gap, not gap: TV WebView is Chromium 63 */
-    grid-template-columns: repeat(6, 260px);   /* 6×260 + 5×28 = 1700px, fits 1080p */
+    display: grid; grid-gap: 20px;   /* grid-gap, not gap: TV WebView is Chromium 63 */
+    grid-template-columns: repeat(7, 248px);   /* 7×248 + 6×20 = 1856px, fits 1080p */
     justify-content: center;
 }
 
@@ -118,7 +118,7 @@ button:focus { outline: none; }
     background: var(--bg-card);
     border: 3px solid var(--border);
     border-radius: var(--r);
-    padding: 56px 20px;   /* six tiles: 260px leaves ~214px for a label */
+    padding: 56px 16px;   /* seven tiles: 248px leaves ~210px for a label, what six wider tiles gave */
     text-align: center;
     transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
     color: var(--fg);
@@ -382,6 +382,9 @@ button:focus { outline: none; }
 /* A playlist channel that is on Saved streams (issue #121). */
 .browse-list .saved-mark { display: none; flex-shrink: 0; color: var(--accent); font-size: 22px; }
 .browse-list li.is-saved .saved-mark { display: inline; }
+/* A folder pinned to Favorites (issue #140). */
+.browse-list .fav-mark { display: none; flex-shrink: 0; color: var(--accent); font-size: 22px; }
+.browse-list li.is-fav .fav-mark { display: inline; }
 .browse-list li.watched-item .icon { opacity: .6; }
 
 /* ── Player ───────────────────────────────────────────────────────── */

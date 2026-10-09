@@ -38,6 +38,11 @@
             <div class="tile-label" data-i18n="home.recent">Recently Played</div>
             <div class="tile-sub" data-i18n="home.recentSub">Quick access to past media</div>
         </button>
+        <button class="tile" data-action="browse-favorites">
+            <div class="tile-icon">♥</div>
+            <div class="tile-label" data-i18n="home.favorites">Favorites</div>
+            <div class="tile-sub" data-i18n="home.favoritesSub">Folders you pinned</div>
+        </button>
         <button class="tile" data-action="open-url">
             <div class="tile-icon">URL</div>
             <div class="tile-label" data-i18n="home.url">Open Network Stream</div>
@@ -153,6 +158,7 @@
         <span class="key">RETURN</span> <span data-i18n="hint.up">up</span>
         <span class="key">PLAY</span> <span data-i18n="hint.openAsMedia">open as media</span>
         <span class="hidden" id="hint-save"><span class="key">►</span> <span data-i18n="hint.saveChannel">save / unsave</span></span>
+        <span class="hidden" id="hint-fav"><span class="key">►</span> <span data-i18n="hint.favorite">pin / unpin folder</span></span>
     </footer>
 </section>
 
@@ -487,6 +493,7 @@
 <script src="js/keepawake.js"></script>
 <script src="js/viewer.js"></script>
 <script src="js/saved-streams.js"></script>
+<script src="js/favorites.js"></script>
 <script src="js/backup.js"></script>
 <script src="js/app.js"></script>
 </body>

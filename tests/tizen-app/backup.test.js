@@ -8,6 +8,7 @@ var NAS   = { host: 'nas', port: 445, share: 'Media', user: 'tv', pass: 'pw', do
 var OTHER = { id: 'k3j9x2ab', host: '192.168.1.5', port: 445, share: 'Films', user: 'tv', pass: 'pw2', domain: '', anonymous: false };
 var BOX   = { url: 'http://192.168.1.20:8200', token: 'tok', name: 'box', api: 3 };
 var SAVED = [{ id: 'q8w2e4r6', name: 'NASA Live', url: 'https://example.com/nasa.m3u8' }];
+var FAVS  = [{ id: 'f1a2b3c4', kind: 'smb', srv: 'k3j9x2ab', path: '/Shows/Foo', name: 'Foo' }];
 
 function storage(init) {
     var s = {};
@@ -26,6 +27,7 @@ function fullTv() {
         vlctv_smb_extra_v1: [OTHER],
         vlctv_server_v1:    BOX,
         vlctv_saved_v1:     SAVED,
+        vlctv_favorites_v1: FAVS,
         vlctv_debug_v1:     { enabled: false, host: '192.168.1.50', port: 9999 },
         vlctv_recent_v1:    [{ uri: 'http://127.0.0.1:8127/smb/stream?path=a.mkv', title: 'a.mkv' }],
         vlctv_watched_v1:   { 'x': 1 },
@@ -49,6 +51,7 @@ test('a backup leaves SMB passwords out unless asked, and never carries the pair
     assert.deepStrictEqual(b.data.server, BOX);
     // Saved streams go along even when history stays home.
     assert.deepStrictEqual(b.data.saved, SAVED);
+    assert.deepStrictEqual(b.data.favorites, FAVS);
     assert.strictEqual(b.data.recent, undefined);
     assert.ok(JSON.stringify(b).indexOf('secret') < 0);
 
@@ -67,6 +70,7 @@ test('a fresh install gets everything back from a backup with passwords', functi
     assert.deepStrictEqual(fresh.json('vlctv_smb_extra_v1'), [OTHER]);
     assert.deepStrictEqual(fresh.json('vlctv_server_v1'), BOX);
     assert.deepStrictEqual(fresh.json('vlctv_saved_v1'), SAVED);
+    assert.deepStrictEqual(fresh.json('vlctv_favorites_v1'), FAVS);
     assert.strictEqual(fresh.json('vlctv_settings_v1').autoPlay, true);
     // The new install's own pairing code stays.
     assert.strictEqual(fresh.json('vlctv_settings_v1').urlDropCode, 'newtvcode1');
