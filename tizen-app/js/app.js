@@ -145,6 +145,7 @@
         view:       'home',        // home | url | browse | player
         browseDir:  null,          // current Tizen File or null at root listing
         browseAtRoot: true,        // true when listing the virtual roots
+        browseRoot: null,          // { name, fullPath } of the virtual root being browsed, if known
         playingUri: null,
         playingTitle: '',
         // Where the current playback was launched from, so exiting the
@@ -381,6 +382,7 @@
             case 'browse-smb':         SMB.openBrowser(); break;
             case 'browse-dlna':        DLNA.openBrowser(); break;
             case 'browse-recent':      openRecent(); break;
+            case 'browse-favorites':   openFavorites(); break;
             case 'open-settings':      openSettings(); break;
             case 'open-current-url': {
                 var v = document.getElementById('url-input').value.trim();
@@ -691,6 +693,7 @@
                     '<span class="meta">' + escapeHtml(r.fullPath) + '</span>';
                 li.addEventListener('click', function () {
                     state.browseAtRoot = false;
+                    state.browseRoot   = { name: r.name, fullPath: r.fullPath };
                     listInto(r.dir);
                 });
                 ul.appendChild(li);
@@ -757,8 +760,9 @@
                     '<span class="name">' + escapeHtml(e.name) + '</span>' +
                     watchedBadge +
                     subBadge +
-                    (e.isDir ? '' :
+                    (e.isDir ? '<span class="fav-mark">♥</span>' :
                         '<span class="meta">' + Browser.humanSize(e.size) + '</span>');
+                if (e.isDir) markFavoriteRow(li, usbFavorite(e.file, e.name));
                 li.addEventListener('click', function () {
                     switch (e.kind) {
                         case 'dir':
@@ -800,6 +804,123 @@
             UI.refreshFocusables();
             UI.focusOn(focus || ul.firstElementChild);
         });
+    }
+
+    /* ── Favorites (issue #140) ───────────────────────────────────── */
+    /* What pinning this local folder stores.  The virtual root it is on is
+     * kept when known, because `removable_…/Shows` resolves on every
+     * firmware where a bare /opt/media/… path may not. */
+    function usbFavorite(file, name) {
+        var fav = { kind: 'usb', path: (file && file.fullPath) || '', name: name || (file && file.name) || '' };
+        var root = state.browseRoot;
+        if (root && fav.path.indexOf(root.fullPath + '/') === 0) {
+            fav.root = root.name; fav.rootPath = root.fullPath;
+        }
+        return fav;
+    }
+    /* A folder row that ► can pin or unpin: what to pin rides on the row,
+     * the ♥ shows it is pinned. */
+    function markFavoriteRow(li, fav) {
+        if (!fav || !fav.path) return;
+        li.dataset.fav = JSON.stringify(fav);
+        li.classList.toggle('is-fav', !!Favorites.find(fav));
+    }
+    function favoriteWhere(f) {
+        if (f.kind === 'smb') {
+            var srv = SMB.serverById(f.srv);
+            return (srv && srv.host ? SMB.serverLabel(srv) : '\\\\?') + f.path.replace(/\//g, '\\');
+        }
+        return f.path;
+    }
+    function openFavorites() {
+        var list = Favorites.list();
+        if (!list.length) { UI.toast(I18n.t('favorites.none')); return; }
+        if (typeof Debug !== 'undefined') Debug.view('favorites');
+        UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = true;
+        state.listBack = null;
+        document.getElementById('browse-title').textContent = I18n.t('home.favorites');
+        document.getElementById('browse-path').textContent = '';
+        var ul = document.getElementById('browse-list'); ul.innerHTML = '';
+        list.forEach(function (f) {
+            var li = document.createElement('li');
+            li.dataset.dir = '1';
+            li.dataset.favId = f.id;
+            li.innerHTML = '<span class="icon">' + (f.kind === 'usb' ? '💾' : '📁') + '</span>' +
+                           '<span class="name">' + escapeHtml(f.name) + '</span>' +
+                           '<span class="fav-mark">♥</span>' +
+                           '<span class="meta">' + escapeHtml(favoriteWhere(f)) + '</span>';
+            markFavoriteRow(li, f);
+            li.addEventListener('click', function () { openFavorite(f); });
+            ul.appendChild(li);
+        });
+        UI.refreshFocusables();
+        UI.focusOn(ul.firstElementChild);
+    }
+    function openFavorite(f) {
+        if (typeof Debug !== 'undefined') Debug.action('favorite ' + f.kind + ' ' + f.path);
+        if (f.kind === 'smb') {
+            // The SMB browser takes over the view and BACK; leaving the
+            // folder walks up to the share root and out to Home as usual.
+            state.view = 'home';
+            if (!SMB.openFolder(f.srv, f.path)) {
+                state.view = 'browse';
+                UI.toast(I18n.t('favorites.serverGone'));
+            }
+            return;
+        }
+        openUsbFolder(f);
+    }
+    /* A pinned local folder: resolved through its virtual root first, by
+     * full path when the root is unknown or has gone. */
+    function openUsbFolder(f) {
+        if (typeof tizen === 'undefined' || !tizen.filesystem) { UI.toast(I18n.t('favorites.folderGone')); return; }
+        var tries = [];
+        if (f.root && f.rootPath && f.path.indexOf(f.rootPath + '/') === 0)
+            tries.push(f.root + f.path.slice(f.rootPath.length));
+        tries.push(f.path);
+        (function next(i) {
+            if (i >= tries.length) { UI.toast(I18n.t('favorites.folderGone')); return; }
+            try {
+                tizen.filesystem.resolve(tries[i], function (dir) {
+                    if (!dir || !dir.isDirectory) { next(i + 1); return; }
+                    state.browseAtRoot = false;
+                    state.browseRoot   = f.root && f.rootPath ? { name: f.root, fullPath: f.rootPath } : null;
+                    UI.showView('view-browse'); state.view = 'browse';
+                    listInto(dir);
+                }, function () { next(i + 1); }, 'r');
+            } catch (e) { next(i + 1); }
+        })(0);
+    }
+    /* ► on a folder row pins it to Favorites, or takes it off again; on the
+     * Favorites list itself ► takes the row away. */
+    function toggleFavoriteRow() {
+        var li = document.querySelector('#browse-list li.focused');
+        if (!li || !li.dataset.fav) return false;
+        var fav = null;
+        try { fav = JSON.parse(li.dataset.fav); } catch (e) { return false; }
+        var have = Favorites.find(fav);
+        if (have) {
+            Favorites.remove(have.id);
+            UI.toast(I18n.t('favorites.removed', have.name));
+            if (li.dataset.favId) {
+                var sibling = li.nextElementSibling || li.previousElementSibling;
+                li.parentNode.removeChild(li);
+                UI.refreshFocusables();
+                if (sibling) UI.focusOn(sibling); else backToHome();
+                return true;
+            }
+        } else {
+            have = Favorites.add(fav);
+            if (have) UI.toast(I18n.t('favorites.added', have.name));
+        }
+        li.classList.toggle('is-fav', !!Favorites.find(fav));
+        return true;
+    }
+    /* The browse list is on screen — also under the SMB browser, which
+     * draws into the same view without touching state.view. */
+    function browseShowing() {
+        var v = document.getElementById('view-browse');
+        return !!v && !v.classList.contains('hidden');
     }
 
     function browseUp() {
@@ -1018,6 +1139,7 @@
     function watchPlaylistList() {
         var ul = document.getElementById('browse-list');
         var hint = document.getElementById('hint-save');
+        var hintFav = document.getElementById('hint-fav');
         var filter = document.getElementById('playlist-filter-wrap');
         var input = document.getElementById('playlist-filter');
         // Not every keyboard layout reports typing as `input` on every
@@ -1030,6 +1152,7 @@
         if (!ul || typeof MutationObserver === 'undefined') return;
         new MutationObserver(function () {
             if (hint) hint.classList.toggle('hidden', !ul.querySelector('li[data-channel]'));
+            if (hintFav) hintFav.classList.toggle('hidden', !ul.querySelector('li[data-fav]'));
             if (filter) filter.classList.toggle('hidden', !ul.querySelector('li[data-playlist]'));
         }).observe(ul, { childList: true });
     }
@@ -2652,7 +2775,7 @@
                     return true;
                 }
                 if (caretCanMove(+1)) return false;
-                if (state.view === 'browse' && !pickerOpen && toggleSavedChannel()) return true;
+                if (browseShowing() && !pickerOpen && (toggleSavedChannel() || toggleFavoriteRow())) return true;
                 UI.moveFocus('right'); return true;
             case K.ENTER:
                 // In player view: OK activates the focused OSD button if the OSD

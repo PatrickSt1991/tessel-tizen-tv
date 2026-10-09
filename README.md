@@ -7,7 +7,7 @@ through Samsung's AVPlay.
 ## Features
 
 - **Plays almost anything the TV can decode** — H.264 / HEVC / VP9, AAC / MP3 / AC3 / EAC3, HLS / DASH / RTSP / RTMP
-- **USB, internal storage and SMB shares** — browse and stream from a NAS, Windows or Samba, with as many servers as you like
+- **USB, internal storage and SMB shares** — browse and stream from a NAS, Windows or Samba, with as many servers as you like; pin a folder to Favorites and the next episode is one step from the home screen
 - **DLNA media servers** — miniDLNA, Plex, Jellyfin, Serviio or a NAS's own server, found on the LAN without setting anything up
 - **Music that plays on while you browse** — title, artist, album and cover art from ID3, FLAC, Ogg/Opus and M4A tags, a mini-player, repeat one / all, CH± to skip
 - **Pictures, text and playlists too** — a photo viewer with slideshow, a text viewer that reads Cyrillic and Western legacy encodings, and M3U / PLS lists (IPTV channels grouped by category) off a URL, USB or a share

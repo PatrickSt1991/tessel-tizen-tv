@@ -20,7 +20,8 @@
  *     this TV already has for the same server, if it has one.
  *   - The transcode server.  Its token is no secret on the LAN (the box hands
  *     it out on /api/status without a login), so it always goes along.
- *   - The streams saved on the URL screen (issue #119).
+ *   - The streams saved on the URL screen (issue #119) and the folders
+ *     pinned to Favorites (issue #140).
  *   - The debug listener.
  *   - Recents, watched marks and resume positions, unless the user leaves
  *     them out.
@@ -32,8 +33,9 @@
  * on first use.
  *
  * The SMB server ids are kept as they are: files on an added server carry
- * &srv=<id> in their URL, so recents and resume positions only line up with
- * their server again if the id survives the round trip.
+ * &srv=<id> in their URL and pinned folders name their server by it, so
+ * recents, resume positions and favorites only line up with their server
+ * again if the id survives the round trip.
  *
  * ES5 on purpose, like the rest of the app. */
 
@@ -50,6 +52,7 @@ var Backup = (function () {
         smbExtra: 'vlctv_smb_extra_v1',
         server:   'vlctv_server_v1',
         saved:    'vlctv_saved_v1',
+        favorites: 'vlctv_favorites_v1',
         debug:    'vlctv_debug_v1'
     };
     var HISTORY_KEYS = {
@@ -102,6 +105,8 @@ var Backup = (function () {
         if (server && server.url) data.server = server;
         var saved = readJson(storage, KEYS.saved);
         if (Array.isArray(saved)) data.saved = saved;
+        var favorites = readJson(storage, KEYS.favorites);
+        if (Array.isArray(favorites)) data.favorites = favorites;
         var debug = readJson(storage, KEYS.debug);
         if (debug && typeof debug === 'object') data.debug = debug;
 
@@ -179,6 +184,7 @@ var Backup = (function () {
 
         if (d.server && d.server.url) writeJson(storage, KEYS.server, d.server);
         if (Array.isArray(d.saved)) writeJson(storage, KEYS.saved, d.saved);
+        if (Array.isArray(d.favorites)) writeJson(storage, KEYS.favorites, d.favorites);
         if (d.debug && typeof d.debug === 'object') writeJson(storage, KEYS.debug, d.debug);
 
         for (var k in HISTORY_KEYS)

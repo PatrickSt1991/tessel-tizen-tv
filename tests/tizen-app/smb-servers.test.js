@@ -225,3 +225,10 @@ test('a stream opened from Recents connects the service to its server first', fu
     t.resolve(u);
     assert.deepStrictEqual(plain(t.connected), ['x1'], 'an existing connection is reused');
 });
+
+test('parentPaths: the way back up from a folder opened straight from Favorites (issue #140)', function () {
+    var SMB = load({ creds: NAS, paired: false }).SMB;
+    assert.deepStrictEqual(plain(SMB.parentPaths('')), []);
+    assert.deepStrictEqual(plain(SMB.parentPaths('/Shows')), ['']);
+    assert.deepStrictEqual(plain(SMB.parentPaths('/Shows/Foo/Season 1')), ['', '/Shows', '/Shows/Foo']);
+});
