@@ -22,8 +22,12 @@ var UI = (function () {
         v.classList.remove('hidden');
         currentView = v;
         refreshFocusables();
-        var initial = v.querySelector('[data-focus]') || firstWidget();
-        focusOn(initial);
+        // A marked element that is hidden (the Recently Played tile with
+        // the list switched off, issue #142) doesn't take the cursor.
+        var marked = v.querySelectorAll('[data-focus]'), initial = null;
+        for (var m = 0; m < marked.length && !initial; m++)
+            if (!marked[m].classList.contains('hidden') && marked[m].offsetParent !== null) initial = marked[m];
+        focusOn(initial || firstWidget());
     }
 
     /* The first focusable that isn't a text field.  A view that opened on

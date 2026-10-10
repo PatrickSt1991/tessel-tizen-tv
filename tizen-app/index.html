@@ -32,7 +32,9 @@
     <nav class="home-tiles">
         <!-- Recently Played is intentionally the leftmost tile so the D-pad
              lands on it first — the common return-visit action is "resume
-             what I was watching", not "browse from scratch" (issue #56). -->
+             what I was watching", not "browse from scratch" (issue #56).
+             Settings can hide it (issue #142); the D-pad then lands on
+             Favorites. -->
         <button class="tile" data-action="browse-recent" data-focus>
             <div class="tile-icon">★</div>
             <div class="tile-label" data-i18n="home.recent">Recently Played</div>
@@ -320,6 +322,13 @@
             <button class="settings-row" data-action="setting-resume-mode">
                 <div class="settings-label" data-i18n="settings.resume">Resume playback</div>
                 <div class="settings-value" id="setting-resume-mode-value">Ask</div>
+            </button>
+            <button class="settings-row" data-action="setting-recent">
+                <div class="settings-label" data-i18n="home.recent">Recently Played</div>
+                <div class="settings-value" id="setting-recent-value">On</div>
+            </button>
+            <button class="settings-row" data-action="setting-recent-clear">
+                <span class="settings-label" data-i18n="settings.recentClear">Clear Recently Played</span>
             </button>
             <button class="settings-row" data-action="setting-shuffle">
                 <div class="settings-label" data-i18n="settings.shuffle">Shuffle playlist</div>

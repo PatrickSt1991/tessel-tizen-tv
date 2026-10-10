@@ -17,6 +17,7 @@
         catch (e) { return []; }
     }
     function pushRecent(item) {
+        if (!Settings.get('recentHistory')) return;   // switched off (issue #142)
         /* Subtitle entries carry a Tizen File object that won't survive
          * JSON.stringify (it serializes to {}).  Keep only the plain
          * fields needed to find the same sibling SRT on the next replay —
@@ -46,6 +47,19 @@
         list.unshift(entry);
         list = list.slice(0, 20);
         try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) {}
+    }
+
+    function clearRecent() {
+        try { localStorage.removeItem(RECENT_KEY); } catch (e) {}
+    }
+    /* The Home tile follows the setting (issue #142): hidden, the grid
+     * drops to six columns and the cursor starts on Favorites. */
+    function applyRecentTile() {
+        var on   = !!Settings.get('recentHistory');
+        var tile = document.querySelector('.tile[data-action="browse-recent"]');
+        if (tile) tile.classList.toggle('hidden', !on);
+        var grid = document.querySelector('.home-tiles');
+        if (grid) grid.classList.toggle('no-recent', !on);
     }
 
     /* ── Watched history (localStorage map uri → timestamp) ──────────
@@ -362,6 +376,7 @@
         // primary route for AVPlay files.
         installMediaSessionHandlers();
 
+        applyRecentTile();           // Recently Played tile on or off (issue #142)
         UI.showView('view-home');
         updateRepeatButton();        // reflect saved repeat preference on OSD
         updateShuffleButton();       // reflect saved shuffle preference on OSD
@@ -419,6 +434,8 @@
             case 'setting-repeat-mode':   openRepeatPicker(); break;
             case 'setting-auto-play':     openAutoPlayPicker(); break;
             case 'setting-resume-mode':   openResumeModePicker(); break;
+            case 'setting-recent':        openRecentPicker(); break;
+            case 'setting-recent-clear':  confirmRecentClear(); break;
             case 'setting-shuffle':       openShufflePicker(); break;
             case 'setting-aspect-mode':   openAspectPicker(); break;
             case 'setting-browse-filter': openBrowseFilterPicker(); break;
@@ -1811,7 +1828,7 @@
         } else if (state.origin === 'playlist' && state.playlistView) {
             if (typeof Debug !== 'undefined') Debug.view('playlist (return)');
             renderPlaylist(state.playingUri);
-        } else if (state.origin === 'recent') {
+        } else if (state.origin === 'recent' && Settings.get('recentHistory') && getRecent().length) {
             if (typeof Debug !== 'undefined') Debug.view('recent (return)');
             openRecent();
         } else {
@@ -2118,6 +2135,7 @@
         document.getElementById('setting-repeat-mode-value').textContent   = repeatName(Settings.get('repeatMode'));
         document.getElementById('setting-auto-play-value').textContent     = I18n.t(Settings.get('autoPlay') ? 'common.on' : 'common.off');
         document.getElementById('setting-resume-mode-value').textContent   = resumeModeName(Settings.get('resumeMode'));
+        document.getElementById('setting-recent-value').textContent        = I18n.t(Settings.get('recentHistory') ? 'common.on' : 'common.off');
         document.getElementById('setting-shuffle-value').textContent       = I18n.t(Settings.get('shuffle') ? 'common.on' : 'common.off');
         document.getElementById('setting-aspect-mode-value').textContent   = AspectRatio.nameFor(Settings.get('aspectMode'));
         document.getElementById('setting-browse-filter-value').textContent = browseFilterName(Settings.get('browseFilter'));
@@ -2389,6 +2407,32 @@
             UI.toast(I18n.t('toast.resume', resumeModeName(val)));
         });
     }
+    /* ── Recently Played on/off + clear (issue #142) ───────────────── */
+    function openRecentPicker() {
+        pickerSetting = 'recentHistory';
+        var cur = Settings.get('recentHistory') ? 'on' : 'off';
+        openPicker(I18n.t('home.recent'), [
+            { code: 'on',  name: I18n.t('recent.onOption') },
+            { code: 'off', name: I18n.t('recent.offOption') }
+        ], cur, function (val) {
+            Settings.set('recentHistory', val === 'on');
+            applyRecentTile();
+            refreshSettingsValues();
+            UI.toast(I18n.t('toast.setTo', I18n.t('home.recent'), I18n.t(val === 'on' ? 'common.on' : 'common.off')));
+        });
+    }
+    function confirmRecentClear() {
+        if (!getRecent().length) { UI.toast(I18n.t('recent.none')); return; }
+        openPicker(I18n.t('recent.clearConfirm'), [
+            { code: 'clear', name: I18n.t('recent.clear') },
+            { code: 'keep',  name: I18n.t('common.cancel') }
+        ], 'keep', function (code) {
+            if (code !== 'clear') return;
+            clearRecent();
+            UI.toast(I18n.t('recent.cleared'));
+        });
+    }
+
     /* ── Repeat toggle from the OSD ───────────────────────────────── */
     /* Off → all → one → off, like a music player's repeat button. */
     function toggleRepeat() {
