@@ -113,6 +113,8 @@ button:focus { outline: none; }
     grid-template-columns: repeat(7, 248px);   /* 7×248 + 6×20 = 1856px, fits 1080p */
     justify-content: center;
 }
+/* Recently Played switched off (issue #142): six tiles, still centred. */
+.home-tiles.no-recent { grid-template-columns: repeat(6, 248px); }
 
 .tile {
     background: var(--bg-card);

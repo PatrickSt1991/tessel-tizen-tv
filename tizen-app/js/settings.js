@@ -24,6 +24,10 @@ var Settings = (function () {
         // 'ask' shows a Continue / Start-over prompt, 'always' resumes
         // silently (the pre-1.5 behaviour), 'never' starts from the top.
         resumeMode:       'ask',       // 'ask' | 'always' | 'never'
+        // Keep a Recently Played list and show its tile on Home (issue
+        // #142).  Off: nothing new is remembered and the tile is hidden;
+        // what was listed before stays until it is cleared.
+        recentHistory:    true,
         shuffle:          false,       // randomize playlist order (folder + recent) instead of alphabetical
         // What the USB and SMB browsers list: 'all' files (pictures and text
         // open in the viewers, anything else is shown but can't be opened),

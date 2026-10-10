@@ -42,3 +42,10 @@ test('a slideshow shows each picture for 5 seconds unless told otherwise', funct
     assert.strictEqual(loadSettings(null).get('slideshowSeconds'), 5);
     assert.strictEqual(loadSettings({ slideshowSeconds: 30 }).get('slideshowSeconds'), 30);
 });
+
+test('a fresh install keeps a Recently Played list; a TV that switched it off stays off (issue #142)', function () {
+    assert.strictEqual(loadSettings(null).get('recentHistory'), true);
+    assert.strictEqual(loadSettings({ recentHistory: false }).get('recentHistory'), false);
+    // A stored blob from before the setting existed gets the default.
+    assert.strictEqual(loadSettings({ autoPlay: false }).get('recentHistory'), true);
+});

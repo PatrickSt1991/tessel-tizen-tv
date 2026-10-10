@@ -17,7 +17,7 @@ through Samsung's AVPlay.
 - **Resume or start over** — a half-watched file asks *Continue* or *Start from the beginning*; number keys jump by tenths
 - **Transcode server** for files the TV can't decode (DivX, DTS, TrueHD) and for real 5.1 to a soundbar — see [transcode-server](transcode-server/)
 - **INFO shows what's playing** — from the remote's INFO key or the INFO button in the player: codec, picture size and bitrate (where the stream declares one), HDR type with a warning for Dolby Vision (which Samsung TVs don't decode), audio and subtitle tracks
-- **Full remote support** — D-pad, media keys, aspect ratio, speed, repeat, shuffle, recent history
+- **Full remote support** — D-pad, media keys, aspect ratio, speed, repeat, shuffle, recent history (clear it, or switch it off, in Settings)
 
 ## Install
 
