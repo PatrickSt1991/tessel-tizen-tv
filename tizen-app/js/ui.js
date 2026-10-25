@@ -84,9 +84,33 @@ var UI = (function () {
         focusIdx = focusable.indexOf(el);
         if (focusIdx < 0) focusIdx = 0;
 
-        // Generic "scroll into view" so settings rows / picker items / browse
-        // list entries / etc. always stay visible when navigated to.
+        // A row of a scrolling list goes to the middle of the list, as far
+        // as the list's ends allow.  Not scrollIntoView({ block: 'center' }):
+        // Tizen 4.0 takes any options object as alignToTop.
+        var list = el.parentNode;
+        if (list && /auto|scroll/.test(getComputedStyle(list).overflowY)) {
+            var top = el.getBoundingClientRect().top - list.getBoundingClientRect().top
+                    - list.clientTop + list.scrollTop;
+            list.scrollTop = centredScrollTop(top, el.offsetHeight, list.clientHeight, list.scrollHeight);
+            return;
+        }
+        // Generic "scroll into view" so settings rows / picker items / etc.
+        // always stay visible when navigated to.
         try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+    }
+
+    /* Put the cursor on row of a list just drawn (default: the first row). */
+    function focusInList(list, row) {
+        refreshFocusables();
+        focusOn(row || list.firstElementChild);
+    }
+
+    /* Return the scrollTop that puts a row (offset top, height) in the
+     * middle of a list view px high and content px long, clamped to the
+     * scroll range. */
+    function centredScrollTop(top, height, view, content) {
+        var t = top + height / 2 - view / 2;
+        return Math.round(Math.max(0, Math.min(t, content - view)));
     }
 
     /* Geometric next-element search by direction.  Returns true if focus
@@ -203,6 +227,8 @@ var UI = (function () {
     return {
         showView:          showView,
         focusOn:           focusOn,
+        focusInList:       focusInList,
+        centredScrollTop:  centredScrollTop,
         moveFocus:         moveFocus,
         moveFocusCyclic:   moveFocusCyclic,
         activateFocused:   activateFocused,
@@ -211,3 +237,6 @@ var UI = (function () {
         get currentView() { return currentView; }
     };
 })();
+
+// Ignored by the Tizen/browser build; lets Node tests require these helpers.
+if (typeof module !== 'undefined' && module.exports) module.exports = UI;

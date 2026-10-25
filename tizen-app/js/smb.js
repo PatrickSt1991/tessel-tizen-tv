@@ -301,6 +301,7 @@ var SMB = (function () {
 
     /* ── browsing UI (reuses #view-browse, like the USB browser) ───────────*/
     var pathStack = [];     // breadcrumb of folder paths, '' === share root
+    var folder = '';        // path of the folder listed
     var backHandler = null;
     var current = '';       // id of the server being browsed ('' = first)
     var pickingServer = false;  // showing the server list rather than a share
@@ -400,6 +401,7 @@ var SMB = (function () {
     }
 
     function render(path, focusName) {
+        folder = path || '';
         UI.showView('view-browse');
         document.getElementById('browse-title').textContent = path ? path.split('/').pop() : I18n.t('smb.title');
         var srv = serverById(current) || {};
@@ -509,8 +511,7 @@ var SMB = (function () {
                 ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + esc(I18n.t('browse.empty')) + '</span></li>';
 
             if (window.VlcApp && window.VlcApp.markNowPlaying) window.VlcApp.markNowPlaying();
-            UI.refreshFocusables();
-            UI.focusOn(focus || ul.firstElementChild);
+            UI.focusInList(ul, focus);
 
             /* A file that isn't for the player: the viewers, the playlist
              * reader, or a toast.  Each hands the remote over (our Back
@@ -566,8 +567,7 @@ var SMB = (function () {
             exit();
             return;
         }
-        var parent = pathStack.pop();
-        render(parent);
+        render(pathStack.pop(), folder.split('/').pop());
     }
     /* Where Back from the share root goes: the Servers list that opened
      * it (js/servers.js), else Home. */
@@ -629,8 +629,7 @@ var SMB = (function () {
             ul.appendChild(li);
             if (c.id === current) focus = li;
         });
-        UI.refreshFocusables();
-        UI.focusOn(focus || ul.firstElementChild);
+        UI.focusInList(ul, focus);
     }
 
     /* The folders above `path` on a share, share root first: the way back

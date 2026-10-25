@@ -341,6 +341,7 @@ var Browser = (function () {
         listRoots:        listRoots,
         listDir:          listDir,
         parentOf:         parentOf,
+        avplayURI:        avplayURI,
         isMedia:          isMedia,
         isSubtitle:       isSubtitle,
         humanSize:        humanSize,

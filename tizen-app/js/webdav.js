@@ -172,6 +172,7 @@ var WebDAV = (function () {
 
     /* ── browsing UI (reuses #view-browse, like the SMB browser) ───────── */
     var pathStack = [];
+    var folder = '';        // path of the folder listed
     var backHandler = null;
     var current = '';
     var pickingServer = false;
@@ -196,11 +197,11 @@ var WebDAV = (function () {
     }
     function message(icon, text) {
         ul().innerHTML = '<li><span class="icon">' + icon + '</span><span class="name">' + esc(text) + '</span></li>';
-        UI.refreshFocusables();
-        UI.focusOn(ul().firstElementChild);
+        UI.focusInList(ul());
     }
 
     function render(path, focusName) {
+        folder = path || '';
         var srv = current, s = serverById(srv) || {};
         head(path ? path.split('/').pop() : serverLabel(s), serverLabel(s) + (path || '/'));
         message('…', I18n.t('common.loading'));
@@ -282,8 +283,7 @@ var WebDAV = (function () {
                 list_.innerHTML = '<li><span class="icon">i</span><span class="name">' + esc(I18n.t('browse.empty')) + '</span></li>';
 
             if (window.VlcApp && window.VlcApp.markNowPlaying) window.VlcApp.markNowPlaying();
-            UI.refreshFocusables();
-            UI.focusOn(focus || list_.firstElementChild);
+            UI.focusInList(list_, focus);
 
             /* A file that isn't for the player: the viewers, the playlist
              * reader, or a toast — the same hand-offs the SMB browser makes. */
@@ -333,7 +333,7 @@ var WebDAV = (function () {
             exit();
             return;
         }
-        render(pathStack.pop());
+        render(pathStack.pop(), folder.split('/').pop());
     }
     /* Where Back from the root goes: the Servers list that opened it
      * (js/servers.js), else Home. */
@@ -390,8 +390,7 @@ var WebDAV = (function () {
             list_.appendChild(li);
             if (s.id === current) focus = li;
         });
-        UI.refreshFocusables();
-        UI.focusOn(focus || list_.firstElementChild);
+        UI.focusInList(list_, focus);
     }
 
     /* Connect to server `id` and list `path` on it ('' or absent: the

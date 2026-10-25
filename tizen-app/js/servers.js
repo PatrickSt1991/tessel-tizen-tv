@@ -87,8 +87,7 @@ var Servers = (function () {
         var add = row('+', I18n.t('servers.add'));
         add.addEventListener('click', addServer);
         list.appendChild(add);
-        UI.refreshFocusables();
-        UI.focusOn(focus || list.firstElementChild);
+        UI.focusInList(list, focus);
     }
 
     /* Hand over to the browser for `s`.  Our Back goes first: the browser

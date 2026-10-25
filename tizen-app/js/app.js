@@ -648,7 +648,7 @@
     }
 
     /* ── File browser ─────────────────────────────────────────────── */
-    function openBrowserAtRoot() {
+    function openBrowserAtRoot(focusPath) {
         state.browseAtRoot = true;
         state.browseDir   = null;
         state.listBack    = null;
@@ -669,6 +669,7 @@
                              + '<span class="name">' + escapeHtml(I18n.t('browse.noStorage')) + '</span></li>';
                 return;
             }
+            var focus = null;
             roots.forEach(function (r, i) {
                 var li = document.createElement('li');
                 li.dataset.tag = 'root-' + i;
@@ -685,8 +686,9 @@
                     listInto(r.dir);
                 });
                 ul.appendChild(li);
+                if (focusPath && r.fullPath === focusPath) focus = li;
             });
-            UI.refreshFocusables(); UI.focusOn(ul.firstElementChild);
+            UI.focusInList(ul, focus);
         });
     }
 
@@ -807,8 +809,7 @@
             if (!ul.children.length)
                 ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + escapeHtml(I18n.t('browse.empty')) + '</span></li>';
             markNowPlaying();
-            UI.refreshFocusables();
-            UI.focusOn(focus || ul.firstElementChild);
+            UI.focusInList(ul, focus);
             fillLengths(rows);
         });
     }
@@ -891,8 +892,7 @@
             li.addEventListener('click', function () { openFavorite(f); });
             ul.appendChild(li);
         });
-        UI.refreshFocusables();
-        UI.focusOn(ul.firstElementChild);
+        UI.focusInList(ul);
     }
     function openFavorite(f) {
         if (typeof Debug !== 'undefined') Debug.action('favorite ' + f.kind + ' ' + f.path);
@@ -998,11 +998,12 @@
         return !!v && !v.classList.contains('hidden');
     }
 
+    /* Go up a level, with the cursor on the folder that was listed. */
     function browseUp() {
         if (state.browseAtRoot) { backToHome(); return; }
         var p = Browser.parentOf(state.browseDir);
-        if (!p) { openBrowserAtRoot(); return; }
-        listInto(p);
+        if (!p) { openBrowserAtRoot(state.browseDir && state.browseDir.fullPath); return; }
+        listInto(p, Browser.avplayURI(state.browseDir));
     }
 
     function openRecent() {
@@ -1030,8 +1031,7 @@
             ul.appendChild(li);
         });
         markNowPlaying();
-        UI.refreshFocusables();
-        UI.focusOn(ul.firstElementChild);
+        UI.focusInList(ul);
     }
 
     /* ── Playlists (issue #110) ───────────────────────────────────────
@@ -1169,8 +1169,8 @@
         }
         markNowPlaying();
         loadLogos(ul);
-        UI.refreshFocusables();
-        if (!keepFocus) UI.focusOn(focus || ul.firstElementChild);
+        if (keepFocus) UI.refreshFocusables();
+        else UI.focusInList(ul, focus);
     }
 
     /* The playlist filter (issue #122): what's typed matches anywhere in a
