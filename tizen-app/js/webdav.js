@@ -172,6 +172,7 @@ var WebDAV = (function () {
 
     /* ── browsing UI (reuses #view-browse, like the SMB browser) ───────── */
     var pathStack = [];
+    var folder = '';        // path of the folder listed
     var backHandler = null;
     var current = '';
     var pickingServer = false;
@@ -200,6 +201,7 @@ var WebDAV = (function () {
     }
 
     function render(path, focusName) {
+        folder = path || '';
         var srv = current, s = serverById(srv) || {};
         head(path ? path.split('/').pop() : serverLabel(s), serverLabel(s) + (path || '/'));
         message('…', I18n.t('common.loading'));
@@ -331,7 +333,7 @@ var WebDAV = (function () {
             exit();
             return;
         }
-        render(pathStack.pop());
+        render(pathStack.pop(), folder.split('/').pop());
     }
     /* Where Back from the root goes: the Servers list that opened it
      * (js/servers.js), else Home. */

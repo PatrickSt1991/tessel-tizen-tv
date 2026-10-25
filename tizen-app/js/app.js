@@ -648,7 +648,7 @@
     }
 
     /* ── File browser ─────────────────────────────────────────────── */
-    function openBrowserAtRoot() {
+    function openBrowserAtRoot(focusPath) {
         state.browseAtRoot = true;
         state.browseDir   = null;
         state.listBack    = null;
@@ -669,6 +669,7 @@
                              + '<span class="name">' + escapeHtml(I18n.t('browse.noStorage')) + '</span></li>';
                 return;
             }
+            var focus = null;
             roots.forEach(function (r, i) {
                 var li = document.createElement('li');
                 li.dataset.tag = 'root-' + i;
@@ -685,8 +686,9 @@
                     listInto(r.dir);
                 });
                 ul.appendChild(li);
+                if (focusPath && r.fullPath === focusPath) focus = li;
             });
-            UI.focusInList(ul);
+            UI.focusInList(ul, focus);
         });
     }
 
@@ -996,11 +998,12 @@
         return !!v && !v.classList.contains('hidden');
     }
 
+    /* Go up a level, with the cursor on the folder that was listed. */
     function browseUp() {
         if (state.browseAtRoot) { backToHome(); return; }
         var p = Browser.parentOf(state.browseDir);
-        if (!p) { openBrowserAtRoot(); return; }
-        listInto(p);
+        if (!p) { openBrowserAtRoot(state.browseDir && state.browseDir.fullPath); return; }
+        listInto(p, Browser.avplayURI(state.browseDir));
     }
 
     function openRecent() {
