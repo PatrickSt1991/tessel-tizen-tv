@@ -1,0 +1,69 @@
+name: Version check
+
+# Every merge to main that touches tizen-app/ publishes a release named after
+# the version in tizen-app/config.xml, so a PR that changes the app must raise
+# that version.  This runs on every PR (no paths filter) so it can be a
+# required check: when the PR leaves tizen-app/ alone it passes straight away.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  version-check:
+    name: version-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install xmllint
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+
+      - name: Require a config.xml version bump when tizen-app/ changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch -q origin "$BASE_REF"
+
+          if git diff --quiet "origin/$BASE_REF...HEAD" -- tizen-app; then
+            echo "tizen-app/ unchanged; no version bump needed."
+            exit 0
+          fi
+
+          BASE_VER=$(git show "origin/$BASE_REF:tizen-app/config.xml" | xmllint --xpath 'string(/*/@version)' -)
+          HEAD_VER=$(xmllint --xpath 'string(/*/@version)' tizen-app/config.xml)
+          echo "config.xml version: $BASE_VER on $BASE_REF, $HEAD_VER in this PR"
+
+          fail() {
+            echo "::error file=tizen-app/config.xml::$1"
+            exit 1
+          }
+
+          if ! [[ "$HEAD_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            fail "config.xml version '$HEAD_VER' is not MAJOR.MINOR.PATCH"
+          fi
+          if [ "$HEAD_VER" = "$BASE_VER" ]; then
+            fail "tizen-app/ changed but config.xml is still $BASE_VER; every merge to main publishes a release named after this version, so bump it (e.g. $(awk -F. '{print $1"."$2+1".0"}' <<<"$BASE_VER") or $(awk -F. '{print $1"."$2"."$3+1}' <<<"$BASE_VER"))"
+          fi
+          if [ "$(printf '%s\n%s\n' "$BASE_VER" "$HEAD_VER" | sort -V | tail -1)" != "$HEAD_VER" ]; then
+            fail "config.xml version $HEAD_VER is lower than $BASE_VER on $BASE_REF"
+          fi
+
+          # A release with this version may already exist, for example when
+          # another PR bumped to the same number and merged first.
+          LATEST=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
+                     --jq '[.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+-")) | sub("^v"; "") | sub("-[0-9]{8}-[0-9]{4}$"; "")] | sort_by(split(".") | map(tonumber)) | last // ""')
+          if [ -n "$LATEST" ] && [ "$(printf '%s\n%s\n' "$LATEST" "$HEAD_VER" | sort -V | tail -1)" != "$HEAD_VER" ] ; then
+            fail "config.xml version $HEAD_VER is not above the newest release v$LATEST; pick a higher number"
+          fi
+          if [ "$LATEST" = "$HEAD_VER" ]; then
+            fail "a release v$HEAD_VER already exists; pick a higher number"
+          fi
+
+          echo "OK: $BASE_VER -> $HEAD_VER"
