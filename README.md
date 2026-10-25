@@ -50,7 +50,7 @@ Works on Tizen TVs from 2017 onward. SMB shares, DLNA and WebDAV servers need Ti
 bash tizen-app/build.sh      # unsigned .wgt in dist/
 ```
 
-GitHub Actions builds and publishes a release on every merge to `main`.
+GitHub Actions builds and publishes a release on every merge to `main`, named after the `version` in `tizen-app/config.xml`. A pull request that changes anything under `tizen-app/` therefore bumps that version too (new feature: minor, fix: patch); the *version-check* workflow blocks the merge until it does.
 
 ## Translations
 

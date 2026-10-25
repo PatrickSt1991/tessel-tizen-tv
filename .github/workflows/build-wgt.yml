@@ -129,6 +129,24 @@ jobs:
           ls -lh release/
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      # Backstop for the version-check PR workflow: a push to main that did not
+      # bump config.xml would otherwise stamp a second release with the same
+      # version.  Fail here instead of publishing a duplicate.
+      - name: Refuse to release an already released version
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
+                       --jq --arg v "v$VERSION-" '[.[].tagName | select(startswith($v))] | join(", ")')
+          if [ -n "$EXISTING" ]; then
+            echo "::error file=tizen-app/config.xml::version $VERSION is already released as $EXISTING; bump the version in tizen-app/config.xml"
+            exit 1
+          fi
+          echo "No release for v$VERSION yet."
+
       - name: Upload artifact (per-run)
         uses: actions/upload-artifact@v4
         with:
