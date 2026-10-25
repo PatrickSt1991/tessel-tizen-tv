@@ -412,14 +412,33 @@ button:focus { outline: none; }
 /* AVPlay subtitle overlay — for embedded text/subtitle tracks selected via
  * the CC menu.  AVPlay fires onsubtitlechange(duration, text, ...) and we
  * paint into this element.  HTML5 <track> handles its own rendering. */
-/* Size + font come from the user's Settings via CSS custom properties set in
- * SubtitleStyle.apply(); position + background come from the sub-pos-XXX and
- * sub-bg classes toggled on this element.  Defaults below match the medium/
- * sans/bottom/none preset so the overlay looks right even before apply() runs. */
+/* Size, font and colour come from the user's Settings via CSS custom
+ * properties set in SubtitleStyle.apply(); the background box comes from the
+ * sub-bg class toggled on this element.  Position is not a class here — the
+ * player routes each cue into one of the .sub-band zones below (an
+ * unpositioned cue follows the subtitlePosition setting).  Defaults below
+ * match the medium/sans/none preset so the overlay looks right even before
+ * apply() runs. */
+/* The overlay fills the video area; its three bands do the positioning so a
+ * \an-placed sign and the bottom dialogue can show at the same time. */
 #subtitle-overlay {
     position: absolute;
+    left: 0; right: 0; top: 0; bottom: 0;
+    pointer-events: none;
+    /* Bumped from 50 to 80 — the OSDs have no explicit z-index (auto/0)
+     * but on Tizen Chromium 63 they appear to obscure the overlay anyway.
+     * 80 keeps it below the pickers (200) and toast (1000). */
+    z-index: 80;
+}
+/* One band per vertical zone.  Font, colour and the outline shadow live here
+ * (read from the --sub-* custom properties the Settings panel sets) so every
+ * .sub-line inherits them.  A column flexbox stacks cues that share a band. */
+.sub-band {
+    position: absolute;
     left: 8%; right: 8%;
-    bottom: 8%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     text-align: center;
     color: var(--sub-color, #fff);
     font-size: var(--sub-size, 36px);
@@ -432,29 +451,25 @@ button:focus { outline: none; }
         -2px 2px 0 rgba(0,0,0,.85),
          2px -2px 0 rgba(0,0,0,.85),
         -2px -2px 0 rgba(0,0,0,.85);
-    pointer-events: none;
-    /* Bumped from 50 to 80 — the OSDs have no explicit z-index (auto/0)
-     * but on Tizen Chromium 63 they appear to obscure the overlay anyway.
-     * 80 keeps it below the pickers (200) and toast (1000). */
-    z-index: 80;
 }
-/* Position presets.  Bottom is the default; middle/top free the opposite
- * anchor so the block grows in the right direction. */
-#subtitle-overlay.sub-pos-bottom { top: auto; bottom: 8%; transform: none; }
-#subtitle-overlay.sub-pos-top    { bottom: auto; top: 8%; transform: none; }
-#subtitle-overlay.sub-pos-middle { top: 50%; bottom: auto; transform: translateY(-50%); }
+.sub-band-top    { top: 8%; }
+.sub-band-middle { top: 50%; transform: translateY(-50%); }
+.sub-band-bottom { bottom: 8%; justify-content: flex-end; }
 
 /* The cue text lives in a .sub-line span so a translucent box (when enabled)
- * hugs the text instead of spanning the full 8%-to-8% width. */
+ * hugs the text instead of spanning the full 8%-to-8% band width. */
 #subtitle-overlay .sub-line {
     /* inline-block is more reliable than inline on Tizen Chromium 63 for
-     * absolutely-positioned text-align:center containers — pure inline
-     * spans sometimes rendered invisibly there. */
+     * text-align:center containers — pure inline spans sometimes rendered
+     * invisibly there. */
     display: inline-block;
+    max-width: 100%;
     white-space: pre-line;
     -webkit-box-decoration-break: clone;
     box-decoration-break: clone;
 }
+/* Gap between cues stacked in the same band. */
+#subtitle-overlay .sub-line + .sub-line { margin-top: .15em; }
 #subtitle-overlay.sub-bg .sub-line {
     background: rgba(0,0,0,.65);
     padding: .08em .35em;

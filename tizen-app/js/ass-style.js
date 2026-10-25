@@ -101,6 +101,7 @@ var AssStyle = (function () {
         var byName = {};
         var fmt = null;
         var inStyles = false;
+        var legacy = false;        // [V4 Styles] numbers alignment the SSA way
 
         for (var i = 0; i < lines.length; i++) {
             var l = lines[i].trim();
@@ -110,6 +111,7 @@ var AssStyle = (function () {
                 var section = l.toLowerCase();
                 inStyles = (section === '[v4+ styles]' || section === '[v4 styles]' ||
                             section === '[v4++ styles]');
+                legacy = (section === '[v4 styles]');
                 fmt = null;
                 continue;
             }
@@ -131,6 +133,7 @@ var AssStyle = (function () {
             byName[name.toLowerCase()] = {
                 name:      name,
                 colour:    decodeColour(field(parts, fmt, 'primarycolour')),
+                alignment: normAlignment(field(parts, fmt, 'alignment'), legacy),
                 bold:      truthy(field(parts, fmt, 'bold')),
                 italic:    truthy(field(parts, fmt, 'italic')),
                 underline: truthy(field(parts, fmt, 'underline')),
@@ -159,6 +162,75 @@ var AssStyle = (function () {
         if (v == null) return false;
         var n = parseInt(String(v).trim(), 10);
         return !isNaN(n) && n !== 0;
+    }
+
+    /* Alignment as an ASS numpad value (1-9).  ASS ([V4+ Styles]) already
+     * uses the numpad layout; older SSA ([V4 Styles]) uses its own numbering,
+     * converted here.  Missing/garbage falls back to 2 (bottom-centre). */
+    function normAlignment(v, legacy) {
+        var n = parseInt(String(v == null ? '' : v).trim(), 10);
+        if (isNaN(n)) return 2;
+        if (legacy) return ssaToNumpad(n) || 2;
+        return (n >= 1 && n <= 9) ? n : 2;
+    }
+    /* Legacy SSA alignment → ASS numpad.  SSA: 1-3 bottom L/C/R, 5-7 top,
+     * 9-11 middle.  Returns 0 for anything unrecognised. */
+    function ssaToNumpad(n) {
+        switch (n) {
+            case 1:  return 1; case 2:  return 2; case 3:  return 3;
+            case 5:  return 7; case 6:  return 8; case 7:  return 9;
+            case 9:  return 4; case 10: return 5; case 11: return 6;
+            default: return 0;
+        }
+    }
+
+    /* ── Position (\an / \a) ──────────────────────────────────────────────
+     *
+     * The player paints cues into three vertical bands so a positioned sign
+     * and the bottom dialogue can show at once.  These map ASS alignment to a
+     * band + horizontal side; `resolvePosition` combines an inline override
+     * with the style default and decides whether the cue is positioned at all.
+     */
+
+    /* Last \an<1-9> (numpad) or legacy \a<n> override in a Dialogue Text wins,
+     * as in libass; returns a numpad 1-9, or null when there's no override. */
+    function inlineAlignment(raw) {
+        var re = /\\a(n)?(\d{1,2})/gi, m, val = null;
+        while ((m = re.exec(String(raw == null ? '' : raw)))) {
+            var n = parseInt(m[2], 10);
+            if (m[1]) {                            // \an → numpad
+                if (n >= 1 && n <= 9) val = n;
+            } else {                               // \a  → legacy SSA
+                var c = ssaToNumpad(n);
+                if (c) val = c;
+            }
+        }
+        return val;
+    }
+    function bandFromAlignment(an) {
+        if (an >= 7) return 'top';
+        if (an >= 4) return 'middle';
+        return 'bottom';
+    }
+    function hAlignFromAlignment(an) {
+        var col = (an - 1) % 3;                    // 0 left, 1 centre, 2 right
+        return col === 0 ? 'left' : col === 2 ? 'right' : 'center';
+    }
+
+    /* {band, halign} for a Dialogue line.  An inline \an/\a wins; otherwise a
+     * style whose Alignment isn't the bottom-centre default (2) is honoured.
+     * A plain default-bottom line returns band null (and halign null) so the
+     * caller can leave it to the user's position preference — only lines that
+     * actually ask to sit elsewhere get pinned to a band. */
+    function resolvePosition(rawText, style) {
+        var inlineAn = inlineAlignment(rawText);
+        var styleAn  = style && style.alignment ? style.alignment : null;
+        var explicit = (inlineAn != null) || (styleAn != null && styleAn !== 2);
+        var an       = (inlineAn != null) ? inlineAn : (styleAn || 2);
+        return {
+            band:   explicit ? bandFromAlignment(an)  : null,
+            halign: explicit ? hAlignFromAlignment(an) : null
+        };
     }
 
     /* ── Inline overrides → runs ──────────────────────────────────────────
@@ -404,8 +476,11 @@ var AssStyle = (function () {
         toRuns:        toRuns,
         plainText:     plainText,
         isPlain:       isPlain,
-        forFile:       forFile,
-        decodeColour:  decodeColour
+        forFile:         forFile,
+        decodeColour:    decodeColour,
+        ssaToNumpad:     ssaToNumpad,
+        inlineAlignment: inlineAlignment,
+        resolvePosition: resolvePosition
     };
 })();
 

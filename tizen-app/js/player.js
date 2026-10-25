@@ -263,7 +263,8 @@ var Player = (function () {
     var subClearTimer = null;
     var extCues = null;            // parsed external cues [{start, end, text}]
     var extPollTimer = null;
-    var extLastCueIdx = -1;
+    var extLastSig = null;         // signature of the last painted active-cue set
+    var lastCues = null;           // last cue list handed to renderCues (for restyle)
     /* Gate for AVPlay's native onsubtitlechange callback.  Default false so
      * the firmware's stray "first cue of the default-selected embedded TEXT
      * track" fire at file-open doesn't flash on screen when the user has
@@ -288,50 +289,16 @@ var Player = (function () {
             if (typeof Debug !== 'undefined') Debug.warn('showSubtitleText: #subtitle-overlay not found');
             return;
         }
-        var raw = text;
-        var s = String(text == null ? '' : text)
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<[^>]+>/g, '')
-            .replace(/\{\\[^}]*\}/g, '')                 // ASS override tags
-            .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
-            .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"')
-            .trim();
-        if (typeof Debug !== 'undefined')
-            Debug.player('showSubtitleText raw=' + JSON.stringify(String(raw || '').slice(0, 50)) +
-                         ' clean=' + JSON.stringify(s.slice(0, 50)) +
-                         ' overlayClasses=' + el.className);
-        if (!s) { hideSubtitleText(); return; }
-        // Paint into a .sub-line span (not the overlay directly) so an
-        // optional translucent background box hugs the text rather than the
-        // full overlay width.  textContent keeps it injection-safe.
-        var line = el.firstChild;
-        if (!line || line.className !== 'sub-line') {
-            el.textContent = '';
-            line = document.createElement('span');
-            line.className = 'sub-line';
-            el.appendChild(line);
-        }
-        if (runs && runs.length) paintRuns(line, runs);
-        else                     line.textContent = s;
-        el.classList.remove('hidden');
-        if (typeof Debug !== 'undefined' && window.getComputedStyle) {
-            var elCs   = window.getComputedStyle(el);
-            var lineCs = window.getComputedStyle(line);
-            var elRect = el.getBoundingClientRect();
-            var lnRect = line.getBoundingClientRect();
-            Debug.player('  painted: overlay disp=' + elCs.display +
-                         ' visi=' + elCs.visibility + ' op=' + elCs.opacity +
-                         ' z=' + elCs.zIndex + ' rect=' + Math.round(elRect.left) +
-                         ',' + Math.round(elRect.top) + ' ' + Math.round(elRect.width) +
-                         'x' + Math.round(elRect.height));
-            Debug.player('  painted: line disp=' + lineCs.display +
-                         ' visi=' + lineCs.visibility + ' op=' + lineCs.opacity +
-                         ' color=' + lineCs.color + ' fs=' + lineCs.fontSize +
-                         ' rect=' + Math.round(lnRect.left) + ',' + Math.round(lnRect.top) +
-                         ' ' + Math.round(lnRect.width) + 'x' + Math.round(lnRect.height));
-        }
-        clearTimeout(subClearTimer);
+        /* The native (embedded-track) and onevent paths deliver one cue with
+         * no position of its own — paint it as a single default-banded cue
+         * and keep the firmware-duration safety timer below.  The external
+         * poller calls renderCues() directly for its (possibly overlapping)
+         * set and relies on its own re-poll to clear, so no timer there. */
+        var painted = renderCues([{ text: text, runs: runs || null,
+                                    band: null, halign: null }]);
+        if (!painted) { hideSubtitleText(); return; }
 
+        clearTimeout(subClearTimer);
         /* AVPlay's `duration` parameter is inconsistent between firmwares
          * and delivery paths:
          *   - embedded TEXT track via setSelectTrack: microseconds
@@ -350,6 +317,96 @@ var Player = (function () {
         }
         if (d <= 0 || d > 30000) d = 8000;   // safety net + upper bound
         subClearTimer = setTimeout(hideSubtitleText, d);
+    }
+
+    /* Paint a set of simultaneously-active cues into the overlay's three
+     * vertical bands.  Each cue: {text, runs, band, halign}.  A null band
+     * follows the user's subtitlePosition setting, so an unpositioned line
+     * lands exactly where it always did, while a \an-positioned sign goes to
+     * its own band instead of clobbering (or being clobbered by) the
+     * dialogue.  Cues sharing a band stack vertically.  Returns true when at
+     * least one cue was painted.  textContent (never innerHTML) keeps subtitle
+     * files — untrusted input off the network — injection-safe. */
+    function renderCues(cues) {
+        var el = subEl();
+        if (!el) return false;
+        clearTimeout(subClearTimer);          // a fresh paint cancels any stale timer
+        var bands = ensureBands(el);
+        bands.top.textContent = '';
+        bands.middle.textContent = '';
+        bands.bottom.textContent = '';
+
+        var def = defaultBand();
+        var painted = 0;
+        for (var i = 0; i < (cues ? cues.length : 0); i++) {
+            var c = cues[i] || {};
+            var hasRuns = !!(c.runs && c.runs.length);
+            var text = hasRuns ? null : cleanCueText(c.text);
+            if (!hasRuns && !text) continue;
+
+            var band = bands[c.band || def] || bands.bottom;
+            var line = document.createElement('span');
+            line.className = 'sub-line';
+            if (c.halign && c.halign !== 'center') {
+                line.style.textAlign = c.halign;
+                line.style.alignSelf = c.halign === 'left' ? 'flex-start' : 'flex-end';
+            }
+            if (hasRuns) paintRuns(line, c.runs);
+            else         line.textContent = text;
+            band.appendChild(line);
+            painted++;
+        }
+
+        if (painted) { lastCues = cues; el.classList.remove('hidden'); }
+        else         { lastCues = null; el.classList.add('hidden'); }
+        return painted > 0;
+    }
+
+    /* The overlay fills the video area and hosts three absolutely-positioned
+     * bands (top / middle / bottom), built lazily and reused.  Any legacy
+     * direct .sub-line child from an older build is cleared on first build. */
+    function ensureBands(el) {
+        if (!el.querySelector('.sub-band-top')) {
+            el.textContent = '';
+            el.appendChild(makeBand('top'));
+            el.appendChild(makeBand('middle'));
+            el.appendChild(makeBand('bottom'));
+        }
+        return {
+            top:    el.querySelector('.sub-band-top'),
+            middle: el.querySelector('.sub-band-middle'),
+            bottom: el.querySelector('.sub-band-bottom')
+        };
+    }
+    function makeBand(name) {
+        var d = document.createElement('div');
+        d.className = 'sub-band sub-band-' + name;
+        return d;
+    }
+    /* Which band an unpositioned cue uses — the user's position preference. */
+    function defaultBand() {
+        var p = 'bottom';
+        try {
+            if (typeof Settings !== 'undefined') p = Settings.get('subtitlePosition') || 'bottom';
+        } catch (e) {}
+        return (p === 'top' || p === 'middle') ? p : 'bottom';
+    }
+    function cleanCueText(text) {
+        return String(text == null ? '' : text)
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/\{\\[^}]*\}/g, '')                 // ASS override tags
+            .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"')
+            .trim();
+    }
+    /* Re-render the last painted cues — called when a live subtitle setting
+     * (position) changes so an on-screen cue moves at once instead of waiting
+     * for the next cue. */
+    function repaintSubtitles() {
+        var el = subEl();
+        if (!el || el.classList.contains('hidden') || !lastCues) return;
+        renderCues(lastCues);
     }
     /* Build one <span> per styled run inside the .sub-line wrapper.
      * textContent (never innerHTML) keeps subtitle files — untrusted input
@@ -378,8 +435,16 @@ var Player = (function () {
 
     function hideSubtitleText() {
         clearTimeout(subClearTimer);
+        lastCues = null;
         var el = subEl();
-        if (el) { el.textContent = ''; el.classList.add('hidden'); }
+        if (!el) return;
+        var bands = el.querySelectorAll('.sub-band');
+        if (bands.length) {
+            for (var i = 0; i < bands.length; i++) bands[i].textContent = '';
+        } else {
+            el.textContent = '';
+        }
+        el.classList.add('hidden');
     }
 
     /* ── External subtitle file (time-based, backend-agnostic) ──────────
@@ -395,7 +460,7 @@ var Player = (function () {
         // by the background scanner without rewriting a growing SRT file.
         if (sub && Array.isArray(sub.cues)) {
             extCues = sub.cues;
-            extLastCueIdx = -1;
+            extLastSig = null;
             extPollTimer = setInterval(extPoll, 250);
             return;
         }
@@ -415,7 +480,7 @@ var Player = (function () {
                 default:                    extCues = parseSrtCues(text); break;
             }
             if (typeof Debug !== 'undefined') Debug.player('external sub loaded: ' + extCues.length + ' cues');
-            extLastCueIdx = -1;
+            extLastSig = null;
             extPollTimer = setInterval(extPoll, 250);
         });
     }
@@ -423,7 +488,7 @@ var Player = (function () {
         clearInterval(extPollTimer);
         extPollTimer = null;
         extCues = null;
-        extLastCueIdx = -1;
+        extLastSig = null;
         hideSubtitleText();
     }
     var extPollDebugCount = 0;
@@ -435,28 +500,32 @@ var Player = (function () {
         } else if (backend === BACKEND_HTML5) {
             t = h5el().currentTime || 0;
         }
-        // Find the cue whose [start, end) contains t.  Cues are sorted; we
-        // binary-ish search by scanning since N is small.
-        var idx = -1;
+        // Collect EVERY cue active at t, not just the first — overlapping
+        // Dialogue lines (e.g. a \an8 sign over bottom dialogue) must all
+        // show rather than the earlier-starting one winning and the rest
+        // being dropped.  Cues are start-sorted, so stop once one starts
+        // after t; a scan is fine since N is small.
+        var active = [];
         for (var i = 0; i < extCues.length; i++) {
-            if (t >= extCues[i].start && t < extCues[i].end) { idx = i; break; }
             if (extCues[i].start > t) break;
+            if (t < extCues[i].end) active.push(i);
         }
+        var sig = active.join(',');
         // Heartbeat every ~5 s so we can confirm the poll is alive even
-        // when the cue isn't changing.
+        // when the active set isn't changing.
         extPollDebugCount++;
         if (typeof Debug !== 'undefined' && (extPollDebugCount % 20) === 1) {
-            Debug.player('extPoll alive t=' + t.toFixed(2) + 's idx=' + idx +
-                         ' last=' + extLastCueIdx + ' cues=' + extCues.length);
+            Debug.player('extPoll alive t=' + t.toFixed(2) + 's active=[' + sig +
+                         '] cues=' + extCues.length);
         }
-        if (idx === extLastCueIdx) return;
-        extLastCueIdx = idx;
+        if (sig === extLastSig) return;
+        extLastSig = sig;
         if (typeof Debug !== 'undefined')
-            Debug.player('extPoll cue change → idx=' + idx +
-                         (idx >= 0 ? ' text=' + JSON.stringify((extCues[idx].text || '').slice(0, 60)) : ''));
-        if (idx < 0) hideSubtitleText();
-        else         showSubtitleText(extCues[idx].text, 0,     // 0 → no timer
-                                      extCues[idx].runs);
+            Debug.player('extPoll active change → [' + sig + ']');
+        if (!active.length) { hideSubtitleText(); return; }
+        var cues = [];
+        for (var j = 0; j < active.length; j++) cues.push(extCues[active[j]]);
+        renderCues(cues);
     }
 
     /* SRT/VTT timecode line, e.g. "00:01:02,500 --> 00:01:05,000" (both ,
@@ -559,22 +628,36 @@ var Player = (function () {
             var end   = assTimeToSecs(parts[eI]);
             if (start == null || end == null || end <= start) continue;
 
+            var stI     = fmt.indexOf('style');
+            var styleNm = stI >= 0 ? parts[stI] : '';
+            var rawText = parts[tI] || '';
+
             var text, runs = null;
             if (assStyles) {
-                var stI = fmt.indexOf('style');
-                runs = assStyles.runs(parts[tI] || '', stI >= 0 ? parts[stI] : '');
+                runs = assStyles.runs(rawText, styleNm);
                 text = AssStyle.plainText(runs);
                 // Nothing to draw differently → keep the cheap paint path.
                 if (AssStyle.isPlain(runs)) runs = null;
             } else {
-                text = (parts[tI] || '')
+                text = rawText
                     .replace(/\{[^}]*\}/g, '')   // {\b1}, {\an8}, drawing tags …
                     .replace(/\\N/gi, '\n')      // hard + soft line breaks
                     .replace(/\\h/gi, ' ')       // hard space
                     .replace(/<[^>]+>/g, '')     // stray HTML
                     .trim();
             }
-            if (text) out.push({ start: start, end: end, text: text, runs: runs });
+
+            /* Position the cue into a band (top / middle / bottom) from its
+             * \an/\a override or non-default style Alignment; a plain
+             * bottom-default line gets band null so it still follows the
+             * user's subtitlePosition setting.  See AssStyle.resolvePosition. */
+            var pos = (typeof AssStyle !== 'undefined' && AssStyle.resolvePosition)
+                ? AssStyle.resolvePosition(rawText,
+                      (assStyles && assStyles.table) ? assStyles.table.get(styleNm) : null)
+                : { band: null, halign: null };
+
+            if (text) out.push({ start: start, end: end, text: text, runs: runs,
+                                 band: pos.band, halign: pos.halign });
         }
         // ASS dialogue lines aren't required to be in chronological order;
         // the poller's scan assumes sorted cues, so sort by start.
@@ -2477,6 +2560,13 @@ var Player = (function () {
         return backend === BACKEND_AVPLAY && currentSpeed !== 1;
     }
 
+    /* Node test hook (ignored by the Tizen/browser build, which has no
+     * `module`): exposes the pure cue parser so tests can feed it .ass text
+     * and assert overlapping lines survive with their position bands. */
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = { parseAssCues: parseAssCues };
+    }
+
     return {
         setListener:        setListener,
         open:               open,
@@ -2501,6 +2591,7 @@ var Player = (function () {
         setSpeed:           setSpeed,
         getSpeed:           getSpeed,
         getBackend:         getBackend,
-        isSpeedMuted:       isSpeedMuted
+        isSpeedMuted:       isSpeedMuted,
+        repaintSubtitles:   repaintSubtitles
     };
 })();

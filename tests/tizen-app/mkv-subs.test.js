@@ -2,6 +2,9 @@
 
 var assert = require('assert');
 var test = require('node:test');
+// mkv-subs.js reads the AssStyle global (loaded as a <script> on-device) to
+// colour and position embedded ASS cues; provide it before requiring.
+global.AssStyle = require('../../tizen-app/js/ass-style.js');
 var MkvSubs = require('../../tizen-app/js/mkv-subs.js');
 
 /* ── Minimal EBML writer ──────────────────────────────────────────────
@@ -531,6 +534,38 @@ test('extractTrack applies the ASS style table from CodecPrivate', async functio
     assert.strictEqual(res.cues.length, 1);
     assert.strictEqual(res.cues[0].text, 'Xin chào bạn');
     assert.strictEqual(res.cues[0].start, 0.5);
+});
+
+test('extractTrack positions an embedded \\an sign the same as a sidecar .ass', async function () {
+    var priv = '[V4+ Styles]\n' +
+        'Format: Name, Fontname, Fontsize, PrimaryColour, Alignment\n' +
+        'Style: Default,Arial,48,&H00FFFFFF,2\n[Events]\n';
+    var entries = concat(
+        videoTrack(1),
+        el(ID.TRACKENTRY, concat(
+            el(ID.TRACKNUMBER, u8(2)),
+            el(ID.TRACKTYPE, u8(17)),
+            el(ID.CODECID, str('S_TEXT/ASS')),
+            el(ID.LANGUAGE, str('vie')),
+            el(CUE_ID.CODECPRIVATE, str(priv))))
+    );
+    // A \an8 sign overlapping a plain bottom-default dialogue line.
+    var sign = '0,0,Default,,0,0,0,,{\\an8}Детнерат';
+    var line = '1,0,Default,,0,0,0,,Обычный текст';
+    var clusters = [cluster(0, 1024, [
+        { track: 2, relTs: 100, text: sign, dur: 3000 },
+        { track: 2, relTs: 200, text: line, dur: 2000 }
+    ])];
+    var reader = stubReader(cueIndexedFile(entries, clusters, {}));
+
+    var res = await extractTrack(reader, 2);
+    var byText = {};
+    res.cues.forEach(function (c) { byText[c.text] = c; });
+
+    assert.strictEqual(byText['Детнерат'].band, 'top');       // \an8 → top band
+    assert.strictEqual(byText['Детнерат'].halign, 'center');
+    assert.strictEqual(byText['Обычный текст'].band, null);   // default → user setting
+    assert.strictEqual(byText['Обычный текст'].halign, null);
 });
 
 test('extractTrack says so when the index holds nothing for the track', async function () {

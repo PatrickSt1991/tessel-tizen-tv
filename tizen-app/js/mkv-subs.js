@@ -366,12 +366,19 @@ var MkvSubs = (function () {
             var text = (rawText == null ? '' : String(rawText)).trim();
             if (!text) return null;
             var runs = null;
+            var pos  = { band: null, halign: null };
             if (isAss) {
                 if (assFile) {
                     /* Inline {\c&H..&} overrides plus the CodecPrivate
-                     * [V4+ Styles] defaults become paintable runs. */
+                     * [V4+ Styles] defaults become paintable runs, and the
+                     * \an / style Alignment becomes a position band — the same
+                     * treatment parseAssCues gives a sidecar .ass, so an
+                     * embedded \an8 sign goes to the top band instead of
+                     * stacking on the dialogue. */
                     var split = splitAssLine(text);
-                    runs = assFile.runs(split.text, split.fields[2] || '');
+                    var styleNm = split.fields[2] || '';
+                    runs = assFile.runs(split.text, styleNm);
+                    pos  = AssStyle.resolvePosition(split.text, assFile.table.get(styleNm));
                     text = AssStyle.plainText(runs);
                     if (AssStyle.isPlain(runs)) runs = null;
                 } else {
@@ -380,10 +387,12 @@ var MkvSubs = (function () {
             }
             if (!text) return null;
             return {
-                start: startMs / 1000,
-                end:   (startMs + durMs) / 1000,
-                text:  text,
-                runs:  runs
+                start:  startMs / 1000,
+                end:    (startMs + durMs) / 1000,
+                text:   text,
+                runs:   runs,
+                band:   pos.band,
+                halign: pos.halign
             };
         };
     }

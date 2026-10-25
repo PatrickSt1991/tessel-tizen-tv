@@ -305,3 +305,84 @@ test('a style with no colour leaves runs uncoloured so CSS keeps control', funct
     assert.strictEqual(runs[0].colour, null);
     assert.strictEqual(AssStyle.isPlain(runs), true);
 });
+
+/* ── Alignment / position ────────────────────────────────────────────────
+ *
+ * Overlapping Dialogue lines at different screen positions (a \an8 sign over
+ * bottom dialogue) used to clobber each other; the player now bands them by
+ * alignment.  AssStyle owns the parse/resolve logic that drives it. */
+
+test('parseStyles reads the Alignment column as an ASS numpad value', function () {
+    var t = AssStyle.parseStyles(REPORTER_ASS);
+    // REPORTER_ASS Style: Default …,Alignment=2 (bottom-centre).
+    assert.strictEqual(t.get('Default').alignment, 2);
+});
+
+test('a missing or garbage Alignment falls back to bottom-centre (2)', function () {
+    var ass = [
+        '[V4+ Styles]',
+        'Format: Name, PrimaryColour, Alignment',
+        'Style: Top,&H00FFFFFF,8',
+        'Style: NoAlign,&H00FFFFFF,'
+    ].join('\n');
+    var t = AssStyle.parseStyles(ass);
+    assert.strictEqual(t.get('Top').alignment, 8);
+    assert.strictEqual(t.get('NoAlign').alignment, 2);
+});
+
+test('legacy SSA [V4 Styles] alignment is converted to the ASS numpad', function () {
+    // SSA alignment 6 = top-centre → numpad 8; 5 = top-left → numpad 7.
+    var ssa = [
+        '[V4 Styles]',
+        'Format: Name, PrimaryColour, Alignment',
+        'Style: Sign,&H00FFFFFF,6',
+        'Style: Corner,&H00FFFFFF,5'
+    ].join('\n');
+    var t = AssStyle.parseStyles(ssa);
+    assert.strictEqual(t.get('Sign').alignment, 8);
+    assert.strictEqual(t.get('Corner').alignment, 7);
+});
+
+test('inlineAlignment returns the last \\an override, or null when none', function () {
+    assert.strictEqual(AssStyle.inlineAlignment('{\\an8}top sign'), 8);
+    assert.strictEqual(AssStyle.inlineAlignment('{\\fnTahoma\\fs22}plain dialogue'), null);
+    // Last one wins, like libass.
+    assert.strictEqual(AssStyle.inlineAlignment('{\\an8}a{\\an2}b'), 2);
+    // Legacy \a6 (top-centre) maps to numpad 8; must not catch \alpha / \fad.
+    assert.strictEqual(AssStyle.inlineAlignment('{\\a6}legacy'), 8);
+    assert.strictEqual(AssStyle.inlineAlignment('{\\alpha&H80&\\fad(200,200)}x'), null);
+});
+
+test('resolvePosition bands a \\an8 sign to the top, left to the caller otherwise', function () {
+    var bottomStyle = { alignment: 2 };
+    // Plain bottom-default line → band null (follows the user's setting).
+    assert.deepStrictEqual(
+        AssStyle.resolvePosition('{\\fnTahoma\\fs22}dialogue', bottomStyle),
+        { band: null, halign: null });
+    // Inline \an8 → pinned to the top band, centred.
+    assert.deepStrictEqual(
+        AssStyle.resolvePosition('{\\fnTahoma\\fs22\\an8}Детнерат', bottomStyle),
+        { band: 'top', halign: 'center' });
+    // Corners: \an7 top-left, \an3 bottom-right.
+    assert.deepStrictEqual(
+        AssStyle.resolvePosition('{\\an7}x', bottomStyle),
+        { band: 'top', halign: 'left' });
+    assert.deepStrictEqual(
+        AssStyle.resolvePosition('{\\an3}x', bottomStyle),
+        { band: 'bottom', halign: 'right' });
+});
+
+test('resolvePosition honours a non-default style alignment, ignores a bottom one', function () {
+    // A style that itself sits at the top → explicit, even with no inline tag.
+    assert.deepStrictEqual(
+        AssStyle.resolvePosition('a sign', { alignment: 8 }),
+        { band: 'top', halign: 'center' });
+    // A style anchored bottom-centre (2) is the implicit default → band null.
+    assert.deepStrictEqual(
+        AssStyle.resolvePosition('dialogue', { alignment: 2 }),
+        { band: null, halign: null });
+    // No style at all and no inline tag → band null.
+    assert.deepStrictEqual(
+        AssStyle.resolvePosition('dialogue', null),
+        { band: null, halign: null });
+});

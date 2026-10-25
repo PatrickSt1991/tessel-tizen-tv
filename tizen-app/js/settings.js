@@ -357,9 +357,10 @@ var SubtitleStyle = (function () {
     }
     function nameFor(group, code) { return i18nName(find(group, code)); }
 
-    /* Read the four subtitle settings and push them onto the document: CSS
-     * custom properties (consumed by #subtitle-overlay) + a generated
-     * video::cue rule for the HTML5 backend.  Position is overlay-only —
+    /* Read the subtitle settings and push them onto the document: CSS custom
+     * properties (consumed by the overlay's .sub-band zones) + a generated
+     * video::cue rule for the HTML5 backend.  Position isn't set here — the
+     * player reads subtitlePosition itself and routes each cue into a band;
      * ::cue position is driven by the cue's own line setting, not CSS. */
     function apply() {
         if (typeof Settings === 'undefined') return;
@@ -367,7 +368,6 @@ var SubtitleStyle = (function () {
         var font  = find(FONT, Settings.get('subtitleFont'));
         var color = find(COLOR, Settings.get('subtitleColor'));
         var wght  = find(WEIGHT, Settings.get('subtitleWeight'));
-        var pos   = find(POSITION, Settings.get('subtitlePosition'));
         var bg    = Settings.get('subtitleBg');
 
         var root = document.documentElement;
@@ -377,11 +377,11 @@ var SubtitleStyle = (function () {
         root.style.setProperty('--sub-weight', wght.css);
 
         var ov = document.getElementById('subtitle-overlay');
-        if (ov) {
-            ov.classList.remove('sub-pos-bottom', 'sub-pos-middle', 'sub-pos-top');
-            ov.classList.add('sub-pos-' + pos.code);
-            ov.classList.toggle('sub-bg', bg === 'box');
-        }
+        if (ov) ov.classList.toggle('sub-bg', bg === 'box');
+        /* Position is applied by the player, which reads subtitlePosition
+         * itself, so a live position change has to trigger a repaint to move
+         * an on-screen cue immediately. */
+        if (typeof Player !== 'undefined' && Player.repaintSubtitles) Player.repaintSubtitles();
 
         // HTML5 <track> rendering: inject/update a ::cue rule.
         var styleEl = document.getElementById('subtitle-cue-style');
