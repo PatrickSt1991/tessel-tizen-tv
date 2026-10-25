@@ -196,8 +196,7 @@ var WebDAV = (function () {
     }
     function message(icon, text) {
         ul().innerHTML = '<li><span class="icon">' + icon + '</span><span class="name">' + esc(text) + '</span></li>';
-        UI.refreshFocusables();
-        UI.focusOn(ul().firstElementChild);
+        UI.focusInList(ul());
     }
 
     function render(path, focusName) {
@@ -282,8 +281,7 @@ var WebDAV = (function () {
                 list_.innerHTML = '<li><span class="icon">i</span><span class="name">' + esc(I18n.t('browse.empty')) + '</span></li>';
 
             if (window.VlcApp && window.VlcApp.markNowPlaying) window.VlcApp.markNowPlaying();
-            UI.refreshFocusables();
-            UI.focusOn(focus || list_.firstElementChild);
+            UI.focusInList(list_, focus);
 
             /* A file that isn't for the player: the viewers, the playlist
              * reader, or a toast — the same hand-offs the SMB browser makes. */
@@ -390,8 +388,7 @@ var WebDAV = (function () {
             list_.appendChild(li);
             if (s.id === current) focus = li;
         });
-        UI.refreshFocusables();
-        UI.focusOn(focus || list_.firstElementChild);
+        UI.focusInList(list_, focus);
     }
 
     /* Connect to server `id` and list `path` on it ('' or absent: the

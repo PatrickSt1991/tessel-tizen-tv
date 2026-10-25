@@ -509,8 +509,7 @@ var SMB = (function () {
                 ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + esc(I18n.t('browse.empty')) + '</span></li>';
 
             if (window.VlcApp && window.VlcApp.markNowPlaying) window.VlcApp.markNowPlaying();
-            UI.refreshFocusables();
-            UI.focusOn(focus || ul.firstElementChild);
+            UI.focusInList(ul, focus);
 
             /* A file that isn't for the player: the viewers, the playlist
              * reader, or a toast.  Each hands the remote over (our Back
@@ -629,8 +628,7 @@ var SMB = (function () {
             ul.appendChild(li);
             if (c.id === current) focus = li;
         });
-        UI.refreshFocusables();
-        UI.focusOn(focus || ul.firstElementChild);
+        UI.focusInList(ul, focus);
     }
 
     /* The folders above `path` on a share, share root first: the way back

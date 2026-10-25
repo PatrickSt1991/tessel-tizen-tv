@@ -686,7 +686,7 @@
                 });
                 ul.appendChild(li);
             });
-            UI.refreshFocusables(); UI.focusOn(ul.firstElementChild);
+            UI.focusInList(ul);
         });
     }
 
@@ -807,8 +807,7 @@
             if (!ul.children.length)
                 ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + escapeHtml(I18n.t('browse.empty')) + '</span></li>';
             markNowPlaying();
-            UI.refreshFocusables();
-            UI.focusOn(focus || ul.firstElementChild);
+            UI.focusInList(ul, focus);
             fillLengths(rows);
         });
     }
@@ -891,8 +890,7 @@
             li.addEventListener('click', function () { openFavorite(f); });
             ul.appendChild(li);
         });
-        UI.refreshFocusables();
-        UI.focusOn(ul.firstElementChild);
+        UI.focusInList(ul);
     }
     function openFavorite(f) {
         if (typeof Debug !== 'undefined') Debug.action('favorite ' + f.kind + ' ' + f.path);
@@ -1030,8 +1028,7 @@
             ul.appendChild(li);
         });
         markNowPlaying();
-        UI.refreshFocusables();
-        UI.focusOn(ul.firstElementChild);
+        UI.focusInList(ul);
     }
 
     /* ── Playlists (issue #110) ───────────────────────────────────────
@@ -1169,8 +1166,8 @@
         }
         markNowPlaying();
         loadLogos(ul);
-        UI.refreshFocusables();
-        if (!keepFocus) UI.focusOn(focus || ul.firstElementChild);
+        if (keepFocus) UI.refreshFocusables();
+        else UI.focusInList(ul, focus);
     }
 
     /* The playlist filter (issue #122): what's typed matches anywhere in a

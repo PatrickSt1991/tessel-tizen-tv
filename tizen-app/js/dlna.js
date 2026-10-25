@@ -96,8 +96,7 @@ var DLNA = (function () {
     function message(icon, text) {
         list().innerHTML = '';
         list().appendChild(row(icon, text));
-        UI.refreshFocusables();
-        UI.focusOn(list().firstElementChild);
+        UI.focusInList(list());
     }
 
     /* ── searching ─────────────────────────────────────────────────────── */
@@ -165,8 +164,7 @@ var DLNA = (function () {
         again.addEventListener('click', search);
         ul.appendChild(again);
         if (!found.length) focus = again;
-        UI.refreshFocusables();
-        UI.focusOn(focus || ul.firstElementChild);
+        UI.focusInList(ul, focus);
     }
 
     /* ── browsing ──────────────────────────────────────────────────────── */
@@ -246,8 +244,7 @@ var DLNA = (function () {
         if (!entries.length) ul.appendChild(row('i', I18n.t('browse.empty')));
 
         if (window.VlcApp && window.VlcApp.markNowPlaying) window.VlcApp.markNowPlaying();
-        UI.refreshFocusables();
-        UI.focusOn(focus || ul.firstElementChild);
+        UI.focusInList(ul, focus);
     }
 
     function goUp() {

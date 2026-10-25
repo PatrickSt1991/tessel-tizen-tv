@@ -59,7 +59,8 @@ function load(opts) {
         UI: {
             showView: function (id) { views.push(id); },
             refreshFocusables: function () {},
-            focusOn: function (e) { focused = e; }
+            focusOn: function (e) { focused = e; },
+            focusInList: function (l, e) { focused = e || l.firstElementChild; }
         },
         Remote: {
             KEY: { BACK: 10009 },
