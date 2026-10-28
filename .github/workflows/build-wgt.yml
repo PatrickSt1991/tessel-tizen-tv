@@ -139,8 +139,9 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
+          # gh's --jq takes no --arg; the version comes in through env.
           EXISTING=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
-                       --jq --arg v "v$VERSION-" '[.[].tagName | select(startswith($v))] | join(", ")')
+                       --jq '[.[].tagName | select(startswith("v" + env.VERSION + "-"))] | join(", ")')
           if [ -n "$EXISTING" ]; then
             echo "::error file=tizen-app/config.xml::version $VERSION is already released as $EXISTING; bump the version in tizen-app/config.xml"
             exit 1
