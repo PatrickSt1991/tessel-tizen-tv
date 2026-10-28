@@ -395,6 +395,28 @@ var SMB = (function () {
         return out;
     }
 
+    /* One folder of server srv for FolderPlay: its subfolders and its
+     * music, each track with the folder's cover picture. */
+    function music(srv) {
+        return function (path, cb) {
+            getJson(BASE + '/smb/list?path=' + encodeURIComponent(path || '') + srvParam(srv), function (err, res) {
+                if (err) return cb(err);
+                if (!res.ok) return cb(new Error(res.error || 'list failed'));
+                var entries = res.entries || [];
+                var artName = FileTypes.folderArt(entries.map(function (e) { return e.isDir ? '' : e.name; }));
+                var art = artName ? streamUrl(join(path, artName), srv) : null;
+                var s = FolderPlay.split(entries);
+                cb(null, {
+                    dirs:   s.dirs.map(function (e) { return join(path, e.name); }),
+                    tracks: s.audio.map(function (e) {
+                        var p = join(path, e.name);
+                        return { uri: playableUrl(p, srv), title: e.name, tagSrc: streamUrl(p, srv), art: art };
+                    })
+                });
+            });
+        };
+    }
+
     function showError(msg) {
         var ul = document.getElementById('browse-list');
         if (ul) ul.innerHTML = '<li><span class="icon">!</span><span class="name">' + esc(msg) + '</span></li>';
@@ -509,6 +531,17 @@ var SMB = (function () {
 
             if (!ul.children.length)
                 ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + esc(I18n.t('browse.empty')) + '</span></li>';
+
+            // Play all / Shuffle all, subfolders included (issue #159), on
+            // top of the entries; focus stays where it would have been.
+            if (entries.some(function (e) { return e.isDir; })) {
+                focus = focus || ul.firstElementChild;
+                FolderPlay.addRows(ul, ul.children[ul.children.length - entries.length], path, music(srv),
+                    function (tracks) {
+                        teardownBack();
+                        if (window.VlcApp && window.VlcApp.play) window.VlcApp.play('smb', tracks, 0, null, backHere(null));
+                    });
+            }
 
             if (window.VlcApp && window.VlcApp.markNowPlaying) window.VlcApp.markNowPlaying();
             UI.focusInList(ul, focus);
