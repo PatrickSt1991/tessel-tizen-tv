@@ -200,6 +200,26 @@ var WebDAV = (function () {
         UI.focusInList(ul());
     }
 
+    /* One folder of server srv for FolderPlay: its subfolders and its
+     * music, each track with the folder's cover picture. */
+    function music(srv) {
+        return function (path, cb) {
+            list(srv, path, function (err, entries) {
+                if (err) return cb(err);
+                var artName = FileTypes.folderArt(entries.map(function (e) { return e.isDir ? '' : e.name; }));
+                var art = artName ? streamUrl(join(path, artName), srv) : null;
+                var s = FolderPlay.split(entries);
+                cb(null, {
+                    dirs:   s.dirs.map(function (e) { return join(path, e.name); }),
+                    tracks: s.audio.map(function (e) {
+                        var p = join(path, e.name);
+                        return { uri: playableUrl(p, srv), title: e.name, tagSrc: streamUrl(p, srv), art: art };
+                    })
+                });
+            });
+        };
+    }
+
     function render(path, focusName) {
         folder = path || '';
         var srv = current, s = serverById(srv) || {};
@@ -281,6 +301,16 @@ var WebDAV = (function () {
             });
             if (!list_.children.length)
                 list_.innerHTML = '<li><span class="icon">i</span><span class="name">' + esc(I18n.t('browse.empty')) + '</span></li>';
+
+            // Play all / Shuffle all, subfolders included (issue #159).
+            if (entries.some(function (e) { return e.isDir; })) {
+                focus = focus || list_.firstElementChild;
+                FolderPlay.addRows(list_, list_.children[list_.children.length - entries.length], path, music(srv),
+                    function (tracks) {
+                        teardownBack();
+                        if (window.VlcApp && window.VlcApp.play) window.VlcApp.play('webdav', tracks, 0, null, backHere(null));
+                    });
+            }
 
             if (window.VlcApp && window.VlcApp.markNowPlaying) window.VlcApp.markNowPlaying();
             UI.focusInList(list_, focus);

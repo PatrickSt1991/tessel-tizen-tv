@@ -808,9 +808,33 @@
             });
             if (!ul.children.length)
                 ul.innerHTML = '<li><span class="icon">i</span><span class="name">' + escapeHtml(I18n.t('browse.empty')) + '</span></li>';
+            // Play all / Shuffle all on top when there are subfolders to
+            // take along (issue #159); focus stays on the first entry.
+            if (entries.some(function (e) { return e.isDir; })) {
+                focus = focus || ul.firstElementChild;
+                FolderPlay.addRows(ul, ul.firstElementChild, dir, usbMusic, function (tracks) {
+                    playFromList('browse', tracks, 0, dir);
+                });
+            }
             markNowPlaying();
             UI.focusInList(ul, focus);
             fillLengths(rows);
+        });
+    }
+
+    /* One USB folder for FolderPlay: its subfolders and its music, each
+     * track with the folder's cover picture. */
+    function usbMusic(dir, cb) {
+        Browser.listDir(dir, function (err, entries) {
+            if (err) return cb(err);
+            var artName = FileTypes.folderArt(entries.map(function (e) { return e.isDir ? '' : e.name; }));
+            var art = null;
+            entries.forEach(function (e) { if (!e.isDir && e.name === artName) art = e.uri; });
+            var s = FolderPlay.split(entries);
+            cb(null, {
+                dirs:   s.dirs.map(function (e) { return e.file; }),
+                tracks: s.audio.map(function (e) { return { uri: e.uri, title: e.name, file: e.file, art: art }; })
+            });
         });
     }
 
