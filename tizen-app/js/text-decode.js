@@ -6,8 +6,13 @@
  *   2. otherwise, bytes that are valid UTF-8 are UTF-8;
  *   3. otherwise it is a legacy 8-bit file.  Cyrillic Windows files are
  *      common enough (issue #107) to be worth telling apart from Western
- *      ones: in windows-1251 the letters sit at 0xC0–0xFF, so a file whose
- *      high bytes are mostly there is read as 1251, anything else as 1252.
+ *      ones.  In windows-1251 the letters sit at 0xC0–0xFF — but so do the
+ *      accented Latin letters of windows-1252 (ã 0xE3, ç 0xE7, õ 0xF5 …),
+ *      so the range alone misread a Portuguese subtitle file as Russian
+ *      (issue #162).  The tell is how much of the text is high bytes: in
+ *      Cyrillic text nearly every letter is one, in Western text only the
+ *      odd accent.  A file whose letters are mostly 0xC0–0xFF bytes is read
+ *      as 1251, anything else as 1252.
  *
  * A file with NUL bytes in its first few KB (and no UTF-16 mark) is binary;
  * decode() says so rather than painting noise. */
@@ -56,13 +61,20 @@ var TextDecode = (function () {
     }
 
     function guessLegacy(b) {
-        var high = 0, cyr = 0;
+        var high = 0, cyr = 0, latin = 0;
         for (var i = 0; i < b.length; i++) {
-            if (b[i] < 0x80) continue;
+            var c = b[i];
+            if (c < 0x80) {
+                if ((c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)) latin++;
+                continue;
+            }
             high++;
-            if (b[i] >= 0xC0) cyr++;
+            if (c >= 0xC0) cyr++;
         }
-        return (high >= 8 && cyr / high > 0.6) ? 'windows-1251' : 'windows-1252';
+        // Western text runs a few accents per hundred letters; even a
+        // Russian file with English names in it is mostly high bytes.
+        var cyrillic = high >= 8 && cyr / high > 0.6 && high / (high + latin) >= 0.3;
+        return cyrillic ? 'windows-1251' : 'windows-1252';
     }
 
     /* Fallbacks for a WebView without TextDecoder (or without the label). */
