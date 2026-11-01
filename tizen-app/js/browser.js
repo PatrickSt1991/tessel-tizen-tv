@@ -219,27 +219,58 @@ var Browser = (function () {
         return '';
     }
 
-    /* Read a subtitle file's content as UTF-8 text.
+    /* Read a subtitle file's content as text.
      * Accepts entries with a live Tizen File object on `.file` (the normal
      * USB browse-then-play flow), just a `.fullPath` string (recent-items
      * replay, where the original File didn't survive JSON.stringify in
      * localStorage — the path is resolved back to a File first), or an
      * http(s) `.uri` with neither (a sidecar next to a video on an SMB
-     * share, served by the smbproxy service). */
+     * share, served by the smbproxy service).
+     *
+     * Subtitle files are not reliably UTF-8: a Portuguese .srt saved by a
+     * Windows tool is windows-1252, and reading it as UTF-8 turned every
+     * accented letter into a replacement glyph (issue #162).  So the bytes
+     * are read raw and the encoding guessed by TextDecode, the same way the
+     * text viewer and playlist reader do.  The old UTF-8 stream read stays
+     * as the fallback for a firmware where the byte reader fails. */
+    var MAX_SUBTITLE_BYTES = 16 * 1024 * 1024;
     function readSubtitleText(subEntry, cb) {
         if (!subEntry) { cb(new Error('no entry')); return; }
-        if (subEntry.file) { readFromFileObj(subEntry.file, cb); return; }
+        if (subEntry.file) { readDecoded(subEntry.file, subEntry, cb); return; }
         if (subEntry.fullPath) {
             try {
                 tizen.filesystem.resolve(subEntry.fullPath,
-                    function (f) { readFromFileObj(f, cb); },
+                    function (f) { readDecoded(f, subEntry, cb); },
                     function (e) { cb(e); },
                     'r');
             } catch (e) { cb(e); }
             return;
         }
-        if (/^https?:\/\//i.test(subEntry.uri || '')) { readFromUrl(subEntry.uri, cb); return; }
+        if (/^https?:\/\//i.test(subEntry.uri || '')) { readDecoded(subEntry.uri, subEntry, cb); return; }
         cb(new Error('no file'));
+    }
+    /* src: Tizen File or http URL.  Bytes → guessed encoding → text. */
+    function readDecoded(src, subEntry, cb) {
+        var canDecode = typeof TextDecode !== 'undefined' && TextDecode.decode;
+        if (!canDecode) { readUtf8(src, cb); return; }
+        readHead(src, MAX_SUBTITLE_BYTES, function (err, bytes) {
+            if (err || !bytes) {
+                if (typeof Debug !== 'undefined')
+                    Debug.player('subtitle byte read failed (' + (err && err.message || err) + '), reading as UTF-8');
+                readUtf8(src, cb);
+                return;
+            }
+            var d = TextDecode.decode(bytes);
+            if (d.binary) { cb(new Error('subtitle file looks binary')); return; }
+            if (typeof Debug !== 'undefined')
+                Debug.player('subtitle ' + (subEntry.title || subEntry.name || subEntry.ext || '') +
+                             ': ' + bytes.length + ' bytes, ' + d.encoding);
+            cb(null, d.text);
+        });
+    }
+    function readUtf8(src, cb) {
+        if (typeof src === 'string') readFromUrl(src, cb);
+        else readFromFileObj(src, cb);
     }
     function readFromUrl(url, cb) {
         try {
@@ -349,3 +380,6 @@ var Browser = (function () {
         readHead:         readHead
     };
 })();
+
+// Ignored by the Tizen/browser build; lets Node tests drive the module.
+if (typeof module !== 'undefined' && module.exports) module.exports = Browser;
