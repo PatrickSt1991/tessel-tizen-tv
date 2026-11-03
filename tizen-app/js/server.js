@@ -21,6 +21,7 @@ var TranscodeServer = (function () {
     var STORE_KEY = 'vlctv_server_v1';
     var NTFY_BASE = 'https://ntfy.sh';
     var SVC_BASE  = 'http://127.0.0.1:8127';   // the smbproxy background service
+    function getSvcBase() { return (typeof SMB !== 'undefined' && SMB.getBase) ? SMB.getBase() : SVC_BASE; }
     var RELAY_KEY = 'vlctv_relay_key_v1';      // random secret guarding the relay
 
     function log(m) { if (typeof Debug !== 'undefined' && Debug.net) Debug.net('[server] ' + m); }
@@ -214,7 +215,7 @@ var TranscodeServer = (function () {
                     var paths = [];
                     for (var i = 0; i < roots.length; i++)
                         if (roots[i].fullPath) paths.push(roots[i].fullPath);
-                    xhrPost(SVC_BASE + '/local/enable', { key: relaySecret(), roots: paths }, function (e3, res) {
+                    xhrPost(getSvcBase() + '/local/enable', { key: relaySecret(), roots: paths }, function (e3, res) {
                         if (e3 || !res || !res.ok || !res.url) {
                             log('relay: enable failed — ' + (e3 ? e3.message : 'no LAN address'));
                             return settle(null);
@@ -241,7 +242,7 @@ var TranscodeServer = (function () {
 
     function disarmRelay() {
         relay = null;
-        xhrPost(SVC_BASE + '/local/disable', {}, function () {});
+        xhrPost(getSvcBase() + '/local/disable', {}, function () {});
     }
 
     /* The relay URL the box fetches a TV-local file from.
@@ -543,7 +544,7 @@ var TranscodeServer = (function () {
             // A /24 sweep is ~250 TCP connects at 500 ms worst case, batched 48
             // at a time — a few seconds; a /22 is four times that. Well past the
             // default request timeout, so ask for a much longer one.
-            getJson(SVC_BASE + '/discover', function (e2, res) {
+            getJson(getSvcBase() + '/discover', function (e2, res) {
                 if (e2) return cb(e2);
                 if (!res.ok) return cb(new Error(res.error || 'scan failed'));
                 cb(null, res.servers || []);

@@ -17,15 +17,23 @@ mkdir -p "${ROOT}/dist"
 rm -f "${OUT}"
 
 cd "${SRC}"
-zip -rq "${OUT}" \
-    config.xml \
-    index.html \
-    icon.png \
-    assets \
-    css \
-    js \
-    i18n \
-    service
+
+# Stage the app files for packaging
+stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
+cp -r config.xml index.html icon.png assets css js i18n "$stage"/
+[ -f ko-fi-qr.webp ] && cp -f ko-fi-qr.webp "$stage"/
+
+# The service goes in as one bundled file; local modules in tizen-app/service/ are bundled into service/index.js
+mkdir -p "$stage/service"
+node "${ROOT}/scripts/bundle-service.js" "$stage/service/index.js"
+
+if command -v zip >/dev/null 2>&1; then
+    ( cd "$stage" && zip -r -X -q "${OUT}" * )
+elif command -v python3 >/dev/null 2>&1; then
+    ( cd "$stage" && python3 -m zipfile -c "${OUT}" * )
+elif command -v python >/dev/null 2>&1; then
+    ( cd "$stage" && python -m zipfile -c "${OUT}" * )
+fi
 
 # Quick sanity-check: warn if Debug is still enabled in a "release" build
 if grep -q '^    var DEBUG    = true;' js/debug.js 2>/dev/null; then

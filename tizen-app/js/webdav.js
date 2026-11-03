@@ -17,6 +17,7 @@
 var WebDAV = (function () {
 
     var BASE = 'http://127.0.0.1:8127';
+    function base() { return (typeof SMB !== 'undefined' && SMB.getBase) ? SMB.getBase() : BASE; }
     var KEY  = 'vlctv_webdav_v1';
 
     function dbg(msg) { if (typeof Debug !== 'undefined' && Debug.send) Debug.send('DAV', msg); }
@@ -116,7 +117,7 @@ var WebDAV = (function () {
             !NetworkAccess.check(s.url, null, function () { connect(id, cb); }))
             return cb(NetworkAccess.refusal(NetworkAccess.hostOf(s.url)));
         dbg('connect -> ' + s.url + ' [' + id + '] user=' + (s.user || '(none)') + (s.insecure ? ' insecure' : ''));
-        postJson(BASE + '/dav/connect', { id: id, url: s.url, user: s.user || '', pass: s.pass || '', insecure: !!s.insecure },
+        postJson(base() + '/dav/connect', { id: id, url: s.url, user: s.user || '', pass: s.pass || '', insecure: !!s.insecure },
                  function (err, res) {
             if (err || !res.ok) {
                 dbg('connect failed: ' + (err ? err.message : res.code + ' ' + res.error));
@@ -130,7 +131,7 @@ var WebDAV = (function () {
      * file opened from Recents after a restart finds the service down, or
      * up but never told about this server. */
     function ensureConnected(id, cb) {
-        getJson(BASE + '/smb/ping', function (err, res) {
+        getJson(base() + '/smb/ping', function (err, res) {
             if (!err && res && (res.dav || []).indexOf(id) >= 0) return cb(null);
             SMB.ensureService(function (e2) {
                 if (e2) return cb(e2);
@@ -139,7 +140,7 @@ var WebDAV = (function () {
         });
     }
     function list(id, path, cb) {
-        getJson(BASE + '/dav/list?srv=' + encodeURIComponent(id) + '&path=' + encodeURIComponent(path || ''), function (err, res) {
+        getJson(base() + '/dav/list?srv=' + encodeURIComponent(id) + '&path=' + encodeURIComponent(path || ''), function (err, res) {
             if (err || !res.ok) return cb(new Error(reason(res, err)));
             cb(null, res.entries || []);
         });
@@ -148,9 +149,15 @@ var WebDAV = (function () {
     /* The URL handed to AVPlay; the service streams the file with Range
      * support, so seeking works. */
     function streamUrl(path, srv) {
-        return BASE + '/dav/stream?srv=' + encodeURIComponent(srv) + '&path=' + encodeURIComponent(path);
+        return base() + '/dav/stream?srv=' + encodeURIComponent(srv) + '&path=' + encodeURIComponent(path);
     }
-    function isStreamUrl(u) { return typeof u === 'string' && u.indexOf(BASE + '/dav/stream') === 0; }
+    function isStreamUrl(u) {
+        if (typeof u !== 'string') return false;
+        var b = base();
+        if (u.indexOf(b + '/dav/stream') === 0) return true;
+        if (u.indexOf('http://127.0.0.1:8127/dav/stream') === 0) return true;
+        return /^http:\/\/(?:127\.0\.0\.1|localhost|\d+\.\d+\.\d+\.\d+):8127\/dav\/stream/.test(u);
+    }
 
     /* The URL we actually play: through a paired transcode server that knows
      * WebDAV (HLS, server-side decode of DTS/TrueHD and codecs the TV can't

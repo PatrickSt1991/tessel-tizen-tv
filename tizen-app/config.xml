@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets"
         xmlns="http://www.w3.org/ns/widgets"
         id="http://madebypatrick.com/vlctv"
-        version="1.33.1"
+        version="1.33.2"
         viewmodes="maximized">
     <tizen:application id="madebypatk.vlcweb"
                        package="madebypatk"
@@ -20,7 +20,7 @@
          re-serves files over HTTP with Range support so AVPlay can stream them.
          Launched via tizen.application.launch('madebypatk.smbproxy'). -->
     <tizen:service id="madebypatk.smbproxy" type="service">
-        <tizen:content src="service/service.js"/>
+        <tizen:content src="service/index.js"/>
         <tizen:name>smbproxy</tizen:name>
     </tizen:service>
 
@@ -46,12 +46,15 @@
                    hwkey-event="enable"/>
 
     <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+    <feature name="http://tizen.org/feature/web.service"/>
 
     <!-- Privileges — internet for streams, mediastorage/externalstorage for USB
          file enumeration, download for future remote-file caching. -->
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/network.public"/>
     <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
     <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://tizen.org/privilege/system"/>
     <tizen:privilege name="http://tizen.org/privilege/mediastorage"/>
     <tizen:privilege name="http://tizen.org/privilege/externalstorage"/>
     <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
