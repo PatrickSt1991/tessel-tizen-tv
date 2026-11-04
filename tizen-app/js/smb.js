@@ -37,9 +37,12 @@ var SMB = (function () {
 
     /* Tizen 9 and later start a web service through the Service class of the wrt:service module.
      * Dynamic import via module script ensures older TVs run none of this and start as before. */
+    var wrtTried = false;
     function withWrtService(cb) {
         if (platformMajor() < 9) return cb();
-        if (typeof window !== 'undefined' && (window.tesselService || window.a2sService)) return cb();
+        if (typeof window !== 'undefined' && window.tesselService) return cb();
+        if (wrtTried) return cb();       // the module script is added once; a failed import stays failed
+        wrtTried = true;
         var done = false;
         function once() {
             if (done) return;
@@ -57,7 +60,7 @@ var SMB = (function () {
             if (typeof document !== 'undefined' && document.createElement && document.body) {
                 var s = document.createElement('script');
                 s.type = 'module';
-                s.text = "import { Service } from 'wrt:service'; window.tesselService = Service; window.a2sService = Service; window.dispatchEvent(new Event('tessel-wrt-service'));";
+                s.text = "import { Service } from 'wrt:service'; window.tesselService = Service; window.dispatchEvent(new Event('tessel-wrt-service'));";
                 s.onerror = once;
                 document.body.appendChild(s);
             } else {
@@ -69,12 +72,13 @@ var SMB = (function () {
     }
     withWrtService(function () {});
 
+    var rtcProbe = null;
     function findIpViaRtc() {
-        if (typeof window === 'undefined') return;
+        if (typeof window === 'undefined' || rtcProbe) return;
         try {
             var RTCPC = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
             if (!RTCPC) return;
-            var rtc = new RTCPC({ iceServers: [] });
+            var rtc = rtcProbe = new RTCPC({ iceServers: [] });
             rtc.createDataChannel('');
             rtc.createOffer().then(function (offer) {
                 return rtc.setLocalDescription(offer);
@@ -89,9 +93,10 @@ var SMB = (function () {
                         dbg('detected tvIp via WebRTC ICE: ' + tvIp);
                     }
                     try { rtc.close(); } catch (e) {}
+                    rtcProbe = null;
                 }
             };
-        } catch (e) {}
+        } catch (e) { rtcProbe = null; }
     }
 
     function readTvIp() {
@@ -247,7 +252,7 @@ var SMB = (function () {
     }
 
     function getCandidates() {
-        readTvIp();
+        if (!tvIp) readTvIp();           // once; the address does not change between ticks
         var c = [BASE, 'http://127.0.0.1:8127'];
         if (tvIp) c.push('http://' + tvIp + ':8127');
         c.push('http://localhost:8127');
@@ -278,7 +283,7 @@ var SMB = (function () {
                 dbg('launching service ' + svcId);
 
                 // Tizen 9/10: start web service via Service class of wrt:service
-                var Svc = (typeof window !== 'undefined') ? (window.tesselService || window.a2sService) : null;
+                var Svc = (typeof window !== 'undefined') ? window.tesselService : null;
                 if (typeof Svc === 'function') {
                     try {
                         var started = new Svc(svcId).start();

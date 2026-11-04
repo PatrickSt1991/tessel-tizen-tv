@@ -23,9 +23,9 @@ stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 cp -r config.xml index.html icon.png assets css js i18n "$stage"/
 [ -f ko-fi-qr.webp ] && cp -f ko-fi-qr.webp "$stage"/
 
-# The service goes in as one bundled file; local modules in tizen-app/service/ are bundled into service/index.js
+# The service goes in as one function-wrapped file (Tizen 10 runs it in a shared Node 20)
 mkdir -p "$stage/service"
-node "${ROOT}/scripts/bundle-service.js" "$stage/service/index.js"
+node "${ROOT}/scripts/bundle-service.js" "$stage/service/service.js"
 
 if command -v zip >/dev/null 2>&1; then
     ( cd "$stage" && zip -r -X -q "${OUT}" * )

@@ -67,7 +67,36 @@ if (typeof Buffer.from !== 'function') {
 }
 
 var PORT        = 8127;
+/* Every interface, not loopback: on Tizen 10 the page may not reach its own
+ * service over 127.0.0.1 and talks to the TV's LAN address instead. The
+ * handler still answers only this TV (fromThisTv): the SMB endpoints carry
+ * the user's share credentials and must not become reachable from the LAN. */
 var LISTEN_HOST = '0.0.0.0';
+
+/* Every IPv4 address of this TV, loopback included: the only peers the proxy answers. */
+function ownAddresses() {
+    var out = ['127.0.0.1'], ifs;
+    try { ifs = os.networkInterfaces() || {}; } catch (e) { return out; }
+    for (var name in ifs) {
+        var list = ifs[name] || [];
+        for (var i = 0; i < list.length; i++) {
+            var a = list[i];
+            if (a && (a.family === 'IPv4' || a.family === 4) && a.address) out.push(a.address);
+        }
+    }
+    return out;
+}
+function peerIp(req) {
+    var s = req && (req.socket || req.connection);
+    var a = s && s.remoteAddress ? String(s.remoteAddress) : '';
+    return a.replace(/^::ffff:/, '');
+}
+function fromThisTv(req) {
+    var a = peerIp(req);
+    if (!a) return false;
+    if (a === '::1' || /^127\./.test(a)) return true;
+    return ownAddresses().indexOf(a) >= 0;
+}
 
 /* ── debug ring buffer, surfaced at GET /smb/debug/logs ──────────────────── */
 var LOGS = [];
@@ -2394,6 +2423,7 @@ function handleDavStream(req, res, query) {
 }
 
 var server = http.createServer(function (req, res) {
+    if (!fromThisTv(req)) { cors(res, 403, 'text/plain'); return res.end('Forbidden'); }
     var u = require('url').parse(req.url, true);
     if (req.method === 'OPTIONS') { cors(res, 204, 'text/plain', null, req); return res.end(); }
 
@@ -2451,26 +2481,8 @@ function startServer() {
     return server;
 }
 
-// Tizen 9/10: wrt:service Service class bootstrap if running in embedded Node
-try {
-    var wrt = (typeof require === 'function') ? require('wrt:service') : null;
-    if (wrt) {
-        var ServiceClass = wrt.Service || (typeof wrt === 'function' ? wrt : null);
-        if (typeof ServiceClass === 'function') {
-            try {
-                var svcInstance = new ServiceClass();
-                if (typeof svcInstance.onStart === 'function') svcInstance.onStart(startServer);
-                if (typeof svcInstance.onRequest === 'function') svcInstance.onRequest(function () {});
-                if (typeof svcInstance.onStop === 'function') svcInstance.onStop(function () {});
-                if (typeof svcInstance.onExit === 'function') svcInstance.onExit(function () {});
-            } catch (e) {
-                log('WRT_SERVICE_INIT_ERR', e && e.message);
-            }
-        }
-    }
-} catch (e) {}
-
-// Start immediately for standalone node execution or Tizen 10 vm.runInThisContext loader
+// Start now (plain node, or the Tizen 10 vm.runInThisContext loader); the lifecycle hooks
+// below start it as well, for hosts that call onStart. startServer is idempotent.
 startServer();
 
 process.on('uncaughtException', function (e) {
@@ -2494,8 +2506,4 @@ if (typeof module !== 'undefined' && module.exports) {
         onStop: onStop,
         onExit: onExit
     };
-    module.exports.onStart = onStart;
-    module.exports.onRequest = onRequest;
-    module.exports.onStop = onStop;
-    module.exports.onExit = onExit;
 }

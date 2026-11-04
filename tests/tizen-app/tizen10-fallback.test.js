@@ -186,10 +186,10 @@ test('Tizen 10: ensureService discovers LAN IP dynamically on tick 2 or 3 withou
     });
 });
 
-test('scripts/bundle-service.js produces a clean single-file bundle for service/index.js', function () {
-    var execSync = require('child_process').execSync;
-    var outPath = path.join(__dirname, '../../dist/test-bundle-check.js');
-    execSync('node scripts/bundle-service.js "' + outPath + '"', { cwd: path.join(__dirname, '../..') });
+test('scripts/bundle-service.js produces a clean single-file bundle for service/service.js', function () {
+    var execFileSync = require('child_process').execFileSync;
+    var outPath = path.join(require('os').tmpdir(), 'tessel-bundle-check-' + process.pid + '.js');
+    execFileSync(process.execPath, [path.join(__dirname, '../../scripts/bundle-service.js'), outPath], { cwd: path.join(__dirname, '../..') });
 
     var content = fs.readFileSync(outPath, 'utf8');
     fs.unlinkSync(outPath);

@@ -1,4 +1,5 @@
-/* Bundles tizen-app/service/*.js into one file: node scripts/bundle-service.js <out.js>
+/* Wraps tizen-app/service/service.js (and any local module it requires) into one file:
+ *     node scripts/bundle-service.js <out.js>
  *
  * Tizen 10 runs a web service in an embedded Node 20 (Electron, inside Chromium) instead of the
  * Node 4 of older sets, and services split over several files with require('./x.js') do not

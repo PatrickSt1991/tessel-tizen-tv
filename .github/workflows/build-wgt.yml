@@ -78,7 +78,7 @@ jobs:
       - name: Bundle background service for Tizen 10
         run: |
           rm -rf tizen-app/.buildResult/service/*
-          node scripts/bundle-service.js tizen-app/.buildResult/service/index.js
+          node scripts/bundle-service.js tizen-app/.buildResult/service/service.js
 
       - name: Sign + package WGT (non-interactive via expect)
         run: |

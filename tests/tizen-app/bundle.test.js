@@ -3,7 +3,6 @@
  *   direct  - node <bundle> (direct invocation)
  *   module  - require()d by a host that calls s.onStart(), as legacy Tizen 4-8 does
  *   vm      - the Tizen 10 wrt-node wrapper (vm.runInThisContext, no __dirname, no module)
- *   wrt     - Tizen 9/10 with wrt:service Service class present
  */
 'use strict';
 
@@ -18,7 +17,7 @@ var cp     = require('child_process');
 var root = path.join(os.tmpdir(), 'tessel-bundle-test-' + process.pid + '-' + Date.now());
 var svcDir = path.join(root, 'service'), cwd = path.join(root, 'elsewhere');
 [root, svcDir, cwd].forEach(function (d) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) {} });
-var bundle = path.join(svcDir, 'index.js');
+var bundle = path.join(svcDir, 'service.js');
 cp.execFileSync(process.execPath, [path.join(__dirname, '../../scripts/bundle-service.js'), bundle], { cwd: path.join(__dirname, '../..') });
 
 function getPing(cb) {
@@ -87,12 +86,3 @@ test('bundle: Tizen 10 vm wrapper (vm.runInThisContext) starts HTTP proxy on 812
         done();
     });
 });
-
-test('bundle: Tizen 9/10 wrt:service Service class starts HTTP proxy on 8127', function (t, done) {
-    var host = "var EventEmitter = require('events').EventEmitter; var mockWrt = { Service: function () { var self = this; EventEmitter.call(this); this.onStart = function (fn) { setTimeout(fn, 10); }; this.onRequest = function () {}; } }; require('util').inherits(mockWrt.Service, EventEmitter); var Module = require('module'); var origReq = Module.prototype.require; Module.prototype.require = function (id) { if (id === 'wrt:service') return mockWrt; return origReq.apply(this, arguments); }; var s = require(process.argv[2]);";
-    testHost(host, function (err) {
-        assert.ifError(err);
-        done();
-    });
-});
-
