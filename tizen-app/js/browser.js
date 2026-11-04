@@ -11,9 +11,11 @@
 
 var Browser = (function () {
     // Text-based subtitle formats we can convert to WebVTT on the fly.
+    // A .txt next to a video is one too: MicroDVD, MPL2 or TMPlayer, the
+    // formats Polish and Czech subtitle sites ship (issue #165).
     // Image-based subs (.sub/.idx VobSub, .sup PGS, DVD streams) aren't
     // representable in HTML5 <track> at all and are deliberately omitted.
-    var SUBTITLE_EXTS = ['vtt', 'srt', 'ass', 'ssa', 'smi', 'sami'];
+    var SUBTITLE_EXTS = ['vtt', 'srt', 'ass', 'ssa', 'smi', 'sami', 'txt'];
 
     function ext(name) {
         var dot = name.lastIndexOf('.');
