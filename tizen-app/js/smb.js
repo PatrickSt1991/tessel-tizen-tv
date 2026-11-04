@@ -24,6 +24,107 @@ var SMB = (function () {
     var BASE = 'http://127.0.0.1:8127';
     var CREDS_KEY = 'vlctv_smb_v1';
     var EXTRA_KEY = 'vlctv_smb_extra_v1';
+    var tvIp = '';
+
+    function platformMajor() {
+        try {
+            if (typeof tizen !== 'undefined' && tizen.systeminfo && tizen.systeminfo.getCapability) {
+                return parseInt(tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version'), 10) || 0;
+            }
+        } catch (e) {}
+        return 0;
+    }
+
+    /* Tizen 9 and later start a web service through the Service class of the wrt:service module.
+     * Dynamic import via module script ensures older TVs run none of this and start as before. */
+    var wrtTried = false;
+    function withWrtService(cb) {
+        if (platformMajor() < 9) return cb();
+        if (typeof window !== 'undefined' && window.tesselService) return cb();
+        if (wrtTried) return cb();       // the module script is added once; a failed import stays failed
+        wrtTried = true;
+        var done = false;
+        function once() {
+            if (done) return;
+            done = true;
+            if (typeof window !== 'undefined' && window.removeEventListener) {
+                window.removeEventListener('tessel-wrt-service', once);
+            }
+            cb();
+        }
+        if (typeof window !== 'undefined' && window.addEventListener) {
+            window.addEventListener('tessel-wrt-service', once);
+        }
+        setTimeout(once, 3000);
+        try {
+            if (typeof document !== 'undefined' && document.createElement && document.body) {
+                var s = document.createElement('script');
+                s.type = 'module';
+                s.text = "import { Service } from 'wrt:service'; window.tesselService = Service; window.dispatchEvent(new Event('tessel-wrt-service'));";
+                s.onerror = once;
+                document.body.appendChild(s);
+            } else {
+                once();
+            }
+        } catch (e) {
+            once();
+        }
+    }
+    withWrtService(function () {});
+
+    var rtcProbe = null;
+    function findIpViaRtc() {
+        if (typeof window === 'undefined' || rtcProbe) return;
+        try {
+            var RTCPC = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+            if (!RTCPC) return;
+            var rtc = rtcProbe = new RTCPC({ iceServers: [] });
+            rtc.createDataChannel('');
+            rtc.createOffer().then(function (offer) {
+                return rtc.setLocalDescription(offer);
+            }).catch(function () {});
+            rtc.onicecandidate = function (ice) {
+                if (!ice || !ice.candidate || !ice.candidate.candidate) return;
+                var m = /([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/.exec(ice.candidate.candidate);
+                if (m && m[1] && m[1] !== '0.0.0.0' && m[1].indexOf('127.') !== 0) {
+                    var ip = m[1].trim();
+                    if (!tvIp) {
+                        tvIp = ip;
+                        dbg('detected tvIp via WebRTC ICE: ' + tvIp);
+                    }
+                    try { rtc.close(); } catch (e) {}
+                    rtcProbe = null;
+                }
+            };
+        } catch (e) { rtcProbe = null; }
+    }
+
+    function readTvIp() {
+        if (typeof webapis !== 'undefined' && webapis.network && typeof webapis.network.getIp === 'function') {
+            try {
+                var ip = webapis.network.getIp();
+                if (ip && typeof ip === 'string' && ip !== '0.0.0.0' && !tvIp) {
+                    tvIp = ip.trim();
+                    dbg('detected tvIp via webapis.network: ' + tvIp);
+                }
+            } catch (e) {}
+        }
+        if (typeof tizen !== 'undefined' && tizen.systeminfo && typeof tizen.systeminfo.getPropertyValue === 'function') {
+            ['ETHERNET_NETWORK', 'WIFI_NETWORK', 'NETWORK'].forEach(function (prop) {
+                try {
+                    tizen.systeminfo.getPropertyValue(prop, function (val) {
+                        var ip = val && (val.ipAddress || val.ip);
+                        if (ip && typeof ip === 'string' && ip !== '0.0.0.0' && !tvIp) {
+                            tvIp = ip.trim();
+                            dbg('detected tvIp via systeminfo ' + prop + ': ' + tvIp);
+                        }
+                    }, function () {});
+                } catch (e) {}
+            });
+        }
+        findIpViaRtc();
+    }
+    readTvIp();
 
     /* All SMB-side activity goes out through Debug under one tag, so it lands
      * in the DevTools console (and the PC listener, if one is configured) and
@@ -124,10 +225,10 @@ var SMB = (function () {
     function serverLabel(c) { return '\\\\' + c.host + '\\' + c.share; }
 
     /* ── tiny XHR helpers (the service sets permissive CORS) ───────────────*/
-    function getJson(url, cb) {
+    function getJson(url, cb, timeoutMs) {
         var x = new XMLHttpRequest();
         x.open('GET', url, true);
-        x.timeout = 15000;
+        x.timeout = timeoutMs || 15000;
         x.onload = function () {
             try { cb(null, JSON.parse(x.responseText)); }
             catch (e) { cb(new Error('bad response')); }
@@ -150,30 +251,128 @@ var SMB = (function () {
         x.send(JSON.stringify(body || {}));
     }
 
+    function getCandidates() {
+        if (!tvIp) readTvIp();           // once; the address does not change between ticks
+        var c = [BASE, 'http://127.0.0.1:8127'];
+        if (tvIp) c.push('http://' + tvIp + ':8127');
+        c.push('http://localhost:8127');
+        var out = [], seen = {};
+        for (var i = 0; i < c.length; i++) {
+            var url = c[i];
+            if (url && !seen[url]) {
+                seen[url] = true;
+                out.push(url);
+            }
+        }
+        return out;
+    }
+
     /* ── launch the hybrid service, then wait for it to answer /smb/ping ──── */
     function ensureService(cb) {
         // Don't start the service when Network access is 'none'.
         if (typeof NetworkAccess !== 'undefined' && NetworkAccess.level() === 'none')
             return cb(NetworkAccess.refusal(I18n.t('home.smb')));
-        try {
-            var appId = tizen.application.getCurrentApplication().appInfo.id;
-            var pkgId = appId.split('.')[0];
-            dbg('launching service ' + pkgId + '.smbproxy');
-            tizen.application.launch(pkgId + '.smbproxy',
-                function () { dbg('service launch ok'); },
-                function (e) { dbg('service launch error: ' + (e && e.message)); });
-        } catch (e) {
-            dbg('service launch threw: ' + e.message);
-        }
-        // The service may already be running from a previous open; poll either way.
-        var tries = 0;
-        (function poll() {
-            getJson(BASE + '/smb/ping', function (err) {
-                if (!err) { dbg('service ping ok after ' + tries + ' tries'); return cb(null); }
-                if (++tries > 18) { dbg('service ping gave up after ' + tries + ' tries: ' + err.message); return cb(new Error('SMB service did not start')); }
-                setTimeout(poll, 300);
-            });
-        })();
+
+        withWrtService(function () {
+            var launchStatus = 'pending';
+            function launch() {
+                var appId = (typeof tizen !== 'undefined' && tizen.application && tizen.application.getCurrentApplication) ?
+                    tizen.application.getCurrentApplication().appInfo.id : 'madebypatk.vlcweb';
+                var pkgId = appId.split('.')[0];
+                var svcId = pkgId + '.smbproxy';
+                dbg('launching service ' + svcId);
+
+                // Tizen 9/10: start web service via Service class of wrt:service
+                var Svc = (typeof window !== 'undefined') ? window.tesselService : null;
+                if (typeof Svc === 'function') {
+                    try {
+                        var started = new Svc(svcId).start();
+                        if (started && typeof started.then === 'function') {
+                            started.then(
+                                function () { launchStatus = 'ok'; dbg('service started via wrt:service'); },
+                                function (e) { launchStatus = 'failed (' + (e && e.message || e) + ')'; dbg('wrt:service start error: ' + (e && e.message || e)); }
+                            );
+                        } else {
+                            launchStatus = 'ok';
+                            dbg('service started via wrt:service');
+                        }
+                        return;
+                    } catch (e) {
+                        launchStatus = 'failed (' + (e && e.message || e) + ')';
+                        dbg('wrt:service start threw: ' + (e && e.message || e));
+                    }
+                }
+
+                // Fallbacks for older Tizen (Tizen 4-8):
+                if (typeof tizen !== 'undefined' && tizen.application) {
+                    if (tizen.ApplicationControl && tizen.application.launchAppControl) {
+                        try {
+                            tizen.application.launchAppControl(
+                                new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/service'),
+                                svcId,
+                                function () { launchStatus = 'ok'; dbg('service launchAppControl ok'); },
+                                function (e) {
+                                    dbg('launchAppControl failed, falling back to launch: ' + (e && e.message));
+                                    try {
+                                        tizen.application.launch(svcId,
+                                            function () { launchStatus = 'ok'; dbg('service launch ok'); },
+                                            function (e2) { launchStatus = 'error: ' + (e2 && e2.message); dbg('service launch error: ' + (e2 && e2.message)); });
+                                    } catch (e3) { launchStatus = 'threw: ' + e3.message; dbg('service launch threw: ' + e3.message); }
+                                }
+                            );
+                            return;
+                        } catch (e) {
+                            dbg('launchAppControl threw: ' + e.message);
+                        }
+                    }
+                    try {
+                        tizen.application.launch(svcId,
+                            function () { launchStatus = 'ok'; dbg('service launch ok'); },
+                            function (e) { launchStatus = 'error: ' + (e && e.message); dbg('service launch error: ' + (e && e.message)); });
+                    } catch (e) {
+                        launchStatus = 'threw: ' + e.message;
+                        dbg('service launch threw: ' + e.message);
+                    }
+                }
+            }
+
+            launch();
+
+            // The service may already be running from a previous open; poll either way.
+            var tries = 0;
+            var found = false;
+            (function poll() {
+                var list = getCandidates();
+                var left = list.length;
+                var lastErr = null;
+                list.forEach(function (base) {
+                    getJson(base + '/smb/ping', function (err, res) {
+                        if (found) return;
+                        if (!err && res && res.ok) {
+                            found = true;
+                            if (BASE !== base) {
+                                dbg('service ping ok on ' + base + ' (switched from ' + BASE + ') after ' + tries + ' tries');
+                                BASE = base;
+                            } else {
+                                dbg('service ping ok on ' + base + ' after ' + tries + ' tries');
+                            }
+                            return cb(null);
+                        }
+                        if (err) lastErr = err;
+                        if (--left > 0) return;
+                        if (found) return;
+                        if (tries === 10 && launchStatus !== 'ok') {
+                            launch();
+                        }
+                        if (++tries > 25) {
+                            dbg('service ping gave up after ' + tries + ' tries: ' + (lastErr ? lastErr.message : 'unreachable'));
+                            return cb(new Error('SMB service did not start'));
+                        }
+                        setTimeout(poll, 300);
+                    }, 2000);
+                });
+            })();
+        });
     }
 
     function connect(id, cb) {
@@ -282,7 +481,14 @@ var SMB = (function () {
         var m = /[?&]srv=([^&]*)/.exec(u);
         return m ? decodeURIComponent(m[1]) : '';
     }
-    function isStreamUrl(u) { return typeof u === 'string' && u.indexOf(BASE + '/smb/stream') === 0; }
+    function isStreamUrl(u) {
+        if (typeof u !== 'string') return false;
+        if (u.indexOf(BASE + '/smb/stream') === 0) return true;
+        if (u.indexOf('http://127.0.0.1:8127/smb/stream') === 0) return true;
+        if (u.indexOf('http://localhost:8127/smb/stream') === 0) return true;
+        if (tvIp && u.indexOf('http://' + tvIp + ':8127/smb/stream') === 0) return true;
+        return /^http:\/\/(?:127\.0\.0\.1|localhost|\d+\.\d+\.\d+\.\d+):8127\/smb\/stream/.test(u);
+    }
 
     /* The URL we actually play. If a transcode server is paired, route through
      * it (HLS, server-side decode of DTS/TrueHD and codecs the TV can't handle);
@@ -1001,7 +1207,9 @@ var SMB = (function () {
         // Used by backup.js: a share as the place a backup goes (issue #132).
         serverLabel:     serverLabel,
         writeText:       writeText,
-        readText:        readText
+        readText:        readText,
+        getBase:         function () { return BASE; },
+        setBase:         function (b) { BASE = b; }
     };
 })();
 

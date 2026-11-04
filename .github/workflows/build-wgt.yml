@@ -75,6 +75,11 @@ jobs:
           # build-web prepares .buildResult/ with the bundle to sign
           $TIZEN build-web -- "$PWD"
 
+      - name: Bundle background service for Tizen 10
+        run: |
+          rm -rf tizen-app/.buildResult/service/*
+          node scripts/bundle-service.js tizen-app/.buildResult/service/service.js
+
       - name: Sign + package WGT (non-interactive via expect)
         run: |
           cat > package.exp << 'EOF'

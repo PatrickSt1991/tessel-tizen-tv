@@ -17,6 +17,7 @@
 var DLNA = (function () {
 
     var BASE = 'http://127.0.0.1:8127';
+    function base() { return (typeof SMB !== 'undefined' && SMB.getBase) ? SMB.getBase() : BASE; }
 
     function dbg(msg) { if (typeof Debug !== 'undefined' && Debug.send) Debug.send('DLNA', msg); }
 
@@ -122,7 +123,7 @@ var DLNA = (function () {
         message('…', I18n.t('dlna.searching'));
         SMB.ensureService(function (err) {
             if (err) { dbg('service did not start: ' + err.message); message('!', err.message); return; }
-            request('GET', BASE + '/dlna/discover', null, 20000, function (err2, res) {
+            request('GET', base() + '/dlna/discover', null, 20000, function (err2, res) {
                 if (err2 || !res || !res.ok) {
                     var why = err2 ? err2.message : (res && res.error) || 'search failed';
                     dbg('search failed: ' + why);
@@ -183,7 +184,7 @@ var DLNA = (function () {
         head(f.title, pathText());
         message('…', I18n.t('common.loading'));
         var srv = server, here = f, above = stack.slice();
-        request('POST', BASE + '/dlna/browse', { control: srv.control, id: f.id }, 30000, function (err, res) {
+        request('POST', base() + '/dlna/browse', { control: srv.control, id: f.id }, 30000, function (err, res) {
             if (server !== srv || folder !== here) return;   // left meanwhile
             if (err || !res || !res.ok) {
                 var why = err ? err.message : (res && res.error) || 'browse failed';
