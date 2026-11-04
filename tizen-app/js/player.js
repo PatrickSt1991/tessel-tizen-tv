@@ -197,7 +197,7 @@ var Player = (function () {
         else if (backend === BACKEND_HTML5) { h5ApplyAspect(); }
     }
 
-    /* All external subtitles (SRT / VTT / ASS / SSA / SMI) are painted by the
+    /* All external subtitles (SRT / VTT / ASS / SSA / SMI / TXT) are painted by the
      * JS time-poller into #subtitle-overlay, never through AVPlay's native
      * setExternalSubtitlePath.  The native path can't render ASS on this
      * firmware and carried a mid-file seek bug; the poller handles every
@@ -449,7 +449,7 @@ var Player = (function () {
 
     /* ── External subtitle file (time-based, backend-agnostic) ──────────
      *
-     * Parses an SRT/VTT/ASS file into [{start, end, text}] cues, then sets
+     * Parses an SRT/VTT/ASS/TXT file into [{start, end, text}] cues, then sets
      * up a 250 ms interval that checks Player.currentTime() and paints the
      * matching cue.  Works on AVPlay even when its own subtitle callback
      * is unreliable. */
@@ -477,7 +477,8 @@ var Player = (function () {
                 case 'ssa':                 extCues = parseAssCues(text); break;
                 case 'smi':
                 case 'sami':                extCues = parseVttCues(smiToVtt(text)); break;
-                default:                    extCues = parseSrtCues(text); break;
+                case 'txt':
+                default:                    extCues = parseTxtCues(text); break;
             }
             if (typeof Debug !== 'undefined') Debug.player('external sub loaded: ' + extCues.length + ' cues');
             extLastSig = null;
@@ -572,6 +573,131 @@ var Player = (function () {
         // parseSrtCues handles the rest (blank lines, cue ids, dot/comma).
         var body = String(vtt || '').replace(/^\uFEFF/, '').replace(/^WEBVTT[^\n]*\n/, '');
         return parseSrtCues(body);
+    }
+
+    /* Plain-text subtitle formats that ship as .txt (issue #165).  Polish,
+     * Czech and Hungarian subtitle sites hand out three line-based formats
+     * the Samsung player reads natively and an SRT parser does not:
+     *
+     *   MicroDVD   {120}{180}Line one|Line two      frame numbers
+     *   MPL2       [12][18]Line one|/Line two       tenths of a second
+     *   TMPlayer   00:00:05:Line one|Line two       whole seconds, no end
+     *
+     * The format is sniffed by which shape most lines take, so an .srt that
+     * was merely renamed to .txt still parses as SRT.  A "|" is the line
+     * break in all three; MicroDVD style tags ({y:i}, {c:$0000ff}) and the
+     * MPL2 italics slash at the start of a line are dropped.
+     *
+     * MicroDVD counts frames, so the cue times depend on the video's frame
+     * rate, which nothing on this side of AVPlay reports.  A file may carry
+     * it as a first line of {1}{1}25 (or {0}{0}23.976); otherwise 23.976 is
+     * assumed, the rate of nearly every film and web release.  A 25 fps
+     * (PAL) file without the header drifts 4% behind, a minute after 25
+     * minutes.  TMPlayer has no end time, and MicroDVD / MPL2 may leave it
+     * blank: such a line stays up until the next one, at most four seconds. */
+    var MICRODVD_RE = /^\{(\d+)\}\{(\d*)\}(.*)$/;
+    var MPL2_RE     = /^\[(\d+)\]\[(\d*)\](.*)$/;
+    var TMPLAYER_RE = /^(\d{1,2}):(\d{2}):(\d{2})(?:,(\d))?[:=](.*)$/;
+    var MICRODVD_DEFAULT_FPS = 23.976;
+    var OPEN_END_SECS = 4;
+
+    function parseTxtCues(text) {
+        var lines = String(text || '').replace(/^﻿/, '').replace(/\r/g, '').split('\n');
+        var micro = 0, mpl = 0, tm = 0, srt = 0;
+        for (var i = 0; i < lines.length; i++) {
+            var l = lines[i];
+            if (MICRODVD_RE.test(l))      micro++;
+            else if (MPL2_RE.test(l))     mpl++;
+            else if (TMPLAYER_RE.test(l)) tm++;
+            else if (TIMECODE_RE.test(l)) srt++;
+        }
+        var best = Math.max(micro, mpl, tm, srt);
+        if (!best) return [];
+        if (best === srt)   return parseSrtCues(text);
+        if (best === micro) return parseMicroDvd(lines);
+        if (best === mpl)   return parseMpl2(lines);
+        return parseTmPlayer(lines);
+    }
+    function txtCueText(s) {
+        return s.replace(/\{[a-zA-Z]:[^}]*\}/g, '')
+                .split('|')
+                .map(function (p) { return p.replace(/^\s*\//, '').trim(); })
+                .join('\n')
+                .trim();
+    }
+    function parseMicroDvd(lines) {
+        var out = [], fps = MICRODVD_DEFAULT_FPS;
+        for (var i = 0; i < lines.length; i++) {
+            var m = MICRODVD_RE.exec(lines[i]);
+            if (!m) continue;
+            var a = parseInt(m[1], 10), b = m[2] === '' ? null : parseInt(m[2], 10);
+            // {1}{1}25 or {0}{0}23.976: the frame rate, not a cue.
+            if (a <= 1 && (b === null || b <= 1) && /^\s*\d+(\.\d+)?\s*$/.test(m[3])) {
+                var f = parseFloat(m[3]);
+                if (f > 0) fps = f;
+                continue;
+            }
+            out.push({ start: a / fps, end: b === null ? null : b / fps, text: txtCueText(m[3]) });
+        }
+        return closeOpenEnds(out);
+    }
+    function parseMpl2(lines) {
+        var out = [];
+        for (var i = 0; i < lines.length; i++) {
+            var m = MPL2_RE.exec(lines[i]);
+            if (!m) continue;
+            out.push({ start: parseInt(m[1], 10) / 10,
+                       end:   m[2] === '' ? null : parseInt(m[2], 10) / 10,
+                       text:  txtCueText(m[3]) });
+        }
+        return closeOpenEnds(out);
+    }
+    function parseTmPlayer(lines) {
+        var out = [];
+        for (var i = 0; i < lines.length; i++) {
+            var m = TMPLAYER_RE.exec(lines[i]);
+            if (!m) continue;
+            var start = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+            var text  = txtCueText(m[5]);
+            // The multi-line variant repeats the time with ,1 ,2 ... per line.
+            var last = out[out.length - 1];
+            if (m[4] && last && last.start === start) {
+                last.text = (last.text + '\n' + text).trim();
+                continue;
+            }
+            out.push({ start: start, end: null, text: text });
+        }
+        return closeOpenEnds(out);
+    }
+    /* Start-sort (the poller stops at the first cue past the playhead) and
+     * give every open-ended cue the next cue's start, capped. */
+    function closeOpenEnds(cues) {
+        for (var i = 0; i < cues.length; i++) cues[i]._i = i;
+        cues.sort(function (a, b) { return (a.start - b.start) || (a._i - b._i); });
+        var out = [];
+        for (var j = 0; j < cues.length; j++) {
+            var c = cues[j];
+            if (c.end == null) {
+                c.end = c.start + OPEN_END_SECS;
+                for (var k = j + 1; k < cues.length; k++) {
+                    if (cues[k].start > c.start) { c.end = Math.min(c.end, cues[k].start); break; }
+                }
+            }
+            delete c._i;
+            if (c.text && c.end > c.start) out.push(c);
+        }
+        return out;
+    }
+    /* Cues back to a WebVTT string, for the HTML5 <track> path. */
+    function cuesToVtt(cues) {
+        var out = ['WEBVTT', ''];
+        for (var i = 0; i < cues.length; i++) {
+            out.push(msToVttTime(Math.round(cues[i].start * 1000)) + ' --> ' +
+                     msToVttTime(Math.round(cues[i].end * 1000)));
+            out.push(cues[i].text);
+            out.push('');
+        }
+        return out.join('\n');
     }
 
     /* ASS / SSA → cues, parsed DIRECTLY into [{start,end,text}] rather than
@@ -2361,7 +2487,7 @@ var Player = (function () {
         });
     }
 
-    /* Convert a subtitle file (.vtt / .srt / .ass / .ssa / .smi / .sami) to
+    /* Convert a subtitle file (.vtt / .srt / .ass / .ssa / .smi / .sami / .txt) to
      * a WebVTT Blob URL the <track> element can load.  All converters live
      * in this file — no external deps. */
     function loadSubtitleAsVTT(sub, cb) {
@@ -2379,6 +2505,7 @@ var Player = (function () {
                 case 'ssa':                 vtt = assToVtt(text);  break;
                 case 'smi':
                 case 'sami':                vtt = smiToVtt(text);  break;
+                case 'txt':                 vtt = cuesToVtt(parseTxtCues(text)); break;
                 default:
                     cb(new Error('unsupported subtitle ext: ' + sub.ext));
                     return;
@@ -2564,7 +2691,7 @@ var Player = (function () {
      * `module`): exposes the pure cue parser so tests can feed it .ass text
      * and assert overlapping lines survive with their position bands. */
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { parseAssCues: parseAssCues };
+        module.exports = { parseAssCues: parseAssCues, parseTxtCues: parseTxtCues };
     }
 
     return {

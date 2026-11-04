@@ -524,10 +524,11 @@ var SMB = (function () {
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
     function isPlayable(name) { return FileTypes.isPlayable(name); }
-    /* Text subtitle formats the player can paint.  Image subs (.sub/.idx,
-     * .sup) are left out on purpose — same list as the USB browser. */
+    /* Text subtitle formats the player can paint, .txt (MicroDVD / MPL2 /
+     * TMPlayer, issue #165) included.  Image subs (.sub/.idx, .sup) are left
+     * out on purpose; same list as the USB browser. */
     function isSubtitle(name) {
-        return /\.(srt|vtt|ass|ssa|smi|sami)$/i.test(name);
+        return /\.(srt|vtt|ass|ssa|smi|sami|txt)$/i.test(name);
     }
     function join(dir, name) { return (dir ? dir.replace(/\/+$/, '') : '') + '/' + name; }
 

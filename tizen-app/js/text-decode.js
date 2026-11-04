@@ -12,7 +12,12 @@
  *      (issue #162).  The tell is how much of the text is high bytes: in
  *      Cyrillic text nearly every letter is one, in Western text only the
  *      odd accent.  A file whose letters are mostly 0xC0–0xFF bytes is read
- *      as 1251, anything else as 1252.
+ *      as 1251.  Polish files (issue #165) are windows-1250 or ISO-8859-2,
+ *      whose letters sit where 1252 keeps symbols: read as 1252 a Polish
+ *      line comes out as "co siê sta³o".  The tell is those symbol slots
+ *      (ą ł ż ś ź and their capitals, Slovak ľ ť) making up a good share
+ *      of the high bytes, something no Western text does.  Anything else
+ *      is 1252.
  *
  * A file with NUL bytes in its first few KB (and no UTF-16 mark) is binary;
  * decode() says so rather than painting noise. */
@@ -60,8 +65,15 @@ var TextDecode = (function () {
         return true;
     }
 
+    /* Central European letters at slots that are symbols (or unassigned) in
+     * windows-1252, so a Western file hardly ever has them.  Letters the two
+     * pages share with 1252 (ó é á ...) say nothing and are not counted. */
+    var CE_1250   = { 0x8C: 1, 0x8D: 1, 0x8F: 1, 0x9C: 1, 0x9D: 1, 0x9F: 1, 0xA5: 1, 0xB9: 1 }; // Ś Ť Ź ś ť ź Ą ą
+    var CE_8859_2 = { 0xA6: 1, 0xAC: 1, 0xB1: 1, 0xB6: 1, 0xBC: 1 };                            // Ś Ź ą ś ź
+    var CE_BOTH   = { 0xA3: 1, 0xAF: 1, 0xB3: 1, 0xBE: 1 };                                     // Ł Ż ł ľ/ž
+
     function guessLegacy(b) {
-        var high = 0, cyr = 0, latin = 0;
+        var high = 0, cyr = 0, latin = 0, ce1250 = 0, ce8859 = 0, ceBoth = 0, zDot = 0, inv = 0;
         for (var i = 0; i < b.length; i++) {
             var c = b[i];
             if (c < 0x80) {
@@ -70,11 +82,20 @@ var TextDecode = (function () {
             }
             high++;
             if (c >= 0xC0) cyr++;
+            if (CE_1250[c]) ce1250++;
+            else if (CE_8859_2[c]) ce8859++;
+            else if (CE_BOTH[c]) ceBoth++;
+            else if (c === 0xBF) zDot++;     // ż in both pages, ¿ in Spanish
+            else if (c === 0xA1) inv++;      // ¡ in Spanish, never in Polish text
         }
         // Western text runs a few accents per hundred letters; even a
         // Russian file with English names in it is mostly high bytes.
         var cyrillic = high >= 8 && cyr / high > 0.6 && high / (high + latin) >= 0.3;
-        return cyrillic ? 'windows-1251' : 'windows-1252';
+        if (cyrillic) return 'windows-1251';
+        // A Spanish file has ¿ and ¡ together; a Polish one never has ¡.
+        var ce = ce1250 + ce8859 + ceBoth + (inv ? 0 : zDot);
+        if (ce >= 4 && ce / high >= 0.3) return ce8859 > ce1250 ? 'iso-8859-2' : 'windows-1250';
+        return 'windows-1252';
     }
 
     /* Fallbacks for a WebView without TextDecoder (or without the label). */
