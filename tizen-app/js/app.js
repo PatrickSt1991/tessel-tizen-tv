@@ -3234,7 +3234,8 @@
         // track the TV can't decode (DTS/TrueHD) when a playable one exists.
         chooseAudioTrack(tracks);
 
-        // Subtitle: 'off' explicit, '' auto (no action), code → match
+        // Subtitle: 'off' explicit, '' auto (sidecar, else the file's
+        // default track), code → match
         if (prefSub === 'off') {
             Player.setSubtitleTrack(-1);
             subPrefSettled = true;
@@ -3243,8 +3244,33 @@
             applySubtitlePreference(prefSub, tracks);
         } else {
             subPrefSettled = true;
-            adoptFileDefaultSubtitle(tracks);
+            if (!adoptSidecarSubtitle(tracks)) adoptFileDefaultSubtitle(tracks);
         }
+    }
+
+    /* 'Auto (file default)', first half: a subtitle file next to the video
+     * (issue #165).  Which one is LanguageList.pickAutoSubtitle's call —
+     * the untagged Film.txt, else the one in the app's language, else the
+     * only one there is.  The AVPlay backend has usually applied it already
+     * before play() (player.js, the no-seek point); then it is just left
+     * showing rather than re-read.  The HTML5 backend gets it here. */
+    function adoptSidecarSubtitle(tracks) {
+        var sidecars = [];
+        for (var j = 0; j < tracks.subtitle.length; j++) {
+            var st = tracks.subtitle[j];
+            if (st.off || st.muted) continue;
+            if (st.type === 'AVPLAY_EXTERNAL' || st.type === 'HTML5_EXTERNAL') sidecars.push(st);
+        }
+        var pick = LanguageList.pickAutoSubtitle(sidecars, I18n.current());
+        if (!pick) return false;
+        if (!pick.active) {
+            var how = Player.setSubtitleTrack(pick);
+            if (typeof Debug !== 'undefined')
+                Debug.player('subtitle pref: auto → subtitle file ' + pick.name + ' (' + how + ')');
+        } else if (typeof Debug !== 'undefined') {
+            Debug.player('subtitle pref: auto → subtitle file ' + pick.name + ' (already showing)');
+        }
+        return true;
     }
 
     /* 'Auto (file default)': show the track the file itself marks default.
