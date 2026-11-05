@@ -297,12 +297,41 @@ var LanguageList = (function () {
         return 0;
     }
 
+    /* 'Auto (file default)' and a subtitle file next to the video (issue
+     * #165).  The TV's own player loads Film.srt for Film.mkv on its own;
+     * Tessel's Auto only adopted the track the container marks default and
+     * never looked at the folder, so a lone Film.txt sat unused until it
+     * was picked from the CC menu.  Which sidecar Auto takes, in order:
+     *
+     *   1. one with no language tag (Film.srt) — the file's own subtitle;
+     *   2. one tagged with the app's language (Film.pl.srt, Polish UI);
+     *   3. the only one there is, whatever its tag;
+     *
+     * otherwise none: several tagged files in languages the viewer did not
+     * ask for are left to the CC menu rather than guessed at.  `subs` is a
+     * list of { lang } (the tag from the file name, '' for none); `uiLang`
+     * the app's locale ('pl-PL', 'en').  Returns the entry or null. */
+    function pickAutoSubtitle(subs, uiLang) {
+        subs = subs || [];
+        if (!subs.length) return null;
+        var ui = String(uiLang || '').toLowerCase().split(/[-_]/)[0];
+        var tagged = null;
+        for (var i = 0; i < subs.length; i++) {
+            var s = subs[i];
+            if (!s.lang) return s;
+            if (!tagged && ui && matchScore(ui, s.lang, '') >= 90) tagged = s;
+        }
+        if (tagged) return tagged;
+        return subs.length === 1 ? subs[0] : null;
+    }
+
     return {
         forAudio:    function () { return i18nList(langs); },
         forSubtitle: function () {
             return i18nList([{ code: 'off', name: 'Off (no subtitles)', nameKey: 'lang.off' }].concat(langs));
         },
         matchScore:  matchScore,
+        pickAutoSubtitle: pickAutoSubtitle,
         nameFor:     function (code) {
             if (code === 'off') return i18nName({ name: 'Off', nameKey: 'common.off' });
             var e = entryFor(code);

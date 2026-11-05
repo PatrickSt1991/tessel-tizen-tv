@@ -117,3 +117,31 @@ test('an unknown mode falls back to fit, and next() cycles', function () {
         assert.ok(m.short.length <= 4, m.code + ' label too long: ' + m.short);
     });
 });
+
+/* ── pickAutoSubtitle: what 'Auto (file default)' loads from the folder ── */
+
+test('Auto takes the subtitle file with no language tag first (issue #165)', function () {
+    var bare = { lang: '',   name: 'Film.txt' };
+    var pl   = { lang: 'pl', name: 'Film.pl.txt' };
+    assert.strictEqual(LanguageList.pickAutoSubtitle([pl, bare], 'en'), bare);
+    assert.strictEqual(LanguageList.pickAutoSubtitle([bare], ''), bare);
+});
+
+test('Auto takes the file tagged with the app language when there is no untagged one', function () {
+    var en = { lang: 'en', name: 'Film.en.srt' };
+    var pl = { lang: 'pl', name: 'Film.pl.srt' };
+    assert.strictEqual(LanguageList.pickAutoSubtitle([en, pl], 'pl-PL'), pl);
+    assert.strictEqual(LanguageList.pickAutoSubtitle([en, pl], 'en'), en);
+    // The ISO 639-2 spelling in the file name still counts as that language.
+    var pol = { lang: 'pol', name: 'Film.pol.srt' };
+    assert.strictEqual(LanguageList.pickAutoSubtitle([en, pol], 'pl-PL'), pol);
+});
+
+test('Auto takes a lone tagged file whatever its language, and guesses at nothing else', function () {
+    var pl = { lang: 'pl', name: 'Film.pl.srt' };
+    var de = { lang: 'de', name: 'Film.de.srt' };
+    assert.strictEqual(LanguageList.pickAutoSubtitle([pl], 'en'), pl);
+    assert.strictEqual(LanguageList.pickAutoSubtitle([pl, de], 'en'), null);
+    assert.strictEqual(LanguageList.pickAutoSubtitle([], 'en'), null);
+    assert.strictEqual(LanguageList.pickAutoSubtitle(null, 'en'), null);
+});

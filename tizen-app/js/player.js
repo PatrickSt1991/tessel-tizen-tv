@@ -227,9 +227,18 @@ var Player = (function () {
 
     /* Pick the best external subtitle for a given language preference, used
      * to pre-apply at file open before play() — the only point at which
-     * setExternalSubtitlePath doesn't cause the seek bug. */
+     * setExternalSubtitlePath doesn't cause the seek bug.  '' (Auto) takes
+     * the sidecar the folder offers — Film.txt, or Film.pl.txt on a Polish
+     * TV — by the rule in LanguageList.pickAutoSubtitle (issue #165); tracks
+     * read out of the container are not sidecars and stay with the
+     * embedded-default rule in app.js. */
     function pickBestExternalSubtitle(prefLang) {
-        if (!prefLang || prefLang === 'off' || !playerSubtitles.length) return null;
+        if (prefLang === 'off' || !playerSubtitles.length) return null;
+        if (!prefLang) {
+            if (typeof LanguageList === 'undefined' || !LanguageList.pickAutoSubtitle) return null;
+            var sidecars = playerSubtitles.filter(function (s) { return !s._extracted; });
+            return LanguageList.pickAutoSubtitle(sidecars, uiLanguage());
+        }
         var want = prefLang.toLowerCase();
         var best = null;
         var bestScore = 0;
@@ -243,6 +252,10 @@ var Player = (function () {
             if (sc > bestScore) { bestScore = sc; best = s; }
         }
         return best;
+    }
+
+    function uiLanguage() {
+        return (typeof I18n !== 'undefined' && I18n.current) ? I18n.current() : '';
     }
 
     /* AVPlay subtitle painter — three paths feed into the same overlay:
