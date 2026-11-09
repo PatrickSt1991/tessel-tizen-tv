@@ -62,9 +62,16 @@ fi
 # ── ffmpeg ──────────────────────────────────────────────────────────────────
 rm -rf ffmpeg
 # GitHub's mirror of the release tag: same source as ffmpeg.org's tarball, and
-# far more reliable from CI runners.
-curl -fsSL --retry 5 --retry-all-errors -o ffmpeg.tar.gz \
-  "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz"
+# far more reliable from CI runners. With GH_TOKEN set (CI) it goes through the
+# API authenticated, which doesn't hit the anonymous download throttling.
+if [ -n "${GH_TOKEN:-}" ]; then
+  curl -fsSL --retry 5 --retry-all-errors -o ffmpeg.tar.gz \
+    -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/FFmpeg/FFmpeg/tarball/n${FFMPEG_VERSION}"
+else
+  curl -fsSL --retry 5 --retry-all-errors -o ffmpeg.tar.gz \
+    "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz"
+fi
 mkdir ffmpeg && tar -xzf ffmpeg.tar.gz -C ffmpeg --strip-components=1
 cd ffmpeg
 PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig" \

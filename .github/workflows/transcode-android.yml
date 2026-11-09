@@ -69,6 +69,7 @@ jobs:
         if: steps.ffcache.outputs.cache-hit != 'true'
         env:
           WORK: ${{ runner.temp }}/ffmpeg-build
+          GH_TOKEN: ${{ github.token }}   # authenticated ffmpeg download
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq nasm pkg-config
