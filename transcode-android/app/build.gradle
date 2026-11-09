@@ -8,7 +8,9 @@ plugins {
 def versionNameEnv = System.getenv("VERSION_NAME") ?: "0.0.0-dev"
 def versionParts = (versionNameEnv =~ /^(\d+)\.(\d+)\.(\d+)/)
 def versionCodeNum = versionParts.find() ?
-        versionParts.group(1).toInteger() * 10000 + versionParts.group(2).toInteger() * 100 + versionParts.group(3).toInteger() : 1
+        versionParts.group(1).toInteger() * 10000 + versionParts.group(2).toInteger() * 100 + versionParts.group(3).toInteger() : 0
+// Dev builds are 0.0.0-dev.<sha>; Android wants at least 1.
+versionCodeNum = Math.max(versionCodeNum, 1)
 
 // Release signing comes from CI secrets. Without them (a fork, a PR, a local
 // build) the release APK is signed with the debug key so it still installs.
