@@ -39,7 +39,7 @@ JOBS=$(nproc)
 # ── x264 (static) ───────────────────────────────────────────────────────────
 if [ ! -f "$PREFIX/lib/libx264.a" ]; then
   rm -rf x264
-  curl -fsSL --retry 3 -o x264.tar.bz2 \
+  curl -fsSL --retry 5 --retry-all-errors -o x264.tar.bz2 \
     "https://code.videolan.org/videolan/x264/-/archive/${X264_REF}/x264-${X264_REF}.tar.bz2"
   mkdir x264 && tar -xjf x264.tar.bz2 -C x264 --strip-components=1
   (
@@ -61,8 +61,11 @@ fi
 
 # ── ffmpeg ──────────────────────────────────────────────────────────────────
 rm -rf ffmpeg
-curl -fsSL --retry 3 -o ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
-mkdir ffmpeg && tar -xJf ffmpeg.tar.xz -C ffmpeg --strip-components=1
+# GitHub's mirror of the release tag: same source as ffmpeg.org's tarball, and
+# far more reliable from CI runners.
+curl -fsSL --retry 5 --retry-all-errors -o ffmpeg.tar.gz \
+  "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz"
+mkdir ffmpeg && tar -xzf ffmpeg.tar.gz -C ffmpeg --strip-components=1
 cd ffmpeg
 PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig" \
 ./configure \
