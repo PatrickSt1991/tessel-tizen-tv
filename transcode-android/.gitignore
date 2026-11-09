@@ -1,0 +1,9 @@
+.gradle/
+build/
+local.properties
+*.jks
+*.keystore
+# Filled by scripts/build-*.sh (CI); never committed.
+app/src/main/jniLibs/
+app/src/main/assets/licenses/
+.ffmpeg-build/

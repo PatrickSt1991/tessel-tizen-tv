@@ -124,6 +124,41 @@ On macOS, native always wins — Docker Desktop on macOS runs a Linux VM with no
 GPU passthrough, so the container is forced into software encoding; the native
 binary uses `h264_videotoolbox` via macOS's hardware encoder.
 
+## Run it on an Android phone
+
+No box at all? An Android phone (or tablet) can be the server. The
+`tessel-transcode-android-arm64.apk` on the
+[Releases page](https://github.com/PatrickSt1991/tessel-tizen-tv/releases)
+is this same server with ffmpeg built in, wrapped in a small app. It isn't on
+the Play Store: sideload it (open the APK on the phone and allow installing
+from your browser or file manager when Android asks).
+
+1. Open **Tessel Transcode**. The server starts right away and shows the
+   address the TV should use, e.g. `http://192.168.1.42:8200`.
+2. Allow notifications, and tap **Allow running in the background** if the
+   button shows. Without that, Android's battery saver stops the server once
+   the screen goes off.
+3. Fill in your SMB share in the setup page shown below the status; it is the
+   same page a browser shows on port 8200.
+4. On the TV, continue with [Pair with the TV](#pair-with-the-tv).
+
+Turn on **Start when the phone boots** if the phone is a dedicated box.
+
+Things to know:
+
+- **Keep it on the charger and on the same Wi-Fi as the TV.** A notification
+  with a **Stop** button stays up while the server runs.
+- **Audio-only jobs are easy** (DTS / TrueHD to AAC or AC-3 with the video
+  copied), which is most of what the TV needs. A real video re-encode uses the
+  phone's hardware encoder (`h264_mediacodec`) when it accepts the job and
+  software x264 otherwise; long 4K encodes make a phone warm and it may slow
+  itself down.
+- **The address can change.** Phones get their IP from the router; when it
+  changes, the TV loses the server. Give the phone a fixed address (DHCP
+  reservation) in your router, or run **Find server on my network** on the
+  TV again.
+- 64-bit ARM only (`arm64-v8a`), Android 8 or newer.
+
 ## Pair with the TV
 
 Fill in your SMB share on this page first (host, share, credentials — **Test
@@ -356,7 +391,8 @@ files off its own background service instead.
 
 The encoder is **auto-detected at startup** — it picks the fastest H.264 encoder
 ffmpeg reports and falls back to software (`libx264`). Detection order:
-`rkmpp → vaapi → nvenc → qsv → v4l2m2m → libx264`.
+`rkmpp → vaapi → nvenc → qsv → v4l2m2m → libx264`, with `videotoolbox` on
+macOS and `mediacodec` in the Android app.
 
 - **Intel / AMD (VAAPI):** works out of the box if `/dev/dri` is passed in
   (it is, in the compose file).
@@ -373,6 +409,8 @@ ffmpeg reports and falls back to software (`libx264`). Detection order:
 | `PORT` | `8200` | HTTP port |
 | `DATA_DIR` | `/data` | where `config.json` is persisted |
 | `WORK_DIR` | `/tmp/tessel-transcode` | scratch for HLS segments |
+| `FFMPEG`, `FFPROBE` | found on `PATH` | full path to ffmpeg / ffprobe, when they aren't on `PATH` under those names |
+| `TESSEL_NAME` | the host name | name the TV shows for this server |
 
 ## Known limitations (Phase 1)
 

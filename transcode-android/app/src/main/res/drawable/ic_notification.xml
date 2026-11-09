@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Play triangle with two arrows: media going through a converter. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,7l7,5 -7,5z M3,4h2v16H3z M19,4h2v16h-2z" />
+</vector>

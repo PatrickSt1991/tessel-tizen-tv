@@ -1,0 +1,67 @@
+plugins {
+    id "com.android.application"
+}
+
+// VERSION_NAME comes from the transcode-v* tag in CI ("1.2.3"); a local or PR
+// build is "dev". versionCode has to grow for Android to accept an update over
+// an installed copy, so derive it from the version: 1.2.3 -> 10203.
+def versionNameEnv = System.getenv("VERSION_NAME") ?: "0.0.0-dev"
+def versionParts = (versionNameEnv =~ /^(\d+)\.(\d+)\.(\d+)/)
+def versionCodeNum = versionParts.find() ?
+        versionParts.group(1).toInteger() * 10000 + versionParts.group(2).toInteger() * 100 + versionParts.group(3).toInteger() : 1
+
+// Release signing comes from CI secrets. Without them (a fork, a PR, a local
+// build) the release APK is signed with the debug key so it still installs.
+def keystorePath = System.getenv("ANDROID_KEYSTORE_FILE")
+def hasReleaseKey = keystorePath && file(keystorePath).exists()
+
+android {
+    namespace "nl.madebypatrick.tessel.transcode"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "nl.madebypatrick.tessel.transcode"
+        minSdk 26
+        targetSdk 35
+        versionCode versionCodeNum
+        versionName versionNameEnv
+        ndk {
+            // The bundled server and ffmpeg are arm64 builds; that covers
+            // practically every phone sold since 2017.
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    signingConfigs {
+        if (hasReleaseKey) {
+            release {
+                storeFile file(keystorePath)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        jniLibs {
+            // libtessel.so / libffmpeg.so / libffprobe.so are executables, not
+            // libraries we load. They have to exist as real files in
+            // nativeLibraryDir to be exec'd, so keep the installer extracting
+            // them instead of mapping them straight out of the APK.
+            useLegacyPackaging true
+        }
+    }
+}

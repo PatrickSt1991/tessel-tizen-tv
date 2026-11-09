@@ -178,6 +178,7 @@ func (m *Manager) EnsureSession(ctx context.Context, src Source) (*session, erro
 
 	args := m.caps.buildArgs(in, plan, dir)
 	cmd := exec.CommandContext(sctx, m.caps.FFmpeg, args...)
+	dieWithParent(cmd)
 	s.cmd = cmd
 
 	stderr, _ := cmd.StderrPipe()
