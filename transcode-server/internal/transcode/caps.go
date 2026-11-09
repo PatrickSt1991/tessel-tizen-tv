@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -46,6 +47,7 @@ var encoderPriority = []struct {
 	family string
 	oses   []string // matched against runtime.GOOS; nil means "any OS"
 }{
+	{"h264_mediacodec", "mediacodec", []string{"android"}},    // phone/tablet hardware encoder (Android app)
 	{"h264_rkmpp", "rkmpp", []string{"linux"}},                // Rockchip RK3588/3568 (custom ffmpeg, Linux only)
 	{"h264_videotoolbox", "videotoolbox", []string{"darwin"}}, // macOS hardware encoder
 	{"h264_vaapi", "vaapi", []string{"linux"}},                // Mesa / libva — Linux only
@@ -74,11 +76,11 @@ func osMatches(oses []string) bool {
 // encoder name (from config) instead of auto-detection; an empty override means
 // auto.
 func Probe(override string) (*Caps, error) {
-	ff, err := exec.LookPath("ffmpeg")
+	ff, err := toolPath("FFMPEG", "ffmpeg")
 	if err != nil {
 		return nil, err
 	}
-	fp, err := exec.LookPath("ffprobe")
+	fp, err := toolPath("FFPROBE", "ffprobe")
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +131,20 @@ func Probe(override string) (*Caps, error) {
 		c.VAAPIDevice = firstExisting([]string{"/dev/dri/renderD128", "/dev/dri/renderD129"})
 	}
 	return c, nil
+}
+
+// toolPath resolves ffmpeg or ffprobe. An absolute path in env wins over a
+// PATH lookup: the Android app ships them as libffmpeg.so / libffprobe.so in
+// its native library directory (the only place Android lets an app execute
+// files from), and those names would never turn up on PATH.
+func toolPath(env, name string) (string, error) {
+	if p := os.Getenv(env); p != "" {
+		if !fileExists(p) {
+			return "", fmt.Errorf("%s=%s: no such file", env, p)
+		}
+		return p, nil
+	}
+	return exec.LookPath(name)
 }
 
 func familyOf(enc string) string {
@@ -184,15 +200,23 @@ func firstExisting(paths []string) string {
 func probeEncoder(ffmpeg, name string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, ffmpeg,
+	// Phone encoders refuse frames below their minimum size (often 176x144
+	// or larger) and only take the pixel format the session will feed them,
+	// so probe MediaCodec with a realistic frame instead of the 64x64 one.
+	size, extra := "64x64", []string(nil)
+	if name == "h264_mediacodec" {
+		size, extra = "320x240", []string{"-pix_fmt", "nv12"}
+	}
+	args := []string{
 		"-hide_banner",
 		"-loglevel", "error",
-		"-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1",
+		"-f", "lavfi", "-i", "color=c=black:s=" + size + ":d=0.1",
 		"-frames:v", "1",
 		"-an",
-		"-c:v", name,
-		"-f", "null", "-",
-	)
+	}
+	args = append(args, extra...)
+	args = append(args, "-c:v", name, "-f", "null", "-")
+	cmd := exec.CommandContext(ctx, ffmpeg, args...)
 	// We want stderr — ffmpeg writes its errors there — but for the success
 	// case we don't care about it.  CombinedOutput captures both, fine for a
 	// short probe.

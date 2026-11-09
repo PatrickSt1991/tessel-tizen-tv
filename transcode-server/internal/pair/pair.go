@@ -88,7 +88,13 @@ func outboundIP() string {
 
 // Hostname is the friendly name shown next to this box — in the pairing
 // announcement, and in the list a scanning TV puts on screen.
+//
+// TESSEL_NAME overrides it. The Android app sets it to the phone's model,
+// because os.Hostname() there just says "localhost".
 func Hostname() string {
+	if n := strings.TrimSpace(os.Getenv("TESSEL_NAME")); n != "" {
+		return n
+	}
 	h, err := os.Hostname()
 	if err != nil || h == "" {
 		return "Tessel transcode server"

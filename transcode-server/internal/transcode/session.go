@@ -136,6 +136,11 @@ func (c *Caps) videoEncodeArgs() []string {
 		return []string{"-c:v", "h264_qsv", "-global_quality", "21", "-pix_fmt", "nv12"}
 	case "rkmpp":
 		return []string{"-c:v", "h264_rkmpp", "-b:v", "8M", "-pix_fmt", "yuv420p"}
+	case "mediacodec":
+		// MediaCodec takes its keyframe interval in seconds, derived from -g
+		// and the frame rate; 48 frames keeps it at about two seconds for
+		// 24-30 fps sources, well inside the 4 s HLS segment.
+		return []string{"-c:v", "h264_mediacodec", "-b:v", "8M", "-g", "48", "-pix_fmt", "nv12"}
 	case "v4l2m2m":
 		return []string{"-c:v", "h264_v4l2m2m", "-b:v", "8M", "-pix_fmt", "yuv420p"}
 	default: // software

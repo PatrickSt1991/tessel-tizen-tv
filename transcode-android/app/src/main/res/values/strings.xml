@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tessel Transcode</string>
+    <string name="channel_name">Transcode server</string>
+    <string name="notif_starting">Starting…</string>
+    <string name="notif_stopping">Stopping…</string>
+    <string name="notif_restarting">The server stopped; restarting…</string>
+    <string name="notif_running">Running at %1$s</string>
+    <string name="stop">Stop</string>
+    <string name="start">Start</string>
+    <string name="state_stopped">Server is off</string>
+    <string name="state_starting">Server is starting…</string>
+    <string name="state_running">Server is running</string>
+    <string name="state_failed">Server stopped, retrying…</string>
+    <string name="no_wifi">not on Wi-Fi</string>
+    <string name="address">TV connects to %1$s</string>
+    <string name="show_log">Log</string>
+    <string name="close">Close</string>
+    <string name="copy">Copy</string>
+    <string name="log_empty">Nothing logged yet.</string>
+    <string name="autostart">Start when the phone boots</string>
+    <string name="battery_button">Allow running in the background</string>
+    <string name="hint">Keep the phone on the charger and on the same Wi-Fi as the TV. On the TV, open Transcode server in Settings and pick Find server on my network, or type the address above.</string>
+</resources>

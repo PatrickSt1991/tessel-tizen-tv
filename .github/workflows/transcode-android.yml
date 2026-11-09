@@ -1,0 +1,185 @@
+name: Build transcode-server Android APK
+
+# The same Go server as the Docker image and the native zips, wrapped in a
+# small Android app so a phone can be the transcode box. Sideloaded only.
+#
+# PRs and pushes to main build the APK as a workflow artifact; a transcode-v*
+# tag also attaches it to that release and to the newest app release, next to
+# the native zips.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'transcode-android/**'
+      - 'transcode-server/**'
+      - '.github/workflows/transcode-android.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'transcode-android/**'
+      - 'transcode-server/**'
+      - '.github/workflows/transcode-android.yml'
+    tags:
+      - 'transcode-v*'
+
+permissions:
+  contents: write   # attach the APK to releases on tag pushes
+
+env:
+  NDK_VERSION: r27c
+  JNI_DIR: transcode-android/app/src/main/jniLibs/arm64-v8a
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: transcode-server/go.sum
+
+      - name: Set up Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+          add-to-path: false
+
+      # ffmpeg + x264 take ~10 minutes to cross-compile and only change when
+      # the build script does, so keep the result between runs.
+      - name: Restore ffmpeg build
+        id: ffcache
+        uses: actions/cache/restore@v4
+        with:
+          path: transcode-android/.ffmpeg-out
+          key: ffmpeg-android-arm64-${{ env.NDK_VERSION }}-${{ hashFiles('transcode-android/scripts/build-ffmpeg.sh') }}
+
+      - name: Build ffmpeg for Android
+        if: steps.ffcache.outputs.cache-hit != 'true'
+        env:
+          WORK: ${{ runner.temp }}/ffmpeg-build
+          GH_TOKEN: ${{ github.token }}   # authenticated ffmpeg download
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nasm pkg-config
+          transcode-android/scripts/build-ffmpeg.sh "${{ steps.ndk.outputs.ndk-path }}" transcode-android/.ffmpeg-out
+
+      # Saved right away, so a later failing step doesn't throw away the
+      # ten-minute build.
+      - name: Save ffmpeg build
+        if: steps.ffcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: transcode-android/.ffmpeg-out
+          key: ${{ steps.ffcache.outputs.cache-primary-key }}
+
+      - name: Build the server for Android
+        run: |
+          mkdir -p "$JNI_DIR"
+          cp transcode-android/.ffmpeg-out/libffmpeg.so transcode-android/.ffmpeg-out/libffprobe.so "$JNI_DIR/"
+          transcode-android/scripts/build-server.sh "${{ steps.ndk.outputs.ndk-path }}" "$JNI_DIR"
+          ls -la "$JNI_DIR"
+
+      - name: Version
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/transcode-v* ]]; then
+            echo "name=${GITHUB_REF_NAME#transcode-v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=0.0.0-dev.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Every release has to be signed with the same key, or Android refuses
+      # to install it over the previous one. Without the secrets (forks, PRs
+      # from forks) Gradle falls back to the debug key.
+      - name: Release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ANDROID_KEYSTORE_B64 not set; the APK is signed with a debug key"
+          fi
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build APK
+        env:
+          VERSION_NAME: ${{ steps.ver.outputs.name }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          gradle -p transcode-android --no-daemon assembleRelease
+          mkdir -p dist
+          cp transcode-android/app/build/outputs/apk/release/app-release.apk dist/tessel-transcode-android-arm64.apk
+          ls -la dist
+
+      - name: Check the APK
+        run: |
+          APK=dist/tessel-transcode-android-arm64.apk
+          unzip -l "$APK" | grep -E 'lib/arm64-v8a/lib(tessel|ffmpeg|ffprobe)\.so' | tee libs.txt
+          [ "$(wc -l < libs.txt)" -eq 3 ] || { echo "::error::APK is missing a bundled executable"; exit 1; }
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs "$APK" | head -3
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tessel-transcode-android-arm64
+          path: dist/tessel-transcode-android-arm64.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Attach APK to GitHub Release
+    if: startsWith(github.ref, 'refs/tags/transcode-v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tessel-transcode-android-arm64
+          path: dist
+
+      - name: Attach to the transcode release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          fail_on_unmatched_files: true
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: false
+          make_latest: false   # the "Latest" badge belongs to the TV app
+
+      # Same as the native zips: people download the server from the app
+      # release, so the newest one carries the APK too.
+      - name: Attach to the latest app release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APP_TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+                      --jq '[.[] | select(.tagName | startswith("v"))] | sort_by(.createdAt) | last | .tagName // ""')
+          if [ -z "$APP_TAG" ]; then
+            echo "No app release yet; nothing to attach to."
+            exit 0
+          fi
+          gh release upload "$APP_TAG" dist/*.apk --clobber --repo "$GITHUB_REPOSITORY"
+          echo "Attached APK to $APP_TAG"

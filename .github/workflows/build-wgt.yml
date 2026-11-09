@@ -115,7 +115,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # Non-Docker users download the server from the app release too, so it
-      # carries the five native zips of the newest transcode-v* release.  The
+      # carries the five native zips (and the Android APK) of the newest
+      # transcode-v* release.  The
       # transcode-server-native workflow does the same the other way round when
       # a server tag lands after this release.
       - name: Fetch latest transcode-server zips
@@ -130,7 +131,7 @@ jobs:
             echo "No transcode-v* release found; the app release goes out without server zips."
             exit 0
           fi
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'tessel-transcode-*.zip' --dir release
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'tessel-transcode-*.zip' --pattern 'tessel-transcode-*.apk' --dir release
           ls -lh release/
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
@@ -206,6 +207,6 @@ jobs:
             ## Whats in this build
             - All sources at the matching commit
             - Output: `tessel.wgt`
-            - Transcode server: `${{ steps.server.outputs.tag || 'none' }}` (native `tessel-transcode-*.zip` attached; Docker users pull `ghcr.io/patrickst1991/tessel-transcode`)
+            - Transcode server: `${{ steps.server.outputs.tag || 'none' }}` (native `tessel-transcode-*.zip` and Android `tessel-transcode-android-arm64.apk` attached; Docker users pull `ghcr.io/patrickst1991/tessel-transcode`)
           draft:      false
           prerelease: false

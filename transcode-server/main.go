@@ -34,6 +34,13 @@ func main() {
 		os.Setenv("PATH", filepath.Dir(exe)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
 
+	// The Android app starts this binary as a child process. If Android kills
+	// the app without running its shutdown path, we'd keep port 8200 bound
+	// and the next start would fail, so leave when our parent does.
+	if os.Getenv("TESSEL_EXIT_WITH_PARENT") == "1" {
+		go exitWithParent()
+	}
+
 	port := envInt("PORT", 8200)
 	dataDir := envStr("DATA_DIR", "/data")
 	workDir := envStr("WORK_DIR", filepath.Join(os.TempDir(), "tessel-transcode"))
@@ -50,7 +57,7 @@ func main() {
 	// Auto-detect ffmpeg + the best available H.264 encoder.
 	caps, err := transcode.Probe(cfg.Encoder)
 	if err != nil {
-		log.Fatalf("ffmpeg not found — install ffmpeg (the Docker image bundles it): %v", err)
+		log.Fatalf("ffmpeg not found: install ffmpeg (the Docker image bundles it), or point FFMPEG / FFPROBE at it: %v", err)
 	}
 	log.Printf("ffmpeg=%s encoder=%s (%s)", caps.FFmpeg, caps.VideoEncoder, caps.HWAccel)
 
@@ -82,6 +89,18 @@ func main() {
 	log.Printf("listening on %s", addr)
 	if err := httpSrv.ListenAndServe(); err != nil {
 		log.Fatalf("http: %v", err)
+	}
+}
+
+// exitWithParent polls for reparenting: once the process that started us is
+// gone, Getppid changes (to init or a subreaper) and we exit.
+func exitWithParent() {
+	start := os.Getppid()
+	for range time.Tick(2 * time.Second) {
+		if os.Getppid() != start {
+			log.Printf("parent process gone, exiting")
+			os.Exit(0)
+		}
 	}
 }
 

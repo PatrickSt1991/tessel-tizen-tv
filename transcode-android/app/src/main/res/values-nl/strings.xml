@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="channel_name">Transcodeserver</string>
+    <string name="notif_starting">Starten…</string>
+    <string name="notif_stopping">Stoppen…</string>
+    <string name="notif_restarting">De server is gestopt; opnieuw starten…</string>
+    <string name="notif_running">Draait op %1$s</string>
+    <string name="stop">Stoppen</string>
+    <string name="start">Starten</string>
+    <string name="state_stopped">Server staat uit</string>
+    <string name="state_starting">Server start…</string>
+    <string name="state_running">Server draait</string>
+    <string name="state_failed">Server gestopt, opnieuw proberen…</string>
+    <string name="no_wifi">niet op wifi</string>
+    <string name="address">TV verbindt met %1$s</string>
+    <string name="show_log">Log</string>
+    <string name="close">Sluiten</string>
+    <string name="copy">Kopiëren</string>
+    <string name="log_empty">Nog niets gelogd.</string>
+    <string name="autostart">Starten als de telefoon opstart</string>
+    <string name="battery_button">Draaien op de achtergrond toestaan</string>
+    <string name="hint">Laat de telefoon aan de lader en op hetzelfde wifi-netwerk als de TV. Open op de TV Transcodeserver in Instellingen en kies Server zoeken in mijn netwerk, of typ het adres hierboven.</string>
+</resources>
