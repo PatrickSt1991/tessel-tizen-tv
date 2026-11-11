@@ -202,6 +202,37 @@ function asciiBytes(str) {
     for (var i = 0; i < str.length; i++) b[i] = str.charCodeAt(i) & 0xFF;
     return b;
 }
+/* Same reason for UTF-8 and base64: on Tizen 5.5 Buffer.from(str, 'utf8')
+ * throws "utf8 is not a function" (issue #170), so encode both by hand. */
+function utf8Bytes(str) {
+    str = (str == null) ? '' : String(str);
+    var out = [];
+    for (var i = 0; i < str.length; i++) {
+        var c = str.charCodeAt(i);
+        if (c >= 0xD800 && c < 0xDC00 && i + 1 < str.length) {
+            var d = str.charCodeAt(i + 1);
+            if (d >= 0xDC00 && d < 0xE000) { c = 0x10000 + ((c - 0xD800) << 10) + (d - 0xDC00); i++; }
+        }
+        if (c >= 0xD800 && c < 0xE000) c = 0xFFFD;   // lone surrogate
+        if (c < 0x80) out.push(c);
+        else if (c < 0x800) out.push(0xC0 | (c >> 6), 0x80 | (c & 63));
+        else if (c < 0x10000) out.push(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+        else out.push(0xF0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    }
+    return bytes(out);
+}
+var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function base64(buf) {
+    var s = '', i;
+    for (i = 0; i + 2 < buf.length; i += 3) {
+        var n = (buf[i] << 16) | (buf[i + 1] << 8) | buf[i + 2];
+        s += B64[n >> 18] + B64[(n >> 12) & 63] + B64[(n >> 6) & 63] + B64[n & 63];
+    }
+    var rest = buf.length - i;
+    if (rest === 1) { var a = buf[i] << 16; s += B64[a >> 18] + B64[(a >> 12) & 63] + '=='; }
+    else if (rest === 2) { var b = (buf[i] << 16) | (buf[i + 1] << 8); s += B64[b >> 18] + B64[(b >> 12) & 63] + B64[(b >> 6) & 63] + '='; }
+    return s;
+}
 
 /* ── 64-bit LE helpers (JS-number-safe up to 2^53 ≈ 9 PB, plenty for files) ─ */
 function writeU64LE(b, off, n) { b.writeUInt32LE(n % 4294967296 >>> 0, off); b.writeUInt32LE(Math.floor(n / 4294967296) >>> 0, off + 4); }
@@ -1268,7 +1299,7 @@ function handleWrite(req, res, query) {
         var q;
         try { q = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { ok: false, error: 'bad json' }); }
         if (!q.path || typeof q.text !== 'string') return sendJson(res, 400, { ok: false, error: 'path and text required' });
-        var data = Buffer.from(q.text, 'utf8');
+        var data = utf8Bytes(q.text);
         getConn(creds, function (err, c) {
             if (err) return sendJson(res, 502, { ok: false, error: err.message });
             c.putFile(q.path, data, function (e2, size) {
@@ -2180,7 +2211,7 @@ function davUrl(server, path, isDir) {
     return davRoot(server.url) + enc.join('/') + (isDir && enc.length ? '/' : '');
 }
 
-function md5hex(s) { return crypto.createHash('md5').update(s, 'utf8').digest('hex'); }
+function md5hex(s) { return crypto.createHash('md5').update(utf8Bytes(s)).digest('hex'); }
 
 /* The schemes a 401 offers: { basic, digest: { realm, nonce, qop, opaque,
  * algorithm, stale } }.  Node folds repeated headers into one string. */
@@ -2215,7 +2246,7 @@ function digestAuthorization(ch, method, uri, user, pass, nc, cnonce) {
 function davAuthorization(server, method, uri) {
     var a = davAuth[server.id];
     if (!a || !server.user) return '';
-    if (a.scheme === 'basic') return 'Basic ' + Buffer.from(server.user + ':' + (server.pass || ''), 'utf8').toString('base64');
+    if (a.scheme === 'basic') return 'Basic ' + base64(utf8Bytes(server.user + ':' + (server.pass || '')));
     a.nc = (a.nc || 0) + 1;
     return digestAuthorization(a.ch, method, uri, server.user, server.pass || '', a.nc, crypto.randomBytes(8).toString('hex'));
 }
