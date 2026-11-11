@@ -223,3 +223,48 @@ test('what went wrong gets a name the app can translate', function (t, done) {
         });
     });
 });
+
+/* Issue #170: on Tizen 5.5 Buffer.from(str, 'utf8') throws "utf8 is not a
+ * function", which killed Basic auth.  Run the code with a Buffer that throws
+ * on any string encoding, like the TV's. */
+function tvBuffer() {
+    function TvBuffer() { return Buffer.apply(null, arguments); }
+    TvBuffer.alloc = Buffer.alloc; TvBuffer.concat = Buffer.concat; TvBuffer.isBuffer = Buffer.isBuffer;
+    TvBuffer.from = function (data, enc) {
+        if (enc !== undefined) throw new TypeError(enc + ' is not a function');
+        return Buffer.from(data);
+    };
+    return TvBuffer;
+}
+function loadOnTv() {
+    var sandbox = {
+        module: { exports: {} }, Buffer: tvBuffer(), console: console,
+        setTimeout: setTimeout, clearTimeout: clearTimeout, process: { on: function () {} },
+        require: function (name) {
+            if (name === 'http') return { createServer: function () { return { listen: function () {} }; } };
+            return require(name);
+        }
+    };
+    vm.runInNewContext(SRC + '\nmodule.exports = { davAuthorization: davAuthorization, davAuth: davAuth, ' +
+        'utf8Bytes: utf8Bytes, base64: base64 };', sandbox);
+    return sandbox.module.exports;
+}
+
+test('Basic auth header is built without Buffer string encodings (issue #170)', function () {
+    var tv = loadOnTv();
+    var srv = { id: 'rc', url: 'https://dav.example.com/', user: 'gsör', pass: 'p@ss:wörd 😀' };
+    tv.davAuth.rc = { scheme: 'basic' };
+    assert.strictEqual(tv.davAuthorization(srv, 'PROPFIND', '/'),
+        'Basic ' + Buffer.from('gsör:p@ss:wörd 😀', 'utf8').toString('base64'));
+    srv.pass = '';
+    assert.strictEqual(tv.davAuthorization(srv, 'PROPFIND', '/'), 'Basic ' + Buffer.from('gsör:').toString('base64'));
+});
+
+test('utf8Bytes and base64 match Node for every padding length', function () {
+    var tv = loadOnTv();
+    ['', 'a', 'ab', 'abc', 'abcd', 'Träume', '日本語', '😀x', '\ud800'].forEach(function (s) {
+        var mine = tv.utf8Bytes(s);
+        assert.deepStrictEqual(Array.from(mine), Array.from(Buffer.from(s, 'utf8')), s);
+        assert.strictEqual(tv.base64(mine), Buffer.from(s, 'utf8').toString('base64'), s);
+    });
+});
