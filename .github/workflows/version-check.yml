@@ -20,9 +20,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install xmllint
-        run: command -v xmllint || (sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils)
-
       - name: Require a config.xml version bump when tizen-app/ changes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -36,8 +33,11 @@ jobs:
             exit 0
           fi
 
-          BASE_VER=$(git show "origin/$BASE_REF:tizen-app/config.xml" | xmllint --xpath 'string(/*/@version)' -)
-          HEAD_VER=$(xmllint --xpath 'string(/*/@version)' tizen-app/config.xml)
+          # Python ships on the runner; avoids an apt install that breaks
+          # whenever the Ubuntu mirror is unreachable.
+          xml_version() { python3 -c 'import sys, xml.etree.ElementTree as E; print(E.parse(sys.stdin).getroot().get("version", ""))'; }
+          BASE_VER=$(git show "origin/$BASE_REF:tizen-app/config.xml" | xml_version)
+          HEAD_VER=$(xml_version < tizen-app/config.xml)
           echo "config.xml version: $BASE_VER on $BASE_REF, $HEAD_VER in this PR"
 
           fail() {
