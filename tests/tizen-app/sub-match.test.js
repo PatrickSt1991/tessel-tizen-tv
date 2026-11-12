@@ -55,7 +55,7 @@ test('music keeps the strict rule only', function () {
 
 test('withSubsFolder reads a Subs folder only when there is one and a video', function () {
     var calls = [];
-    function lister(d, cb) { calls.push(d.name); cb(null, [{ name: '2_English.srt', isDir: false }]); }
+    function lister(names, cb) { calls.push(names.join('/')); cb(null, [{ name: '2_English.srt', isDir: false }]); }
     var a = [{ name: 'Film.mkv', isDir: false }, { name: 'Subs', isDir: true }];
     SubMatch.withSubsFolder(a, lister, function (e) {
         assert.strictEqual(e.subsFolder.name, 'Subs');
@@ -71,6 +71,48 @@ test('withSubsFolder reads a Subs folder only when there is one and a video', fu
     SubMatch.withSubsFolder(d, function (x, cb) { cb(new Error('denied')); }, function (e) {
         assert.strictEqual(e.subsFolder, undefined);
     });
+});
+
+test('a season pack\'s Subs/<episode>/ folders are read, each for its own video', function () {
+    var tree = {
+        'Subs': [{ name: 'Show.S01E01.720p', isDir: true }, { name: 'show.s01e02.720P', isDir: true },
+                 { name: 'Show.S01E09.720p', isDir: true }, { name: 'Extras', isDir: true }],
+        'Subs/Show.S01E01.720p': [{ name: '2_English.srt', isDir: false }, { name: 'info.txt', isDir: false }],
+        'Subs/show.s01e02.720P': [{ name: '2_English.srt', isDir: false }, { name: '3_Dutch.srt', isDir: false }]
+    };
+    var calls = [];
+    var entries = [{ name: 'Show.S01E01.720p.mkv', isDir: false }, { name: 'Show.S01E02.720p.mkv', isDir: false },
+                   { name: 'Subs', isDir: true }];
+    SubMatch.withSubsFolder(entries, function (names, cb) {
+        var k = names.join('/'); calls.push(k);
+        if (tree[k]) cb(null, tree[k]); else cb(new Error('nope'));
+    }, function () {});
+    assert.deepStrictEqual(calls, ['Subs', 'Subs/Show.S01E01.720p', 'Subs/show.s01e02.720P'],
+                           'only folders named after a video here are opened');
+    var eps = entries.subsFolder.episodes;
+    assert.deepStrictEqual(eps.map(function (e) { return e.video + ':' + e.entries.length; }),
+                           ['Show.S01E01.720p.mkv:2', 'Show.S01E02.720p.mkv:2']);
+
+    // …and pair() gives each video its own folder's files, nothing else.
+    var subs = [];
+    eps.forEach(function (ep) {
+        ep.entries.forEach(function (e) { subs.push({ name: e.name, dir: 'Subs', video: ep.video }); });
+    });
+    var got = SubMatch.pair(['Show.S01E01.720p.mkv', 'Show.S01E02.720p.mkv'], subs);
+    assert.strictEqual(names(got['Show.S01E01.720p.mkv']), 'Subs/2_English.srt~');
+    assert.strictEqual(names(got['Show.S01E02.720p.mkv']), 'Subs/2_English.srt~ Subs/3_Dutch.srt~');
+});
+
+test('a share streams an episode folder\'s subtitle from inside that folder', function () {
+    var SMB = loadSmb();
+    var entries = [{ name: 'Show.S01E01.mkv', isDir: false }, { name: 'Show.S01E02.mkv', isDir: false }, { name: 'Subs', isDir: true }];
+    entries.subsFolder = { name: 'Subs', entries: [{ name: 'Show.S01E02', isDir: true }],
+        episodes: [{ name: 'Show.S01E02', video: 'Show.S01E02.mkv', entries: [{ name: '2_English.srt', isDir: false }] }] };
+    var got = SMB.siblingSubtitles(entries, '/TV/Show');
+    assert.strictEqual(got['Show.S01E01.mkv'], undefined);
+    var list = Array.from(got['Show.S01E02.mkv']);
+    assert.strictEqual(names(list), 'Subs/2_English.srt~');
+    assert.strictEqual(list[0].uri, 'http://127.0.0.1:8127/smb/stream?path=' + encodeURIComponent('/TV/Show/Subs/Show.S01E02/2_English.srt'));
 });
 
 /* ── through the share browser ─────────────────────────────────────────── */

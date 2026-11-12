@@ -134,7 +134,7 @@ var Browser = (function () {
                     if (!subsDir || !hasVideo) { finish(entries, []); return; }
                     try {
                         subsDir.listFiles(
-                            function (kids) { finish(entries, kids, subsDir.name); },
+                            function (kids) { episodeFolders(entries, kids, subsDir.name); },
                             function ()     { finish(entries, []); });
                     } catch (e) { finish(entries, []); }
                 },
@@ -160,7 +160,32 @@ var Browser = (function () {
             if (dir) s.dir = dir;
             return s;
         }
-        function finish(entries, subsKids, subsDirName) {
+        /* Season packs: Subs/<video's name>/2_English.srt.  Each such
+         * folder is read, one at a time, and its files go to that video. */
+        function episodeFolders(entries, kids, subsDirName) {
+            var dirs = {};
+            kids.forEach(function (k) { if (k.isDirectory) dirs[k.name] = k; });
+            var todo = SubMatch.episodeDirs(
+                entries.filter(function (f) { return !f.isDirectory; }).map(function (f) { return f.name; }),
+                Object.keys(dirs));
+            var own = [];
+            (function next() {
+                var ep = todo.shift();
+                if (!ep) { finish(entries, kids, subsDirName, own); return; }
+                function got(list) {
+                    (list || []).forEach(function (f) {
+                        if (f.isDirectory || !isSubtitle(f.name)) return;
+                        var s = subEntry(f, subsDirName);
+                        s.video = ep.video;
+                        own.push(s);
+                    });
+                    next();
+                }
+                try { dirs[ep.name].listFiles(got, function () { got(null); }); }
+                catch (e) { got(null); }
+            })();
+        }
+        function finish(entries, subsKids, subsDirName, episodeSubs) {
             // Every playable item gets its candidate subtitles: the
             // files carrying its name, then SubMatch's looser picks.
             var subs = [];
@@ -170,6 +195,7 @@ var Browser = (function () {
             subsKids.forEach(function (f) {
                 if (!f.isDirectory && isSubtitle(f.name)) subs.push(subEntry(f, subsDirName));
             });
+            subs = subs.concat(episodeSubs || []);
             var paired = SubMatch.pair(
                 entries.filter(function (f) { return !f.isDirectory && isMedia(f.name); })
                        .map(function (f) { return f.name; }), subs);

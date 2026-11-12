@@ -151,7 +151,7 @@ var WebDAV = (function () {
         list(id, path, function (err, entries) {
             if (err) return cb(err);
             SubMatch.withSubsFolder(entries,
-                function (d, done) { list(id, join(path, d.name), done); },
+                function (names, done) { list(id, names.reduce(join, path), done); },
                 function () { cb(null, entries); });
         });
     }

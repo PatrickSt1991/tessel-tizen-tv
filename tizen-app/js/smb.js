@@ -579,17 +579,23 @@ var SMB = (function () {
     function siblingSubtitles(entries, dir, srv, urlOf) {
         urlOf = urlOf || streamUrl;
         var subs = [];
-        function add(list, folder, tag) {
+        function add(list, folder, tag, video) {
             list.forEach(function (e) {
                 if (e.isDir || !isSubtitle(e.name)) return;
                 var s = { name: e.name, lang: langTag(e.name), ext: ext(e.name), uri: urlOf(join(folder, e.name), srv) };
                 if (tag) s.dir = tag;
+                if (video) s.video = video;   // from that video's own folder in Subs
                 subs.push(s);
             });
         }
         add(entries, dir);
         var sf = entries.subsFolder;
-        if (sf) add(sf.entries || [], join(dir, sf.name), sf.name);
+        if (sf) {
+            add(sf.entries || [], join(dir, sf.name), sf.name);
+            (sf.episodes || []).forEach(function (ep) {
+                add(ep.entries || [], join(join(dir, sf.name), ep.name), sf.name, ep.video);
+            });
+        }
         return SubMatch.pair(
             entries.filter(function (e) { return !e.isDir && isPlayable(e.name); })
                    .map(function (e) { return e.name; }), subs);
@@ -600,7 +606,7 @@ var SMB = (function () {
         list(path, function (err, entries) {
             if (err) return cb(err);
             SubMatch.withSubsFolder(entries,
-                function (d, done) { list(join(path, d.name), done); },
+                function (names, done) { list(names.reduce(join, path), done); },
                 function () { cb(null, entries); });
         });
     }

@@ -10,7 +10,10 @@
  *     (S01E02, 1x02) as a video goes to that video.
  *
  * A folder named Subs or Subtitles next to the video is read as if its files
- * sat in the folder itself, the layout most downloads come in.
+ * sat in the folder itself, the layout most downloads come in.  Season packs
+ * go one deeper, a folder per episode named after the video
+ * (Subs/Show.S01E02/2_English.srt): those files are that video's, whatever
+ * they are called.
  *
  * A loosely matched entry is a copy flagged `loose`, so Auto can treat it
  * with more care than a file that carries the video's own name.  A .txt is
@@ -52,8 +55,10 @@ var SubMatch = (function () {
      * Returns { "Film.mkv": [entry, …] }: exact name first, then the ones
      * continuing it with a dot, then the loose ones. */
     function pair(names, subs) {
-        var byStem = {}, order = [];
+        var byStem = {}, order = [], own = [];
         subs.forEach(function (s) {
+            // Out of a per-episode Subs folder: the video is already known.
+            if (s.video) { own.push(s); return; }
             var k = stem(s.name).toLowerCase();
             if (!byStem[k]) { byStem[k] = []; order.push(k); }
             byStem[k].push(s);
@@ -72,8 +77,12 @@ var SubMatch = (function () {
 
         var videos = names.filter(isVideo);
         if (!videos.length) return out;
+        own.forEach(function (s) {
+            if (videos.indexOf(s.video) >= 0 && ext(s.name) !== 'txt')
+                (out[s.video] = out[s.video] || []).push(looseCopy(s));
+        });
         subs.forEach(function (s) {
-            if (claimed.indexOf(s) >= 0 || ext(s.name) === 'txt') return;
+            if (s.video || claimed.indexOf(s) >= 0 || ext(s.name) === 'txt') return;
             var ep = episode(s.name), to;
             if (videos.length === 1) {
                 var own = episode(videos[0]);
@@ -86,27 +95,59 @@ var SubMatch = (function () {
         return out;
     }
 
+    /* The per-episode folders inside a Subs folder: those named after one of
+     * the folder's videos (its name without the extension, any case).
+     * videoNames: the folder's files; dirNames: the Subs folder's folders.
+     * Returns [{ name, video }], at most MAX_EPISODE_DIRS: each is one more
+     * folder read. */
+    var MAX_EPISODE_DIRS = 60;
+    function episodeDirs(videoNames, dirNames) {
+        var byStem = {};
+        videoNames.forEach(function (v) { if (isVideo(v)) byStem[stem(v).toLowerCase()] = v; });
+        var out = [];
+        dirNames.forEach(function (d) {
+            var v = byStem[String(d).toLowerCase()];
+            if (v && out.length < MAX_EPISODE_DIRS) out.push({ name: d, video: v });
+        });
+        return out;
+    }
+
     /* A folder listing ([{ name, isDir }]) with a Subs folder and a video in
      * it gets that folder's listing hung on it as entries.subsFolder =
-     * { name, entries }.  listFn(dirEntry, cb(err, entries)) does the read;
-     * a failed read just leaves the Subs folder out. */
+     * { name, entries, episodes: [{ name, video, entries }] }.
+     * listFn(names, cb(err, entries)) reads the folder `names` deep below
+     * this one (['Subs'], ['Subs', 'Show.S01E02']), one at a time; a failed
+     * read just leaves that folder out. */
     function withSubsFolder(entries, listFn, done) {
-        var d = null, video = false;
+        var d = null, videos = [];
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i];
             if (e.isDir) { if (!d && isSubsDir(e.name)) d = e; }
-            else if (isVideo(e.name)) video = true;
+            else if (isVideo(e.name)) videos.push(e.name);
         }
-        if (!d || !video) { done(entries); return; }
-        try {
-            listFn(d, function (err, kids) {
-                if (!err && kids) entries.subsFolder = { name: d.name, entries: kids };
-                done(entries);
-            });
-        } catch (x) { done(entries); }
+        if (!d || !videos.length) { done(entries); return; }
+        function read(names, cb) {
+            try { listFn(names, function (err, kids) { cb(!err && kids ? kids : null); }); }
+            catch (x) { cb(null); }
+        }
+        read([d.name], function (kids) {
+            if (!kids) { done(entries); return; }
+            var sf = entries.subsFolder = { name: d.name, entries: kids, episodes: [] };
+            var todo = episodeDirs(videos, kids.filter(function (k) { return k.isDir; })
+                                               .map(function (k) { return k.name; }));
+            (function next() {
+                var ep = todo.shift();
+                if (!ep) { done(entries); return; }
+                read([d.name, ep.name], function (list) {
+                    if (list) sf.episodes.push({ name: ep.name, video: ep.video, entries: list });
+                    next();
+                });
+            })();
+        });
     }
 
-    return { pair: pair, episode: episode, isSubsDir: isSubsDir, withSubsFolder: withSubsFolder };
+    return { pair: pair, episode: episode, isSubsDir: isSubsDir, episodeDirs: episodeDirs,
+             withSubsFolder: withSubsFolder };
 })();
 
 // Ignored by the Tizen/browser build; lets Node tests drive the module.
