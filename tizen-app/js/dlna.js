@@ -65,7 +65,19 @@ var DLNA = (function () {
     function playlistOf(entries) {
         return entries.filter(function (e) { return isPlayable(kindOf(e)); }).map(function (e) {
             var audio = kindOf(e) === 'audio';
-            return { uri: e.url, title: e.title, art: audio && e.art ? e.art : null, tagSrc: audio ? e.url : null };
+            return { uri: e.url, title: e.title, art: audio && e.art ? e.art : null, tagSrc: audio ? e.url : null,
+                     subtitles: audio ? [] : subtitlesOf(e) };
+        });
+    }
+    /* The subtitle files a server offers with a video (the service reads
+     * them out of the Browse reply), as the player's sidecar entries.  A
+     * caption URL is rarely a readable name, so they are named after the
+     * video. */
+    function subtitlesOf(e) {
+        var subs = e.subs || [];
+        return subs.map(function (s, i) {
+            return { name: e.title + (subs.length > 1 ? ' ' + (i + 1) : '') + '.' + s.ext,
+                     lang: s.lang || '', ext: s.ext, uri: s.url };
         });
     }
     function picturesOf(entries) {
@@ -220,6 +232,7 @@ var DLNA = (function () {
         entries.forEach(function (e) {
             var k = kindOf(e);
             var meta = e.isDir ? '' : e.duration ? clock(e.duration) : humanSize(e.size);
+            if (!e.isDir && k === 'video' && e.subs && e.subs.length) meta = 'CC ×' + e.subs.length + (meta ? '  ' + meta : '');
             var li = row(FileTypes.icon(k), e.title, meta);
             li.dataset.dir = e.isDir ? '1' : '0';
             if (k === 'other') li.classList.add('unopenable');

@@ -146,6 +146,16 @@ var WebDAV = (function () {
         });
     }
 
+    /* list() plus the folder's Subs folder, when it has one and a video. */
+    function listWithSubs(id, path, cb) {
+        list(id, path, function (err, entries) {
+            if (err) return cb(err);
+            SubMatch.withSubsFolder(entries,
+                function (names, done) { list(id, names.reduce(join, path), done); },
+                function () { cb(null, entries); });
+        });
+    }
+
     /* The URL handed to AVPlay; the service streams the file with Range
      * support, so seeking works. */
     function streamUrl(path, srv) {
@@ -233,7 +243,7 @@ var WebDAV = (function () {
         head(path ? path.split('/').pop() : serverLabel(s), serverLabel(s) + (path || '/'));
         message('…', I18n.t('common.loading'));
         var stackHere = pathStack.slice();
-        list(srv, path, function (err, entries) {
+        listWithSubs(srv, path, function (err, entries) {
             if (current !== srv) return;   // left meanwhile
             if (err) {
                 dbg('list ' + JSON.stringify(path || '/') + ' failed: ' + err.message);

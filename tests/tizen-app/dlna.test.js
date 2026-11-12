@@ -145,9 +145,20 @@ test('the player gets the folder\'s video and audio, music with its cover', func
         { kind: 'audio', title: 'Song', url: 'http://s/3.mp3', art: 'http://s/c.jpg' }
     ]));
     assert.deepStrictEqual(pl, [
-        { uri: 'http://s/1.mkv', title: 'Film', art: null, tagSrc: null },
-        { uri: 'http://s/3.mp3', title: 'Song', art: 'http://s/c.jpg', tagSrc: 'http://s/3.mp3' }
+        { uri: 'http://s/1.mkv', title: 'Film', art: null, tagSrc: null, subtitles: [] },
+        { uri: 'http://s/3.mp3', title: 'Song', art: 'http://s/c.jpg', tagSrc: 'http://s/3.mp3', subtitles: [] }
     ]);
+});
+
+test('a video\'s subtitle files reach the player as sidecars named after it', function () {
+    var D = loadDlna();
+    var pl = plain(D.playlistOf([
+        { kind: 'video', title: 'Film', url: 'http://s/1.mkv', subs: [{ url: 'http://s/c/1.srt', ext: 'srt' }] },
+        { kind: 'video', title: 'Two', url: 'http://s/2.mkv',
+          subs: [{ url: 'http://s/c/2a.srt', ext: 'srt' }, { url: 'http://s/c/2b.vtt', ext: 'vtt' }] }
+    ]));
+    assert.deepStrictEqual(pl[0].subtitles, [{ name: 'Film.srt', lang: '', ext: 'srt', uri: 'http://s/c/1.srt' }]);
+    assert.deepStrictEqual(pl[1].subtitles.map(function (s) { return s.name; }), ['Two 1.srt', 'Two 2.vtt']);
 });
 
 test('the M-SEARCH names the group and the target, however it travels', function () {
@@ -268,4 +279,58 @@ test('passive discovery joins the group on each interface and resolves an announ
     handlers.message(announce, { address: '192.168.1.10' });
     assert.strictEqual(requests.length, 2, 'its next ssdp:alive is read again at once');
     assert.strictEqual(Object.keys(passive.passiveServers).length, 1);
+});
+
+/* ── subtitle files a server offers with a video ───────────────────────── */
+
+function didlOf(items) {
+    return '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" ' +
+           'xmlns:sec="http://www.sec.co.kr/" xmlns:pv="http://www.pv.com/pvns/" ' +
+           'xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' + items + '</DIDL-Lite>';
+}
+function video(id, inner) {
+    return '<item id="' + id + '" parentID="0" restricted="1"><dc:title>Film ' + id + '</dc:title>' +
+           '<upnp:class>object.item.videoItem</upnp:class>' + inner + '</item>';
+}
+var MKV = '<res size="10" protocolInfo="http-get:*:video/x-matroska:*">http://nas:8200/MediaItems/1.mkv</res>';
+
+test('miniDLNA\'s sec:CaptionInfoEx comes along as the video\'s subtitle', function () {
+    var got = plain(svc.parseDidl(didlOf(video('1', MKV +
+        '<sec:CaptionInfoEx sec:type="srt">http://nas:8200/Captions/1.srt</sec:CaptionInfoEx>'))));
+    assert.strictEqual(got[0].url, 'http://nas:8200/MediaItems/1.mkv');
+    assert.deepStrictEqual(got[0].subs, [{ url: 'http://nas:8200/Captions/1.srt', ext: 'srt' }]);
+});
+
+test('a text/srt resource is the subtitle, never the thing to play, wherever it sits', function () {
+    var srt = '<res protocolInfo="http-get:*:text/srt:*">http://jf:8096/Videos/a/Subtitles/2/Stream.srt?x=1&amp;y=2</res>';
+    var vtt = '<res protocolInfo="http-get:*:text/vtt:*">http://jf:8096/Videos/a/Subtitles/3/Stream.vtt</res>';
+    var got = plain(svc.parseDidl(didlOf(video('1', srt + MKV + vtt))));
+    assert.strictEqual(got[0].url, 'http://nas:8200/MediaItems/1.mkv');
+    assert.deepStrictEqual(got[0].subs, [
+        { url: 'http://jf:8096/Videos/a/Subtitles/2/Stream.srt?x=1&y=2', ext: 'srt' },
+        { url: 'http://jf:8096/Videos/a/Subtitles/3/Stream.vtt', ext: 'vtt' }
+    ]);
+});
+
+test('pv:subtitleFileUri on the resource counts, and a file listed twice comes once', function () {
+    var res = '<res size="10" protocolInfo="http-get:*:video/mp4:*" pv:subtitleFileType="SRT" ' +
+              'pv:subtitleFileUri="http://nas:8200/Captions/9.srt">http://nas:8200/MediaItems/9.mp4</res>';
+    var got = plain(svc.parseDidl(didlOf(video('9', res +
+        '<sec:CaptionInfoEx sec:type="srt">http://nas:8200/Captions/9.srt</sec:CaptionInfoEx>'))));
+    assert.deepStrictEqual(got[0].subs, [{ url: 'http://nas:8200/Captions/9.srt', ext: 'srt' }]);
+});
+
+test('a caption the app cannot paint, or one that is not http, is left out', function () {
+    var got = plain(svc.parseDidl(didlOf(video('1', MKV +
+        '<sec:CaptionInfoEx sec:type="sub">http://nas:8200/Captions/1.sub</sec:CaptionInfoEx>' +
+        '<sec:CaptionInfoEx sec:type="srt">file:///x/1.srt</sec:CaptionInfoEx>'))));
+    assert.strictEqual(got[0].subs, undefined);
+});
+
+test('a text file the server lists by itself is still an entry', function () {
+    var got = plain(svc.parseDidl(didlOf('<item id="t"><dc:title>Notes</dc:title><upnp:class>object.item.textItem</upnp:class>' +
+        '<res protocolInfo="http-get:*:text/plain:*">http://nas:8200/MediaItems/5.txt</res></item>')));
+    assert.strictEqual(got.length, 1);
+    assert.strictEqual(got[0].url, 'http://nas:8200/MediaItems/5.txt');
+    assert.strictEqual(got[0].subs, undefined);
 });

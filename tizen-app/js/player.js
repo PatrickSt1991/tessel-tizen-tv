@@ -1124,7 +1124,8 @@ var Player = (function () {
                     : 'subs.embedded';
             return I18n.t(key, e._ordinal, e._containerLabel);
         }
-        var name = e._onDemand ? I18n.t('subs.embeddedTag', e.name) : e.name;
+        // A file from the folder's Subs folder says so: "Subs/English.srt".
+        var name = e._onDemand ? I18n.t('subs.embeddedTag', e.name) : (e.dir ? e.dir + '/' : '') + e.name;
         if (e.status === 'extracting') return I18n.t('subs.extracting', name, e.progress || 0);
         if (e.status === 'partial')    return I18n.t('subs.partial', name, e.cues.length);
         return name;
@@ -2187,6 +2188,7 @@ var Player = (function () {
                     index:  'ext:' + k,
                     name:   label,
                     lang:   s.lang || '',
+                    loose:  !!s.loose,      // matched by SubMatch's looser rules
                     type:   s._extracted ? 'AVPLAY_EXTRACTED' : 'AVPLAY_EXTERNAL',
                     active: (currentExternalSub === s)
                 });
@@ -2241,6 +2243,8 @@ var Player = (function () {
                 out.subtitle.push({
                     index:  k,
                     name:   (s.lang ? '[' + s.lang.toUpperCase() + '] ' : '') + subEntryName(s),
+                    lang:   s.lang || '',
+                    loose:  !!s.loose,
                     type:   'HTML5_EXTERNAL',
                     active: false  // set when activated
                 });

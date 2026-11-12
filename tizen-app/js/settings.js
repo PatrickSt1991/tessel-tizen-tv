@@ -310,11 +310,25 @@ var LanguageList = (function () {
      * otherwise none: several tagged files in languages the viewer did not
      * ask for are left to the CC menu rather than guessed at.  `subs` is a
      * list of { lang } (the tag from the file name, '' for none); `uiLang`
-     * the app's locale ('pl-PL', 'en').  Returns the entry or null. */
+     * the app's locale ('pl-PL', 'en').  Returns the entry or null.
+     *
+     * Files that only loosely belong to the video (`loose`: English.srt in
+     * a Subs folder, a file sharing the episode number; see SubMatch) come
+     * into it when no file carries the video's own name.  Their names say
+     * nothing reliable about being "the" subtitle, so: the only one there
+     * is, else the first whose name or tag says the app's language. */
     function pickAutoSubtitle(subs, uiLang) {
         subs = subs || [];
         if (!subs.length) return null;
         var ui = String(uiLang || '').toLowerCase().split(/[-_]/)[0];
+        var own = subs.filter(function (s) { return !s.loose; });
+        if (!own.length) {
+            if (subs.length === 1) return subs[0];
+            for (var k = 0; k < subs.length; k++)
+                if (ui && matchScore(ui, subs[k].lang, subs[k].name) >= 50) return subs[k];
+            return null;
+        }
+        subs = own;
         var tagged = null;
         for (var i = 0; i < subs.length; i++) {
             var s = subs[i];

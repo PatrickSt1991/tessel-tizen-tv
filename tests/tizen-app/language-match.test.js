@@ -145,3 +145,21 @@ test('Auto takes a lone tagged file whatever its language, and guesses at nothin
     assert.strictEqual(LanguageList.pickAutoSubtitle([], 'en'), null);
     assert.strictEqual(LanguageList.pickAutoSubtitle(null, 'en'), null);
 });
+
+/* Loosely matched files (SubMatch): only when nothing carries the video's name. */
+
+test('Auto prefers a file with the video\'s own name over a loosely matched one', function () {
+    var own   = { lang: 'de', name: 'Film.de.srt' };
+    var loose = { lang: '', name: 'English.srt', loose: true };
+    assert.strictEqual(LanguageList.pickAutoSubtitle([loose, own], 'en'), own);
+});
+
+test('Auto takes a lone loose file, else the one named in the app language, else none', function () {
+    var en = { lang: '', name: 'Subs/2_English.srt', loose: true };
+    var nl = { lang: '', name: 'Subs/5_Dutch.srt', loose: true };
+    var fr = { lang: '', name: 'Subs/7_French.srt', loose: true };
+    assert.strictEqual(LanguageList.pickAutoSubtitle([nl], 'en'), nl);
+    assert.strictEqual(LanguageList.pickAutoSubtitle([en, nl, fr], 'nl-NL'), nl);
+    assert.strictEqual(LanguageList.pickAutoSubtitle([en, nl, fr], 'en'), en);
+    assert.strictEqual(LanguageList.pickAutoSubtitle([nl, fr], 'en'), null);
+});
