@@ -28,13 +28,16 @@
         var subs = (item.subtitles || [])
             .filter(function (s) { return s && !s._extracted; })
             .map(function (s) {
-                return {
+                var keep = {
                     name:     s.name,
                     lang:     s.lang || '',
                     ext:      s.ext  || '',
                     fullPath: s.fullPath || '',
                     uri:      s.uri || ''
                 };
+                if (s.loose) keep.loose = true;
+                if (s.dir)   keep.dir = s.dir;
+                return keep;
             });
         var entry = { uri: item.uri, title: item.title };
         if (subs.length) entry.subtitles = subs;

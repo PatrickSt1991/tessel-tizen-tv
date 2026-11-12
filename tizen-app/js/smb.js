@@ -566,40 +566,43 @@ var SMB = (function () {
         return /^[a-z]{2,3}$/i.test(last) ? last.toLowerCase() : '';
     }
 
-    /* Pair every playable file in a folder listing with the subtitle files
-     * sitting next to it, the same way the USB browser does: an exact stem
-     * match first (Movie.srt for Movie.mp4, case-insensitive), then anything
-     * whose stem continues the video's with a dot (Movie.en.srt, Movie.nl.srt).
+    /* Pair every playable file in a folder listing with its subtitle files,
+     * the same way the USB browser does (SubMatch): an exact stem match first
+     * (Movie.srt for Movie.mp4, case-insensitive), then anything whose stem
+     * continues the video's with a dot (Movie.en.srt), then the loose
+     * matches, flagged `loose`.  A Subs folder read by listWithSubs
+     * (entries.subsFolder) counts as part of the folder.
      * Returns { "Movie.mp4": [ { name, lang, ext, uri } ] }.  The uri always
      * goes through the smbproxy — a paired transcode server changes where the
      * video bytes come from, not where the .srt lives.  The WebDAV browser
      * lists the same way and passes its own urlOf (issue #145). */
     function siblingSubtitles(entries, dir, srv, urlOf) {
         urlOf = urlOf || streamUrl;
-        var subsByStem = {};
-        entries.forEach(function (e) {
-            if (e.isDir || !isSubtitle(e.name)) return;
-            var k = stem(e.name).toLowerCase();
-            (subsByStem[k] = subsByStem[k] || []).push({
-                name: e.name,
-                lang: langTag(e.name),
-                ext:  ext(e.name),
-                uri:  urlOf(join(dir, e.name), srv)
+        var subs = [];
+        function add(list, folder, tag) {
+            list.forEach(function (e) {
+                if (e.isDir || !isSubtitle(e.name)) return;
+                var s = { name: e.name, lang: langTag(e.name), ext: ext(e.name), uri: urlOf(join(folder, e.name), srv) };
+                if (tag) s.dir = tag;
+                subs.push(s);
             });
+        }
+        add(entries, dir);
+        var sf = entries.subsFolder;
+        if (sf) add(sf.entries || [], join(dir, sf.name), sf.name);
+        return SubMatch.pair(
+            entries.filter(function (e) { return !e.isDir && isPlayable(e.name); })
+                   .map(function (e) { return e.name; }), subs);
+    }
+
+    /* list() plus the folder's Subs folder, when it has one and a video. */
+    function listWithSubs(path, cb) {
+        list(path, function (err, entries) {
+            if (err) return cb(err);
+            SubMatch.withSubsFolder(entries,
+                function (d, done) { list(join(path, d.name), done); },
+                function () { cb(null, entries); });
         });
-        var stems = Object.keys(subsByStem);
-        var out = {};
-        entries.forEach(function (e) {
-            if (e.isDir || !isPlayable(e.name)) return;
-            var base = stem(e.name).toLowerCase();
-            var subs = (subsByStem[base] || []).slice();
-            stems.forEach(function (k) {
-                if (k !== base && k.indexOf(base + '.') === 0)
-                    subsByStem[k].forEach(function (s) { if (subs.indexOf(s) < 0) subs.push(s); });
-            });
-            if (subs.length) out[e.name] = subs;
-        });
-        return out;
     }
 
     /* One folder of server srv for FolderPlay: its subfolders and its
@@ -638,7 +641,7 @@ var SMB = (function () {
         var ul = document.getElementById('browse-list');
         ul.innerHTML = '<li><span class="icon">…</span><span class="name">' + esc(I18n.t('common.loading')) + '</span></li>';
 
-        list(path, function (err, entries) {
+        listWithSubs(path, function (err, entries) {
             ul.innerHTML = '';
             if (err) {
                 dbg('list ' + JSON.stringify(path || '/') + ' failed: ' + err.message);

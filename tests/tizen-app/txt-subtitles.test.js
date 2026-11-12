@@ -90,6 +90,7 @@ function loadSmb() {
         Debug:  { send: function () {} },
         I18n:   I18n,
         FileTypes: require('../../tizen-app/js/filetypes.js'),
+        SubMatch: require('../../tizen-app/js/sub-match.js'),
         UI:     { toast: function () {} },
         localStorage: { getItem: function () { return null; }, setItem: function () {} },
         document: { readyState: 'complete', addEventListener: function () {}, getElementById: function () { return null; } },

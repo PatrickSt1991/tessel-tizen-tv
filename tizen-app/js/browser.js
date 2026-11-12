@@ -124,58 +124,19 @@ var Browser = (function () {
             file.listFiles(
                 function (entries) {
                     if (typeof Debug !== 'undefined') Debug.browse('  ' + entries.length + ' entries');
-
-                    // Build a map of basename → list of sibling subtitle files
-                    // so each playable item knows its candidate subtitles.
-                    var subsByBase = {};
+                    // A Subs / Subtitles folder next to a video counts as part
+                    // of this folder: its files are read along (SubMatch).
+                    var subsDir = null, hasVideo = false;
                     entries.forEach(function (f) {
-                        if (!f.isDirectory && isSubtitle(f.name)) {
-                            var base = basename(f.name).toLowerCase();
-                            (subsByBase[base] = subsByBase[base] || []).push({
-                                name:     f.name,
-                                lang:     extractLangTag(f.name),
-                                ext:      ext(f.name),
-                                uri:      typeof f.toURI === 'function' ? f.toURI() : 'file://' + f.fullPath,
-                                fullPath: f.fullPath,
-                                file:     f
-                            });
-                        }
+                        if (f.isDirectory) { if (!subsDir && SubMatch.isSubsDir(f.name)) subsDir = f; }
+                        else if (FileTypes.kind(f.name) === 'video') hasVideo = true;
                     });
-
-                    var out = entries.map(function (f) {
-                        var subs = [];
-                        if (!f.isDirectory && isMedia(f.name)) {
-                            // Sibling subtitles: same basename (case-insensitive)
-                            var base = basename(f.name).toLowerCase();
-                            subs = subsByBase[base] || [];
-                            // Also include subtitles whose basename starts with
-                            // the video's basename (e.g. movie.en.srt next to movie.mp4)
-                            Object.keys(subsByBase).forEach(function (k) {
-                                if (k !== base && k.indexOf(base + '.') === 0) {
-                                    subsByBase[k].forEach(function (s) {
-                                        if (subs.indexOf(s) < 0) subs.push(s);
-                                    });
-                                }
-                            });
-                        }
-                        return {
-                            name:     f.name,
-                            isDir:    f.isDirectory,
-                            kind:     f.isDirectory ? 'dir' : FileTypes.kind(f.name),
-                            playable: !f.isDirectory && isMedia(f.name),
-                            size:     f.fileSize,
-                            mtime:    f.modified,
-                            file:     f,
-                            uri:      avplayURI(f),
-                            fullPath: f.fullPath,
-                            subtitles: subs
-                        };
-                    });
-                    out.sort(function (a, b) {
-                        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-                        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-                    });
-                    cb(null, out);
+                    if (!subsDir || !hasVideo) { finish(entries, []); return; }
+                    try {
+                        subsDir.listFiles(
+                            function (kids) { finish(entries, kids, subsDir.name); },
+                            function ()     { finish(entries, []); });
+                    } catch (e) { finish(entries, []); }
                 },
                 function (err) {
                     if (typeof Debug !== 'undefined') Debug.browse('  listFiles err: ' + (err && err.message || err));
@@ -185,6 +146,54 @@ var Browser = (function () {
         } catch (e) {
             if (typeof Debug !== 'undefined') Debug.browse('  listDir threw: ' + e.message);
             cb(e);
+        }
+
+        function subEntry(f, dir) {
+            var s = {
+                name:     f.name,
+                lang:     extractLangTag(f.name),
+                ext:      ext(f.name),
+                uri:      typeof f.toURI === 'function' ? f.toURI() : 'file://' + f.fullPath,
+                fullPath: f.fullPath,
+                file:     f
+            };
+            if (dir) s.dir = dir;
+            return s;
+        }
+        function finish(entries, subsKids, subsDirName) {
+            // Every playable item gets its candidate subtitles: the
+            // files carrying its name, then SubMatch's looser picks.
+            var subs = [];
+            entries.forEach(function (f) {
+                if (!f.isDirectory && isSubtitle(f.name)) subs.push(subEntry(f));
+            });
+            subsKids.forEach(function (f) {
+                if (!f.isDirectory && isSubtitle(f.name)) subs.push(subEntry(f, subsDirName));
+            });
+            var paired = SubMatch.pair(
+                entries.filter(function (f) { return !f.isDirectory && isMedia(f.name); })
+                       .map(function (f) { return f.name; }), subs);
+
+            var out = entries.map(function (f) {
+                var subs = (!f.isDirectory && paired[f.name]) || [];
+                return {
+                    name:     f.name,
+                    isDir:    f.isDirectory,
+                    kind:     f.isDirectory ? 'dir' : FileTypes.kind(f.name),
+                    playable: !f.isDirectory && isMedia(f.name),
+                    size:     f.fileSize,
+                    mtime:    f.modified,
+                    file:     f,
+                    uri:      avplayURI(f),
+                    fullPath: f.fullPath,
+                    subtitles: subs
+                };
+            });
+            out.sort(function (a, b) {
+                if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+                return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+            });
+            cb(null, out);
         }
     }
 

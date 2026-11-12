@@ -1867,8 +1867,51 @@ function didlDuration(s) {
     var m = /^(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)/.exec(String(s || ''));
     return m ? (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]) : 0;
 }
+/* The subtitle format a caption is in, as the app's file extension, or ''
+ * for one it cannot paint (VobSub, PGS).  `hint` is what the server says
+ * (a mime type, sec:type="srt", pv:subtitleFileType="SRT"); the URL's own
+ * extension settles it when that says nothing. */
+function didlSubExt(hint, url) {
+    var m = /(subrip|srt|vtt|ssa|ass|sami|smi)/.exec(String(hint || '').toLowerCase());
+    if (!m) m = /\.(srt|vtt|ssa|ass|sami|smi)(?:[?#]|$)/i.exec(String(url || ''));
+    if (!m) return '';
+    var e = m[1].toLowerCase();
+    return e === 'subrip' ? 'srt' : e;
+}
+/* The mime type of a <res>, lower-cased: the third field of protocolInfo. */
+function didlMime(attrs) {
+    return (String(xmlAttr(attrs, 'protocolInfo') || '').split(':')[2] || '').toLowerCase();
+}
+/* The subtitle files a server offers with an item: [{ url, ext }].  Three
+ * conventions are in use, and servers mix them:
+ *   <res protocolInfo="http-get:*:text/srt:*">url</res>       Jellyfin, Plex, Serviio
+ *   <sec:CaptionInfoEx sec:type="srt">url</sec:CaptionInfoEx>  miniDLNA, Samsung's own
+ *   <res pv:subtitleFileUri="url" pv:subtitleFileType="SRT">   the Panasonic one */
+function didlSubtitles(body, res) {
+    var out = [], seen = {};
+    function add(url, hint) {
+        url = String(url || '').trim();
+        var e = didlSubExt(hint, url);
+        if (!e || !/^https?:\/\//i.test(url) || seen[url]) return;
+        seen[url] = true;
+        out.push({ url: url, ext: e });
+    }
+    res.forEach(function (r) {
+        var mime = didlMime(r.attrs);
+        if (didlIsSubMime(mime)) add(xmlUnescape(r.body), mime === 'text/plain' ? '' : mime);
+        add(xmlAttr(r.attrs, 'pv:subtitleFileUri'), xmlAttr(r.attrs, 'pv:subtitleFileType'));
+    });
+    ['CaptionInfoEx', 'CaptionInfo'].forEach(function (tag) {
+        xmlElements(body, tag).forEach(function (c) { add(xmlUnescape(c.body), xmlAttr(c.attrs, 'sec:type')); });
+    });
+    return out;
+}
+function didlIsSubMime(mime) {
+    return /^text\//.test(mime) || /subrip|sami|smi\/caption|x-ssa|x-ass/.test(mime);
+}
 /* A Browse Result (DIDL-Lite, already unescaped once) → the app's entries.
- * An item keeps its first http resource; one without any is left out. */
+ * An item keeps its first http resource that is not a subtitle; one
+ * without any is left out.  A video's subtitle files ride along as `subs`. */
 function parseDidl(didl) {
     var out = [];
     xmlElements(didl, 'container').forEach(function (c) {
@@ -1876,18 +1919,26 @@ function parseDidl(didl) {
                    count: parseInt(xmlAttr(c.attrs, 'childCount'), 10) || 0 });
     });
     xmlElements(didl, 'item').forEach(function (it) {
-        var res = xmlElements(it.body, 'res'), pick = null;
+        var res = xmlElements(it.body, 'res'), pick = null, text = null;
         for (var i = 0; i < res.length && !pick; i++) {
             var url = xmlUnescape(res[i].body).trim();
-            if (/^https?:\/\//i.test(url) && /^http-get:/i.test(xmlAttr(res[i].attrs, 'protocolInfo') || 'http-get:'))
-                pick = { url: url, attrs: res[i].attrs };
+            if (!/^https?:\/\//i.test(url) || !/^http-get:/i.test(xmlAttr(res[i].attrs, 'protocolInfo') || 'http-get:')) continue;
+            // A text resource is the item's subtitle file, not the item,
+            // unless it is all the item has (a .txt the server lists).
+            if (didlIsSubMime(didlMime(res[i].attrs))) { if (!text) text = { url: url, attrs: res[i].attrs }; continue; }
+            pick = { url: url, attrs: res[i].attrs };
         }
+        var kind = didlKind(xmlText(it.body, 'class'));
+        var subs = (pick && kind !== 'audio' && kind !== 'image') ? didlSubtitles(it.body, res) : [];
+        pick = pick || text;
         if (!pick) return;
-        out.push({ id: xmlAttr(it.attrs, 'id'), title: xmlText(it.body, 'title') || '?', isDir: false,
-                   kind: didlKind(xmlText(it.body, 'class')), url: pick.url,
-                   size: parseInt(xmlAttr(pick.attrs, 'size'), 10) || 0,
-                   duration: didlDuration(xmlAttr(pick.attrs, 'duration')),
-                   art: xmlText(it.body, 'albumArtURI') });
+        var entry = { id: xmlAttr(it.attrs, 'id'), title: xmlText(it.body, 'title') || '?', isDir: false,
+                      kind: kind, url: pick.url,
+                      size: parseInt(xmlAttr(pick.attrs, 'size'), 10) || 0,
+                      duration: didlDuration(xmlAttr(pick.attrs, 'duration')),
+                      art: xmlText(it.body, 'albumArtURI') };
+        if (subs.length) entry.subs = subs;
+        out.push(entry);
     });
     return out;
 }
