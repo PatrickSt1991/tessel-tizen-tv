@@ -1,12 +1,26 @@
 package transcode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 )
+
+// lastLine is the final non-empty line of ffprobe's stderr, trimmed to a
+// length that still fits a log line.
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	l := strings.TrimSpace(lines[len(lines)-1])
+	if len(l) > 300 {
+		l = l[:300]
+	}
+	return l
+}
 
 // MediaInfo is the slice of ffprobe output we care about.
 type MediaInfo struct {
@@ -48,8 +62,15 @@ func (c *Caps) Inspect(ctx context.Context, url string) (*MediaInfo, error) {
 		"-show_streams", "-show_format",
 		url,
 	)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
+		// "exit status 1" on its own says nothing. ffprobe's own last line
+		// does: connection refused, 403 Forbidden, 404 Not Found, invalid data.
+		if why := lastLine(stderr.String()); why != "" {
+			return nil, fmt.Errorf("%w: %s", err, why)
+		}
 		return nil, err
 	}
 	return parseProbe(out)

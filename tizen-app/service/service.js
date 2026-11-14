@@ -1423,17 +1423,30 @@ function localKeyOK(k) {
  * again here — a second pass would let a doubly-encoded path smuggle characters
  * past this check.  Traversal is rejected outright rather than normalised away;
  * there's no legitimate '..' in a path that came from tizen.filesystem. */
+function underLocalRoot(s) {
+    for (var j = 0; j < localRoots.length; j++) {
+        var r = localRoots[j];
+        if (s === r || s.indexOf(r + '/') === 0) return true;
+    }
+    return false;
+}
 function localResolve(p) {
     var s = String(p || '');
     s = s.replace(/^file:\/\//, '');
     if (!s || s.charAt(0) !== '/' || s.indexOf('\0') >= 0) return null;
     var parts = s.split('/');
     for (var i = 0; i < parts.length; i++) if (parts[i] === '..') return null;
-    for (var j = 0; j < localRoots.length; j++) {
-        var r = localRoots[j];
-        if (s === r || s.indexOf(r + '/') === 0) return s;
-    }
+    if (underLocalRoot(s)) return s;
+    // The same drive can be reachable under two names (a mount point and a
+    // link to it), and the root and the file need not have been spelled the
+    // same way. Compare where they really are before refusing. The roots got
+    // the same treatment when they were armed.
+    var real = localRealpath(s);
+    if (real && real !== s && underLocalRoot(real)) return real;
     return null;
+}
+function localRealpath(p) {
+    try { return String(fs.realpathSync(p)); } catch (e) { return ''; }
 }
 
 /* The address to advertise to the transcode server. os.networkInterfaces() is
@@ -1463,12 +1476,21 @@ function localURL() {
 
 /* GET/HEAD /local/stream?path=…&key=… — the only thing on the LAN listener. */
 function handleLocalStream(req, res, query) {
-    if (!localKeyOK(query.key)) { cors(res, 403, 'text/plain'); return res.end('forbidden'); }
+    // Every refusal is logged: the box only reports that its probe failed, so
+    // the reason has to be readable on this side (GET /smb/debug/logs).
+    if (!localKeyOK(query.key)) { log('LOCAL_BAD_KEY', peerIp(req)); cors(res, 403, 'text/plain'); return res.end('forbidden'); }
     var path = localResolve(query.path);
-    if (!path) { log('LOCAL_REJECT', query.path); cors(res, 403, 'text/plain'); return res.end('path not allowed'); }
+    if (!path) {
+        log('LOCAL_REJECT', { path: query.path, roots: localRoots });
+        cors(res, 403, 'text/plain'); return res.end('path not allowed');
+    }
 
     var st;
-    try { st = fs.statSync(path); } catch (e) { cors(res, 404, 'text/plain'); return res.end('not found'); }
+    try { st = fs.statSync(path); } catch (e) {
+        var why = (e && (e.code || e.message)) || 'error';
+        log('LOCAL_STAT_ERR', { path: path, error: why });
+        cors(res, 404, 'text/plain'); return res.end('not found (' + why + ')');
+    }
     if (!st.isFile()) { cors(res, 404, 'text/plain'); return res.end('not a file'); }
     var size = st.size;
 
@@ -1519,7 +1541,10 @@ function handleLocalEnable(req, res) {
         var roots = [];
         for (var i = 0; i < (body.roots || []).length; i++) {
             var r = String(body.roots[i] || '').replace(/^file:\/\//, '').replace(/\/+$/, '');
-            if (r.charAt(0) === '/' && r.split('/').indexOf('..') < 0) roots.push(r);
+            if (r.charAt(0) !== '/' || r.split('/').indexOf('..') >= 0) continue;
+            if (roots.indexOf(r) < 0) roots.push(r);
+            var real = localRealpath(r);
+            if (real && roots.indexOf(real) < 0) roots.push(real);
         }
         if (!roots.length) return sendJson(res, 400, { ok: false, error: 'no usable roots' });
 

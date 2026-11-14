@@ -181,9 +181,14 @@ var TranscodeServer = (function () {
 
     /* Start (or re-key) the service's LAN listener. cb(relay|null) — null means
      * "play this file the normal way", never an error the user has to act on:
-     * a relay that won't come up should cost surround, not playback. */
+     * a relay that won't come up should cost surround, not playback.
+     *
+     * Armed afresh for every file rather than once per app run. The listener
+     * lives in the background service, and Tizen restarts that process on its
+     * own schedule: a remembered "it is listening" then hands the box a URL
+     * nothing answers, and its probe fails. Arming again is one loopback POST,
+     * and it also picks up a drive plugged in since the last file. */
     function armRelay(cb) {
-        if (relay) return cb(relay);
         if (!relayEnabled() || !isPaired()) return cb(null);
         if (typeof SMB === 'undefined' || !SMB.ensureService) return cb(null);
         if (typeof Browser === 'undefined' || !Browser.listRoots) return cb(null);
@@ -213,8 +218,7 @@ var TranscodeServer = (function () {
                 Browser.listRoots(function (e2, roots) {
                     if (e2 || !roots || !roots.length) { log('relay: no roots to share'); return settle(null); }
                     var paths = [];
-                    for (var i = 0; i < roots.length; i++)
-                        if (roots[i].fullPath) paths.push(roots[i].fullPath);
+                    for (var i = 0; i < roots.length; i++) rootPaths(roots[i], paths);
                     xhrPost(getSvcBase() + '/local/enable', { key: relaySecret(), roots: paths }, function (e3, res) {
                         if (e3 || !res || !res.ok || !res.url) {
                             log('relay: enable failed — ' + (e3 ? e3.message : 'no LAN address'));
@@ -226,6 +230,32 @@ var TranscodeServer = (function () {
                 });
             });
         });
+    }
+
+    /* The filesystem paths one storage root answers to.
+     *
+     * The file handed to the relay is named by File.toURI(), which is the real
+     * path (file:///opt/media/USBDriveA1/...). File.fullPath is not always the
+     * same thing: on some firmware it is the virtual name ("removable_sda1"),
+     * which the service can't match a real path against, so every USB file was
+     * refused as outside the shared roots. Take the root's own toURI() first,
+     * so root and file are spelled by the same API, and keep fullPath as well
+     * for firmware where that is the real one. */
+    function rootPaths(root, out) {
+        var seen = [];
+        try {
+            if (root.dir && typeof root.dir.toURI === 'function') {
+                // toURI() percent-encodes; fullPath does not.
+                var u = String(root.dir.toURI() || '').replace(/^file:\/\//, '');
+                try { u = decodeURIComponent(u); } catch (e2) {}
+                seen.push(u);
+            }
+        } catch (e) {}
+        if (root.fullPath) seen.push(String(root.fullPath));
+        for (var i = 0; i < seen.length; i++) {
+            var p = seen[i].replace(/\/+$/, '');
+            if (p.charAt(0) === '/' && out.indexOf(p) < 0) out.push(p);
+        }
     }
 
     /* Ask the paired box whether it will accept files from us. */

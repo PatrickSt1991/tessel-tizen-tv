@@ -24,11 +24,13 @@ function loadServer(opts) {
     var settings = { smartRouting: opts.smart !== false, localRelay: !!opts.relay };
     var requests = [];
     var connects = 0;
+    var enables = [];
 
     function FakeXHR() {}
     FakeXHR.prototype.open = function (method, url) { this.url = url; };
     FakeXHR.prototype.setRequestHeader = function () {};
-    FakeXHR.prototype.send = function () {
+    FakeXHR.prototype.send = function (body) {
+        if (/\/local\/enable$/.test(this.url)) enables.push(JSON.parse(body));
         // Only probes are counted; loading also reads /api/config for the
         // settings screen, which is not what these tests are about.
         if (this.url.indexOf('/api/probe') >= 0) requests.push(this.url);
@@ -52,7 +54,7 @@ function loadServer(opts) {
         module: { exports: {} },
         Settings: { get: function (k) { return settings[k]; }, set: function (k, v) { settings[k] = v; } },
         I18n: I18n,
-        Browser: { listRoots: function (cb) { cb(null, [{ fullPath: '/opt/usr/media/USBDriveA1' }]); } },
+        Browser: { listRoots: function (cb) { cb(null, opts.roots || [{ fullPath: '/opt/usr/media/USBDriveA1' }]); } },
         SMB: {
             ensureService: function (cb) { cb(null); },
             streamUrl: function (p) { return STREAM + encodeURIComponent(p); },
@@ -78,6 +80,7 @@ function loadServer(opts) {
         TS: TS,
         requests: requests,
         store: store,
+        enables: enables,
         connects: function () { return connects; },
         resolve: function (uri) {
             var out = null;
@@ -240,4 +243,23 @@ test('USB probe failure keeps the relay route; a relay that is off leaves USB di
     var t3 = loadServer({ relay: false, probe: direct(true) });
     assert.strictEqual(t3.resolve(USB).url, USB);
     assert.strictEqual(t3.requests.length, 0);
+});
+
+test('the relay is armed again for every USB file, so a restarted service is listening again', function () {
+    var t = loadServer({ smart: false, relay: true });
+    t.resolve(USB);
+    t.resolve(USB);
+    assert.strictEqual(t.enables.length, 2, 'one /local/enable per play, not one per app run');
+    assert.strictEqual(t.enables[0].key, t.enables[1].key, 'same key, so a stream in flight survives');
+});
+
+test('the shared roots are the real paths from toURI(), not only the virtual fullPath', function () {
+    var t = loadServer({ smart: false, relay: true, roots: [
+        { fullPath: 'removable_sda1', dir: { toURI: function () { return 'file:///opt/media/USBDriveA1/'; } } },
+        { fullPath: '/opt/usr/media/My Drive', dir: { toURI: function () { return 'file:///opt/usr/media/My%20Drive'; } } },
+        { fullPath: '/opt/usr/home/owner/media/Videos' }
+    ] });
+    t.resolve(USB);
+    assert.deepStrictEqual(t.enables[0].roots,
+        ['/opt/media/USBDriveA1', '/opt/usr/media/My Drive', '/opt/usr/home/owner/media/Videos']);
 });
