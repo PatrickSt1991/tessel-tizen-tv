@@ -386,12 +386,23 @@ var Player = (function () {
             var text = hasRuns ? null : cleanCueText(c.text);
             if (!hasRuns && !text) continue;
 
-            var band = bands[c.band || def] || bands.bottom;
+            /* An SRT line can carry an ASS position tag too ({\an8} for a
+             * sign at the top is common in anime releases).  Nothing parsed
+             * it on the way here, so read it now rather than strip it and
+             * stack the sign on the dialogue (issue #174). */
+            var bandName = c.band, halign = c.halign;
+            if (!bandName && !hasRuns) {
+                var tagPos = inlineTagPosition(c.text);
+                bandName = tagPos.band;
+                if (!halign) halign = tagPos.halign;
+            }
+
+            var band = bands[bandName || def] || bands.bottom;
             var line = document.createElement('span');
             line.className = 'sub-line';
-            if (c.halign && c.halign !== 'center') {
-                line.style.textAlign = c.halign;
-                line.style.alignSelf = c.halign === 'left' ? 'flex-start' : 'flex-end';
+            if (halign && halign !== 'center') {
+                line.style.textAlign = halign;
+                line.style.alignSelf = halign === 'left' ? 'flex-start' : 'flex-end';
             }
             if (hasRuns) paintRuns(line, c.runs);
             else         line.textContent = text;
@@ -432,6 +443,14 @@ var Player = (function () {
             if (typeof Settings !== 'undefined') p = Settings.get('subtitlePosition') || 'bottom';
         } catch (e) {}
         return (p === 'top' || p === 'middle') ? p : 'bottom';
+    }
+    /* {band, halign} from an {\anN} / {\aN} tag inside a cue's text, both
+     * null when there is none. */
+    function inlineTagPosition(text) {
+        var none = { band: null, halign: null };
+        if (typeof text !== 'string' || text.indexOf('{\\a') < 0) return none;
+        if (typeof AssStyle === 'undefined' || !AssStyle.resolvePosition) return none;
+        return AssStyle.resolvePosition(text, null);
     }
     function cleanCueText(text) {
         return String(text == null ? '' : text)
@@ -1188,10 +1207,14 @@ var Player = (function () {
     var activeTrackExtraction = null;
     var activeTrackEntry      = null;
     var trackExtractToken     = 0;
+    /* True while the read in flight is the quiet one behind a track the
+     * TV's own decoder is painting (see extractContainerTrack). */
+    var activeTrackBackground = false;
 
     function cancelTrackExtraction(reason) {
         clearTimeout(nativeSubVerifyTimer);
         ++trackExtractToken;
+        activeTrackBackground = false;
         if (activeTrackExtraction && activeTrackExtraction.cancel) {
             activeTrackExtraction.cancel(reason);
         }
@@ -1274,8 +1297,18 @@ var Player = (function () {
     }
 
     /* Returns 'cached' when the track was already extracted, 'extracting'
-     * when a read has just started, or null when this file can't supply it. */
-    function extractContainerTrack(row) {
+     * when a read has just started, or null when this file can't supply it.
+     *
+     * `background` is the quiet variant for a track the TV's decoder is
+     * already painting.  That decoder hands over one line at a time and
+     * blanks the screen before each: a sign at the top and the dialogue
+     * under it replace each other, and lines that overlap a long sign
+     * arrive late, after it has ended (issue #174).  The poller shows every
+     * line that is due, so the track is read out of the container behind
+     * the decoder's back and takes over once all of it is in.  Until then,
+     * and if the read fails, the decoder carries on: nothing is announced
+     * and nothing is taken off screen. */
+    function extractContainerTrack(row, background) {
         var num = row && row.mkvTrack;
         if (!(num > 0)) return null;
         if (row.extractable === false) return null;   // bitmap subs: no text to read
@@ -1291,6 +1324,7 @@ var Player = (function () {
 
         var base  = row.baseName || I18n.t('subs.numbered', num);
         var entry;
+        if (background && existing) return null;    // a half-read one: leave it be
         if (existing) {
             /* Abandoned half-read when another track was picked.  Start it
              * over — into the same array, which the poller already holds —
@@ -1310,30 +1344,38 @@ var Player = (function () {
                 _mkvTrack:       num,
                 _cueCount:       0
             };
-            playerSubtitles.push(entry);
-            h5Subtitles = playerSubtitles;
+            /* A background read stays out of the list until it is whole:
+             * an entry in the list is what the CC menu shows as the track. */
+            if (!background) {
+                playerSubtitles.push(entry);
+                h5Subtitles = playerSubtitles;
+            }
         }
         entry.status   = 'extracting';
         entry.progress = 0;
 
-        /* Selected before a single cue has arrived: the poller holds this
-         * array and paints whatever lands in it, so the track starts showing
-         * while the rest of the file is still being read. */
-        avNativeSubsAllowed = false;
-        applyExternalSubtitleLive(entry);
-        emit('onsubsupdated');
-        emit('onsubnotice', I18n.t('subs.reading', base));
+        if (!background) {
+            /* Selected before a single cue has arrived: the poller holds this
+             * array and paints whatever lands in it, so the track starts
+             * showing while the rest of the file is still being read. */
+            avNativeSubsAllowed = false;
+            applyExternalSubtitleLive(entry);
+            emit('onsubsupdated');
+            emit('onsubnotice', I18n.t('subs.reading', base));
+        }
 
         cancelTrackExtraction('another track picked');
         var token    = ++trackExtractToken;
         var lastEmit = 0;
-        activeTrackEntry = entry;
+        activeTrackEntry      = background ? null : entry;
+        activeTrackBackground = !!background;
 
         activeTrackExtraction = MkvSubs.extractTrack(subsSource.file || subsSource.uri, num, {
             cues:      entry.cues,
             startAtMs: currentTime(),      // ms, same as the poller reads
             onCues: function (have, total) {
                 if (token !== trackExtractToken) return;
+                if (background) return;         // nothing on screen depends on it yet
                 entry._cueCount = have;
                 entry.progress  = total ? Math.round(have * 100 / total) : 0;
                 /* The CC menu re-renders on this event and takes focus with
@@ -1343,11 +1385,39 @@ var Player = (function () {
                 lastEmit = now;
                 emit('onsubsupdated');
             }
-        }, function (err) {
+        }, function (err, res) {
             if (token !== trackExtractToken) return;
             activeTrackExtraction = null;
             activeTrackEntry      = null;
             entry._cueCount       = entry.cues.length;
+
+            if (background) {
+                activeTrackBackground = false;
+                var expected = (res && res.expected) || 0;
+                /* Only a whole track is worth swapping to: the decoder's
+                 * one-at-a-time lines beat a track with holes in it. */
+                if (err || !entry.cues.length || entry.cues.length < expected * 0.9) {
+                    if (typeof Debug !== 'undefined')
+                        Debug.player('embedded sub: track ' + num + ' not readable from the ' +
+                                     'container (' + (err ? (err.message || err)
+                                         : entry.cues.length + ' of ' + expected + ' cues') +
+                                     '), staying on the TV decoder');
+                    return;
+                }
+                // Moved on since: subs off, or a sidecar picked.
+                if (currentExternalSub || !avNativeSubsAllowed) return;
+                entry.status = null;
+                playerSubtitles.push(entry);
+                h5Subtitles = playerSubtitles;
+                avNativeSubsAllowed = false;
+                hideSubtitleText();
+                applyExternalSubtitleLive(entry);
+                emit('onsubsupdated');
+                if (typeof Debug !== 'undefined')
+                    Debug.player('embedded sub: track ' + num + ' read from the container (' +
+                                 entry.cues.length + ' cues), painting it here from now on');
+                return;
+            }
 
             if (err && !entry.cues.length) {
                 /* Nothing to paint: take the entry back out rather than
@@ -2420,6 +2490,7 @@ var Player = (function () {
             stopExternalSubtitle();
 
             clearTimeout(nativeSubVerifyTimer);
+            if (activeTrackBackground) cancelTrackExtraction('subtitle selection changed');
 
             // "Off"
             if (index === -1 || index === undefined || index === 'off' || (row && row.off)) {
@@ -2462,6 +2533,14 @@ var Player = (function () {
                 return null;
             }
 
+            /* Read out of the container earlier in this file: paint that, it
+             * shows overlapping lines where the decoder shows one. */
+            var have = (row && row.mkvTrack > 0) ? onDemandEntryFor(row.mkvTrack) : null;
+            if (have && have.status !== 'partial') {
+                var cachedHow = extractContainerTrack(row);
+                if (cachedHow) return cachedHow;
+            }
+
             avNativeSubsAllowed = true;
             try { av().setSilentSubtitle(false); } catch (e) {}
             var selected = false;
@@ -2488,6 +2567,10 @@ var Player = (function () {
                 var alt = extractContainerTrack(row);
                 if (alt) return alt;
                 return null;
+            }
+            /* Before the verify timer is set: starting a read clears it. */
+            if (row && row.mkvTrack > 0 && row.extractable !== false && !have) {
+                extractContainerTrack(row, true);
             }
             verifyNativeSubSelection(row, embedIdx);
             return 'native';
@@ -2743,7 +2826,7 @@ var Player = (function () {
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = { parseAssCues: parseAssCues, parseTxtCues: parseTxtCues,
                            // The native-cue timer and what holds it (issue #174).
-                           showSubtitleText: showSubtitleText,
+                           showSubtitleText: showSubtitleText, renderCues: renderCues,
                            pause: pause, play: play, seekTo: seekTo };
     }
 
