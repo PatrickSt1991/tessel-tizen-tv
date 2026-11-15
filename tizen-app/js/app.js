@@ -408,6 +408,7 @@
             case 'setting-aspect-mode':   openAspectPicker(); break;
             case 'setting-browse-filter': openBrowseFilterPicker(); break;
             case 'setting-show-hidden':   openShowHiddenPicker(); break;
+            case 'setting-folder-play':   openFolderPlayPicker(); break;
             case 'setting-show-support':  openShowSupportPicker(); break;
             case 'setting-slideshow-interval': openSlideshowPicker(); break;
             case 'setting-subtitle-size':     openSubtitlePicker('subtitleSize',     I18n.t('settings.subSize'),     SubtitleStyle.forSize());     break;
@@ -2245,6 +2246,7 @@
         document.getElementById('setting-aspect-mode-value').textContent   = AspectRatio.nameFor(Settings.get('aspectMode'));
         document.getElementById('setting-browse-filter-value').textContent = browseFilterName(Settings.get('browseFilter'));
         document.getElementById('setting-show-hidden-value').textContent   = I18n.t(Settings.get('showHidden') ? 'common.on' : 'common.off');
+        document.getElementById('setting-folder-play-value').textContent   = I18n.t(Settings.get('folderPlayRows') ? 'common.on' : 'common.off');
         document.getElementById('setting-network-value').textContent       = networkLevelName(NetworkAccess.level());
         document.getElementById('setting-show-support-value').textContent  = I18n.t(Settings.get('showSupport') ? 'common.on' : 'common.off');
         document.getElementById('support-block').classList.toggle('hidden', !Settings.get('showSupport'));
@@ -2509,6 +2511,19 @@
             Settings.set('showHidden', val === 'on');
             refreshSettingsValues();
             UI.toast(I18n.t('toast.setTo', I18n.t('settings.showHidden'), I18n.t(val === 'on' ? 'common.on' : 'common.off')));
+        });
+    }
+    /* The Play all / Shuffle all rows on top of a folder (issue #174). */
+    function openFolderPlayPicker() {
+        pickerSetting = 'folderPlayRows';
+        var cur = Settings.get('folderPlayRows') ? 'on' : 'off';
+        openPicker(I18n.t('settings.folderPlayRows'), [
+            { code: 'on',  name: I18n.t('common.on') },
+            { code: 'off', name: I18n.t('common.off') }
+        ], cur, function (val) {
+            Settings.set('folderPlayRows', val === 'on');
+            refreshSettingsValues();
+            UI.toast(I18n.t('toast.setTo', I18n.t('settings.folderPlayRows'), I18n.t(val === 'on' ? 'common.on' : 'common.off')));
         });
     }
     /* The Ko-fi block at the top of Settings; someone who already donated
@@ -2918,6 +2933,25 @@
         return !!el && el.tagName === 'INPUT';
     }
 
+    /* A text field holds the cursor read-only (UI.focusOn), so that landing
+     * on it never opens the on-screen keyboard.  OK makes it editable and
+     * focuses it afresh, which is what raises the keyboard (issue #174). */
+    function openKeyboardFor(el) {
+        if (!el.readOnly) return;
+        el.readOnly = false;
+        try { el.blur(); el.focus(); } catch (e) {}
+    }
+
+    /* A character typed on a USB or Bluetooth keyboard goes straight into
+     * the field under the cursor, without OK first. */
+    function unlockForTyping(ev) {
+        var el = document.activeElement;
+        if (!isTextField(el) || !el.readOnly || !el.classList.contains('focused')) return;
+        var typed = ev && typeof ev.key === 'string' && ev.key.length === 1 &&
+                    !ev.ctrlKey && !ev.altKey && !ev.metaKey;
+        if (typed || (ev && (ev.key === 'Backspace' || ev.key === 'Delete'))) el.readOnly = false;
+    }
+
     /* Left / Right in a text field move the cursor through what's typed, so
      * a typo can be fixed (issue #115); only past either end do they move
      * focus on.  The key is then left to the browser. */
@@ -2959,6 +2993,7 @@
         // hardware keys work alongside the on-screen keyboard. Only consumes the
         // key when a text field actually took it, otherwise it falls through.
         if (code >= K.ZERO && code <= K.NINE && typeDigitIntoField(code - K.ZERO)) return true;
+        unlockForTyping(ev);
 
         // In the player, the number keys jump by tenths: 0 restarts, 1–9 go
         // to 10 %–90 % of the file (issue #78).  Only when nothing modal is
@@ -3095,7 +3130,10 @@
                 // A text field: let OK through untouched.  That key press is
                 // the user action that opens the on-screen keyboard — merely
                 // landing on the field no longer does (config.xml, issue #111).
-                if (!UI.activateFocused() && isTextField(document.activeElement)) return false;
+                if (!UI.activateFocused() && isTextField(document.activeElement)) {
+                    openKeyboardFor(document.activeElement);
+                    return false;
+                }
                 return true;
             case K.INFO:
                 if (state.view === 'player' && !errorUp) { toggleFileInfo(); return true; }
@@ -3115,6 +3153,13 @@
                 if (state.view === 'browse')    { browseUp();        return true; }
                 if (state.view === 'player' && scrub.active) { cancelScrub(true); return true; }
                 if (state.view === 'player' && state.playingIsAudio) { minimizePlayer(); return true; }
+                // Controls on screen over a video: Back puts them away, and
+                // only the next Back leaves the player (issue #174).
+                if (state.view === 'player' && osdVisible) {
+                    clearTimeout(osdHideTimer);
+                    showOSD(false);
+                    return true;
+                }
                 if (state.view === 'player')    { exitPlayer();      return true; }
                 if (state.view === 'url')       { backToHome();      return true; }
                 if (state.view === 'settings')  { backToHome();      return true; }

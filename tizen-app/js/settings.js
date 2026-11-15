@@ -41,6 +41,10 @@ var Settings = (function () {
         // Off by default: on a stick or share written from a Mac those are
         // "._movie.mp4" companions and .DS_Store, which only get in the way.
         showHidden:       false,
+        // The Play all / Shuffle all rows on top of a folder that has
+        // subfolders (issues #159, #174).  Off for those who only browse
+        // video and find the two rows in the way.
+        folderPlayRows:   true,
         // The Ko-fi QR block at the top of Settings.
         showSupport:      true,
         // Network access level (see js/network-access.js): 'all'; 'own',

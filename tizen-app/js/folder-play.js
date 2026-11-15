@@ -152,6 +152,7 @@ var FolderPlay = (function () {
     /* Put the Play all / Shuffle all rows into ul, before `before` (null:
      * at the end).  list() as for walk(); play(tracks) starts the player. */
     function addRows(ul, before, root, list, play) {
+        if (typeof Settings !== 'undefined' && Settings.get('folderPlayRows') === false) return;
         [['▶', 'folderPlay.playAll', false], ['🔀', 'folderPlay.shuffleAll', true]].forEach(function (r) {
             var li = document.createElement('li');
             li.className = 'folder-play';

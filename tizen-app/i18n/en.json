@@ -383,6 +383,7 @@
   "dbg.exportFailed": "Couldn’t save the debug log: {0}",
   "settings.browseFilter": "File browser shows",
   "settings.showHidden": "Show hidden files",
+  "settings.folderPlayRows": "Play all / Shuffle all in folders",
   "settings.showSupport": "Show Ko-fi donation banner",
   "settings.network": "Network access",
   "net.all": "Everything",

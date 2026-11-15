@@ -274,6 +274,36 @@ var Player = (function () {
      *      handled in h5Open.
      */
     var subClearTimer = null;
+    /* The safety timer below runs on the wall clock, the cue on the
+     * playhead.  While paused the two part ways and the line on screen was
+     * wiped a few seconds into the pause (issue #174), so pause() holds the
+     * timer with what was left of it and play() starts it again. */
+    var subClearAt   = 0;      // wall-clock time the running timer fires
+    var subClearLeft = 0;      // ms left on a timer held by pause(), else 0
+    function armSubtitleClear(ms) {
+        clearTimeout(subClearTimer);
+        subClearLeft  = 0;
+        subClearAt    = Date.now() + ms;
+        subClearTimer = setTimeout(hideSubtitleText, ms);
+    }
+    function cancelSubtitleClear() {
+        clearTimeout(subClearTimer);
+        subClearTimer = null;
+        subClearLeft  = 0;
+    }
+    function holdSubtitleClear() {
+        if (subClearTimer === null) return;
+        clearTimeout(subClearTimer);
+        subClearTimer = null;
+        subClearLeft  = Math.max(1, subClearAt - Date.now());
+    }
+    function resumeSubtitleClear() {
+        if (subClearLeft) armSubtitleClear(subClearLeft);
+    }
+    /* A seek while paused leaves the held line behind: take it down. */
+    function dropHeldSubtitle() {
+        if (subClearLeft) hideSubtitleText();
+    }
     var extCues = null;            // parsed external cues [{start, end, text}]
     var extPollTimer = null;
     var extLastSig = null;         // signature of the last painted active-cue set
@@ -311,7 +341,6 @@ var Player = (function () {
                                     band: null, halign: null }]);
         if (!painted) { hideSubtitleText(); return; }
 
-        clearTimeout(subClearTimer);
         /* AVPlay's `duration` parameter is inconsistent between firmwares
          * and delivery paths:
          *   - embedded TEXT track via setSelectTrack: microseconds
@@ -329,7 +358,7 @@ var Player = (function () {
             d = durationMs >= 100000 ? Math.round(durationMs / 1000) : durationMs;
         }
         if (d <= 0 || d > 30000) d = 8000;   // safety net + upper bound
-        subClearTimer = setTimeout(hideSubtitleText, d);
+        armSubtitleClear(d);
     }
 
     /* Paint a set of simultaneously-active cues into the overlay's three
@@ -343,7 +372,7 @@ var Player = (function () {
     function renderCues(cues) {
         var el = subEl();
         if (!el) return false;
-        clearTimeout(subClearTimer);          // a fresh paint cancels any stale timer
+        cancelSubtitleClear();                // a fresh paint cancels any stale timer
         var bands = ensureBands(el);
         bands.top.textContent = '';
         bands.middle.textContent = '';
@@ -447,7 +476,7 @@ var Player = (function () {
     }
 
     function hideSubtitleText() {
-        clearTimeout(subClearTimer);
+        cancelSubtitleClear();
         lastCues = null;
         var el = subEl();
         if (!el) return;
@@ -1706,6 +1735,7 @@ var Player = (function () {
     }
 
     function play() {
+        resumeSubtitleClear();
         if (backend === BACKEND_HTML5) { try { h5el().play(); } catch (e) {} emit('onstatechange', 'playing'); }
         else if (backend === BACKEND_AVPLAY) {
             try { av().play(); } catch (e) {}
@@ -1713,6 +1743,7 @@ var Player = (function () {
         }
     }
     function pause() {
+        holdSubtitleClear();
         if (backend === BACKEND_HTML5) { try { h5el().pause(); } catch (e) {} emit('onstatechange', 'paused'); }
         else if (backend === BACKEND_AVPLAY) { try { av().pause(); } catch (e) {} emit('onstatechange', 'paused'); }
     }
@@ -1750,6 +1781,7 @@ var Player = (function () {
         emit('onstatechange', 'stopped');
     }
     function seekRel(deltaMs) {
+        dropHeldSubtitle();
         if (backend === BACKEND_HTML5) {
             var v = h5el();
             try {
@@ -1771,6 +1803,7 @@ var Player = (function () {
      * callers that track the playhead can't infer completion from time
      * samples alone.  Fires on failure too (there is nothing to wait for). */
     function seekTo(ms, onDone) {
+        dropHeldSubtitle();
         var fired = false;
         var done = onDone ? function () {
             if (fired) return;
@@ -2708,7 +2741,10 @@ var Player = (function () {
      * `module`): exposes the pure cue parser so tests can feed it .ass text
      * and assert overlapping lines survive with their position bands. */
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { parseAssCues: parseAssCues, parseTxtCues: parseTxtCues };
+        module.exports = { parseAssCues: parseAssCues, parseTxtCues: parseTxtCues,
+                           // The native-cue timer and what holds it (issue #174).
+                           showSubtitleText: showSubtitleText,
+                           pause: pause, play: play, seekTo: seekTo };
     }
 
     return {

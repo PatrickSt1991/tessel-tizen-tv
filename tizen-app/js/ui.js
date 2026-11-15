@@ -14,7 +14,22 @@ var UI = (function () {
         'button, input, [tabindex="0"], .tile, .ctrl, .preset, ' +
         '.browse-list li, .track-section li:not(.muted)';
 
+    /* Where the cursor was in a view marked data-remember-focus, by view id.
+     * Coming back to that view puts it there again instead of on the
+     * data-focus element: Back out of Settings lands on the Settings tile,
+     * not on Recently Played (issue #174). */
+    var lastFocus = {};
+
+    /* The remembered element when it can still take the cursor, else null. */
+    function usable(el) {
+        return el && el.offsetParent !== null && !el.classList.contains('hidden') ? el : null;
+    }
+
     function showView(id) {
+        if (currentView && currentView.hasAttribute && currentView.hasAttribute('data-remember-focus')) {
+            var was = currentView.querySelector('.focused');
+            if (was) lastFocus[currentView.id] = was;
+        }
         var views = document.querySelectorAll('.view');
         for (var i = 0; i < views.length; i++) views[i].classList.add('hidden');
         var v = document.getElementById(id);
@@ -27,7 +42,7 @@ var UI = (function () {
         var marked = v.querySelectorAll('[data-focus]'), initial = null;
         for (var m = 0; m < marked.length && !initial; m++)
             if (!marked[m].classList.contains('hidden') && marked[m].offsetParent !== null) initial = marked[m];
-        focusOn(initial || firstWidget());
+        focusOn(usable(lastFocus[id]) || initial || firstWidget());
     }
 
     /* The first focusable that isn't a text field.  A view that opened on
@@ -80,6 +95,11 @@ var UI = (function () {
         if (active && active !== el && active.tagName === 'INPUT') {
             try { active.blur(); } catch (e) {}
         }
+        // A text field takes the cursor locked: a read-only field does not
+        // raise the on-screen keyboard, whatever the firmware makes of the
+        // use.keypad.without.useraction metadata.  OK unlocks it (app.js,
+        // issue #174).
+        if (el.tagName === 'INPUT' && active !== el) el.readOnly = true;
         el.focus({ preventScroll: false });
         focusIdx = focusable.indexOf(el);
         if (focusIdx < 0) focusIdx = 0;

@@ -66,6 +66,13 @@ test('dot-named files stay hidden unless switched on (issue #147)', function () 
     assert.strictEqual(loadSettings({ showHidden: true }).get('showHidden'), true);
 });
 
+test('folders show the Play all rows unless switched off (issue #174)', function () {
+    assert.strictEqual(loadSettings(null).get('folderPlayRows'), true);
+    assert.strictEqual(loadSettings({ folderPlayRows: false }).get('folderPlayRows'), false);
+    // A stored blob from before the setting existed gets the default.
+    assert.strictEqual(loadSettings({ autoPlay: false }).get('folderPlayRows'), true);
+});
+
 test('the app opens on Home unless a start screen was chosen (issue #149)', function () {
     assert.strictEqual(loadSettings(null).get('startScreen'), 'home');
     assert.strictEqual(loadSettings({ startScreen: 'smb' }).get('startScreen'), 'smb');
