@@ -23,7 +23,7 @@
 <div id="subtitle-overlay" class="hidden"></div>
 
 <!-- ── Home view ─────────────────────────────────────────────────────── -->
-<section id="view-home" class="view">
+<section id="view-home" class="view" data-remember-focus>
     <header class="brand">
         <img class="app-icon" src="icon.png" alt="">
         <h1>Tessel</h1>
@@ -349,6 +349,10 @@
             <button class="settings-row" data-action="setting-show-hidden">
                 <div class="settings-label" data-i18n="settings.showHidden">Show hidden files</div>
                 <div class="settings-value" id="setting-show-hidden-value">Off</div>
+            </button>
+            <button class="settings-row" data-action="setting-folder-play">
+                <div class="settings-label" data-i18n="settings.folderPlayRows">Play all / Shuffle all in folders</div>
+                <div class="settings-value" id="setting-folder-play-value">On</div>
             </button>
             <button class="settings-row" data-action="setting-network">
                 <div class="settings-label" data-i18n="settings.network">Network access</div>
