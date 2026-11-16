@@ -62,6 +62,7 @@
   "settings.audioLang": "Előnyben részesített hangnyelv",
   "settings.subtitleLang": "Előnyben részesített feliratnyelv",
   "settings.repeatMode": "Ismétlési mód",
+  "settings.commercialMode": "Kereskedelmi mód",
   "settings.autoPlay": "Következő fájl automatikus lejátszása",
   "settings.resume": "Lejátszás folytatása",
   "settings.recentClear": "Legutóbb lejátszott törlése",

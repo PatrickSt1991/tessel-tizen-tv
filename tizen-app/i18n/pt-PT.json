@@ -62,6 +62,7 @@
   "settings.audioLang": "Idioma de áudio preferido",
   "settings.subtitleLang": "Idioma de legendas preferido",
   "settings.repeatMode": "Modo de repetição",
+  "settings.commercialMode": "Modo comercial",
   "settings.autoPlay": "Reproduzir o ficheiro seguinte automaticamente",
   "settings.resume": "Retomar reprodução",
   "settings.recentClear": "Limpar Reproduzidos recentemente",

@@ -203,7 +203,6 @@
                  * watchdog disarms itself once it sees time advancing. */
                 hideSpinner();
                 if (showOpeningControls) showOSD(true);
-                showOpeningControls = true;
                 scheduleOSDHide();
                 applyLanguagePreferences();
                 updateSpeedButton();   // Player.open reset speed to 1×; reflect it on the OSD
@@ -400,7 +399,7 @@
             case 'setting-audio-lang':    openLangPicker('audioLang',    I18n.t('settings.audioLang'), LanguageList.forAudio());    break;
             case 'setting-subtitle-lang': openLangPicker('subtitleLang', I18n.t('settings.subtitleLang'), LanguageList.forSubtitle()); break;
             case 'setting-repeat-mode':   openRepeatPicker(); break;
-            case 'setting-video-change-controls': openVideoChangeControlsPicker(); break;
+            case 'setting-commercial-mode': openCommercialModePicker(); break;
             case 'setting-auto-play':     openAutoPlayPicker(); break;
             case 'setting-resume-mode':   openResumeModePicker(); break;
             case 'setting-recent':        openRecentPicker(); break;
@@ -1474,7 +1473,7 @@
         document.getElementById('audio-card').classList.toggle('hidden', !isAudio);
         document.getElementById('audio-title').textContent = isAudio ? (title || uri) : '';
         state.playingIsAudio = isAudio;
-        showOpeningControls = !opts.trackChange || isAudio || Settings.get('showControlsOnVideoChange') !== false;
+        showOpeningControls = !opts.trackChange || isAudio || !Settings.get('commercialMode');
         showAudioTags(isAudio ? uri : null, opts);
         updateMiniPlayer();
         markNowPlaying();
@@ -1751,7 +1750,7 @@
         if (ni < 0) return false;
         var item = state.playlist[ni];
         state.playlistIndex = ni;
-        if (isAuto) UI.toast(I18n.t('player.upNext', item.title));
+        if (isAuto && !Settings.get('commercialMode')) UI.toast(I18n.t('player.upNext', item.title));
         playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null,
                                         background: state.background, trackChange: true });
         return true;
@@ -2253,7 +2252,7 @@
         document.getElementById('setting-audio-lang-value').textContent    = LanguageList.nameFor(Settings.get('audioLang'));
         document.getElementById('setting-subtitle-lang-value').textContent = LanguageList.nameFor(Settings.get('subtitleLang'));
         document.getElementById('setting-repeat-mode-value').textContent   = repeatName(Settings.get('repeatMode'));
-        document.getElementById('setting-video-change-controls-value').textContent = I18n.t(Settings.get('showControlsOnVideoChange') ? 'common.on' : 'common.off');
+        document.getElementById('setting-commercial-mode-value').textContent = I18n.t(Settings.get('commercialMode') ? 'common.on' : 'common.off');
         document.getElementById('setting-auto-play-value').textContent     = I18n.t(Settings.get('autoPlay') ? 'common.on' : 'common.off');
         document.getElementById('setting-resume-mode-value').textContent   = resumeModeName(Settings.get('resumeMode'));
         document.getElementById('setting-recent-value').textContent        = I18n.t(Settings.get('recentHistory') ? 'common.on' : 'common.off');
@@ -2568,13 +2567,13 @@
             UI.toast(I18n.t('toast.setTo', I18n.t('settings.slideshow'), slideshowName(val)));
         });
     }
-    function openVideoChangeControlsPicker() {
-        pickerSetting = 'showControlsOnVideoChange';
-        openPicker(I18n.t('settings.videoChangeControls'), [
+    function openCommercialModePicker() {
+        pickerSetting = 'commercialMode';
+        openPicker(I18n.t('settings.commercialMode'), [
             { code: 'off', name: I18n.t('common.off') },
             { code: 'on', name: I18n.t('common.on') }
-        ], Settings.get('showControlsOnVideoChange') ? 'on' : 'off', function (val) {
-            Settings.set('showControlsOnVideoChange', val === 'on');
+        ], Settings.get('commercialMode') ? 'on' : 'off', function (val) {
+            Settings.set('commercialMode', val === 'on');
             refreshSettingsValues();
         });
     }

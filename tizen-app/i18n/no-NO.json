@@ -62,6 +62,7 @@
   "settings.audioLang": "Foretrukket lydspråk",
   "settings.subtitleLang": "Foretrukket undertekstspråk",
   "settings.repeatMode": "Gjentakelse",
+  "settings.commercialMode": "Kommersiell modus",
   "settings.autoPlay": "Spill av neste fil automatisk",
   "settings.resume": "Gjenoppta avspilling",
   "settings.recentClear": "Tøm Nylig avspilt",

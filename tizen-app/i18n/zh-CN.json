@@ -62,6 +62,7 @@
   "settings.audioLang": "首选音频语言",
   "settings.subtitleLang": "首选字幕语言",
   "settings.repeatMode": "重复模式",
+  "settings.commercialMode": "商用模式",
   "settings.autoPlay": "自动播放下一个文件",
   "settings.resume": "继续播放",
   "settings.recentClear": "清空最近播放",

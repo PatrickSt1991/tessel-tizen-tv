@@ -62,6 +62,7 @@
   "settings.audioLang": "優先する音声の言語",
   "settings.subtitleLang": "優先する字幕の言語",
   "settings.repeatMode": "リピートモード",
+  "settings.commercialMode": "店舗向けモード",
   "settings.autoPlay": "次のファイルを自動再生",
   "settings.resume": "続きから再生",
   "settings.recentClear": "最近再生した項目を消去",

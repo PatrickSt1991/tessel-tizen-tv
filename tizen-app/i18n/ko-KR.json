@@ -62,6 +62,7 @@
   "settings.audioLang": "선호 오디오 언어",
   "settings.subtitleLang": "선호 자막 언어",
   "settings.repeatMode": "반복 모드",
+  "settings.commercialMode": "매장 모드",
   "settings.autoPlay": "다음 파일 자동 재생",
   "settings.resume": "이어서 재생",
   "settings.recentClear": "최근 재생 지우기",

@@ -62,6 +62,7 @@
   "settings.audioLang": "Limbă audio preferată",
   "settings.subtitleLang": "Limbă subtitrare preferată",
   "settings.repeatMode": "Mod repetare",
+  "settings.commercialMode": "Mod comercial",
   "settings.autoPlay": "Redare automată a fișierului următor",
   "settings.resume": "Reluare redare",
   "settings.recentClear": "Golește Redate recent",

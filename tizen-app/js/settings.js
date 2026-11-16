@@ -22,7 +22,7 @@ var Settings = (function () {
         // reads as broken.  Only a TV with nothing stored gets the default,
         // so anyone who chose Off before keeps it (see load()).
         autoPlay:         true,
-        showControlsOnVideoChange: true, // Show controls on next/previous video, including auto-play.
+        commercialMode:   false,       // Hide controls and announcements between videos.
         // Seconds each picture stays on screen in a slideshow (issue #126).
         slideshowSeconds: 5,
         // What to do when a file with a saved position is opened again:
@@ -96,6 +96,8 @@ var Settings = (function () {
         cache = {};
         for (var k in defaults)
             cache[k] = (stored && k in stored) ? stored[k] : defaults[k];
+        if (stored && !('commercialMode' in stored) && stored.showControlsOnVideoChange === false)
+            cache.commercialMode = true;
         return cache;
     }
     function save() {

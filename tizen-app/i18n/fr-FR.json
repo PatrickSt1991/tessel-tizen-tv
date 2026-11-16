@@ -62,6 +62,7 @@
   "settings.audioLang": "Langue audio préférée",
   "settings.subtitleLang": "Langue des sous-titres préférée",
   "settings.repeatMode": "Mode de répétition",
+  "settings.commercialMode": "Mode commercial",
   "settings.autoPlay": "Lecture auto du fichier suivant",
   "settings.resume": "Reprise de la lecture",
   "settings.recentClear": "Vider Lus récemment",

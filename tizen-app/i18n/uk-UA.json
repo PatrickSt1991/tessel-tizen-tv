@@ -62,6 +62,7 @@
   "settings.audioLang": "Бажана мова аудіо",
   "settings.subtitleLang": "Бажана мова субтитрів",
   "settings.repeatMode": "Режим повтору",
+  "settings.commercialMode": "Комерційний режим",
   "settings.autoPlay": "Автовідтворення наступного файлу",
   "settings.resume": "Продовження відтворення",
   "settings.recentClear": "Очистити Нещодавно відтворені",

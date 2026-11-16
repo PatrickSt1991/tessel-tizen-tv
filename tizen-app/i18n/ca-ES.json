@@ -62,6 +62,7 @@
   "settings.audioLang": "Idioma d’àudio preferit",
   "settings.subtitleLang": "Idioma de subtítols preferit",
   "settings.repeatMode": "Mode de repetició",
+  "settings.commercialMode": "Mode comercial",
   "settings.autoPlay": "Reprodueix el fitxer següent automàticament",
   "settings.resume": "Reprèn la reproducció",
   "settings.recentClear": "Buida Reproduït recentment",

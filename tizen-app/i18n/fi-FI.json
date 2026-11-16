@@ -62,6 +62,7 @@
   "settings.audioLang": "Ensisijainen äänen kieli",
   "settings.subtitleLang": "Ensisijainen tekstityskieli",
   "settings.repeatMode": "Uusintatila",
+  "settings.commercialMode": "Mainostila",
   "settings.autoPlay": "Toista seuraava tiedosto automaattisesti",
   "settings.resume": "Jatka toistoa",
   "settings.recentClear": "Tyhjennä Viimeksi toistetut",
