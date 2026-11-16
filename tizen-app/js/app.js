@@ -1474,8 +1474,18 @@
         showAudioTags(isAudio ? uri : null, opts);
         updateMiniPlayer();
         markNowPlaying();
-        document.getElementById('osd-top').classList.remove('hidden');
-        document.getElementById('osd-bottom').classList.remove('hidden');
+        // Through showOSD when the player is on screen, so the cursor lands
+        // on play/pause.  The view was switched above with the controls
+        // still hidden, so nothing in it could take the cursor yet, and OK
+        // in the first seconds went to the list row the file was opened
+        // from: the file opened again, or asked Continue / Start over
+        // (issue #178).
+        if (opts.background) {
+            document.getElementById('osd-top').classList.remove('hidden');
+            document.getElementById('osd-bottom').classList.remove('hidden');
+        } else {
+            showOSD(true);
+        }
         showSpinner(I18n.t('player.openingShort'));
         hideError();
 
