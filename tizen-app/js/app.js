@@ -1517,6 +1517,7 @@
                     Debug.player((state.directFallback ? 'smart routing: playing directly → '
                                                        : 'routing through transcode server → ') + openUrl);
                 Player.open(openUrl, {
+                    holdFrame: !!(opts.trackChange && Settings.get('commercialMode') && !isAudio),
                     title:     title,
                     subtitles: opts.subtitles || [],
                     file:      opts.file || null,
@@ -2146,6 +2147,10 @@
     }
 
     function showSpinner(msg) {
+        if (state.view === 'player' && Settings.get('commercialMode') && !state.playingIsAudio) {
+            hideSpinner();
+            return;
+        }
         var sp = document.getElementById('spinner');
         sp.querySelector('.spinner-text').textContent = msg || I18n.t('common.loading');
         sp.classList.remove('hidden');
