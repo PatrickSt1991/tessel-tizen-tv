@@ -42,7 +42,16 @@ var UI = (function () {
         var marked = v.querySelectorAll('[data-focus]'), initial = null;
         for (var m = 0; m < marked.length && !initial; m++)
             if (!marked[m].classList.contains('hidden') && marked[m].offsetParent !== null) initial = marked[m];
-        focusOn(usable(lastFocus[id]) || initial || firstWidget());
+        var target = usable(lastFocus[id]) || initial || firstWidget();
+        // Nothing here can take the cursor (the player before its controls
+        // come up): take it off the view just hidden, or OK would still
+        // activate a row of a list that is no longer on screen (issue #178).
+        if (target) focusOn(target); else clearFocus();
+    }
+
+    function clearFocus() {
+        var prev = document.querySelectorAll('.focused');
+        for (var p = 0; p < prev.length; p++) prev[p].classList.remove('focused');
     }
 
     /* The first focusable that isn't a text field.  A view that opened on
@@ -83,9 +92,7 @@ var UI = (function () {
         if (!el) return;
         // Clear .focused from everywhere, not just current focusables, so the
         // class doesn't leak across overlays.
-        var prev = document.querySelectorAll('.focused');
-        for (var p = 0; p < prev.length; p++) prev[p].classList.remove('focused');
-
+        clearFocus();
         el.classList.add('focused');
         // Leaving a text field takes the on-screen keyboard down with it.  A
         // list row can't hold DOM focus itself, so without this the field
