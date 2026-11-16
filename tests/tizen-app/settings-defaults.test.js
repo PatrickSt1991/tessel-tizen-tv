@@ -118,3 +118,58 @@ test('the Ko-fi banner shows until switched off', function () {
     assert.strictEqual(loadSettings(null).get('showSupport'), true);
     assert.strictEqual(loadSettings({ showSupport: false }).get('showSupport'), false);
 });
+
+test('commercial mode defaults off and preserves the previous hidden-controls preference', function () {
+    assert.strictEqual(loadSettings(null).get('commercialMode'), false);
+    assert.strictEqual(loadSettings({ autoPlay: false }).get('commercialMode'), false);
+    assert.strictEqual(loadSettings({ commercialMode: true }).get('commercialMode'), true);
+    assert.strictEqual(loadSettings({ showControlsOnVideoChange: false }).get('commercialMode'), true);
+    assert.strictEqual(loadSettings({ showControlsOnVideoChange: false, commercialMode: false }).get('commercialMode'), false);
+});
+
+test('commercial mode hides controls on video changes while initial opens and audio keep controls', function () {
+    var src = fs.readFileSync(path.join(__dirname, '../../tizen-app/js/app.js'), 'utf8');
+    var decision = src.match(/showOpeningControls = !opts\.trackChange[^;]+;/)[0];
+    [
+        { change: true, audio: false, mode: true, expected: false },
+        { change: true, audio: false, mode: false, expected: true },
+        { change: false, audio: false, mode: true, expected: true },
+        { change: true, audio: true, mode: true, expected: true }
+    ].forEach(function (c) {
+        var box = { opts: { trackChange: c.change }, isAudio: c.audio,
+            Settings: { get: function () { return c.mode; } } };
+        vm.runInNewContext(decision, box);
+        assert.strictEqual(box.showOpeningControls, c.expected);
+    });
+});
+
+test('automatic advances announce the next title only outside commercial mode', function () {
+    var src = fs.readFileSync(path.join(__dirname, '../../tizen-app/js/app.js'), 'utf8');
+    var next = src.slice(src.indexOf('    function playNext(isAuto)'), src.indexOf('    /* OSD Prev'));
+    [true, false].forEach(function (mode) {
+        [true, false].forEach(function (automatic) {
+            var toasts = [], opened = [];
+            var box = {
+                state: { playlist: [{ uri: 'next.mp4', title: 'Next video' }], background: false },
+                stepIndex: function () { return 0; },
+                Settings: { get: function () { return mode; } },
+                UI: { toast: function (s) { toasts.push(s); } },
+                I18n: { t: function (key, title) { return key + ': ' + title; } },
+                playUri: function (uri, title, opts) { opened.push(opts); }
+            };
+            vm.runInNewContext(next, box);
+            assert.strictEqual(box.playNext(automatic), true);
+            assert.strictEqual(toasts.length, automatic && !mode ? 1 : 0);
+            assert.strictEqual(opened[0].trackChange, true);
+        });
+    });
+});
+
+test('commercial mode is translated in every supported app language', function () {
+    var dir = path.join(__dirname, '../../tizen-app/i18n');
+    fs.readdirSync(dir).filter(function (f) { return /\.json$/.test(f); }).forEach(function (f) {
+        var strings = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+        assert.ok(strings['settings.commercialMode'], f);
+        assert.strictEqual(strings['settings.videoChangeControls'], undefined);
+    });
+});

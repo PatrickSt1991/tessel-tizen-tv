@@ -68,6 +68,8 @@ var Player = (function () {
     };
     function setListener(name, fn) { if (name in listeners) listeners[name] = fn; }
     function emit(name) {
+        if (name === 'onerror' || (name === 'onstatechange' && arguments[1] === 'playing' && backend === BACKEND_HTML5))
+            releaseTransitionFrame();
         if (listeners[name]) listeners[name].apply(null, [].slice.call(arguments, 1));
     }
 
@@ -80,6 +82,61 @@ var Player = (function () {
             logAvplayApi();
         }
         return avplay;
+    }
+
+    var heldAvplay = null;
+    var spareAvplay = null;
+    var heldCanvas = null;
+    var avOpenToken = 0;
+
+    function releaseTransitionFrame() {
+        if (heldCanvas) {
+            heldCanvas.parentNode.removeChild(heldCanvas);
+            heldCanvas = null;
+        }
+        if (!heldAvplay) return;
+        var old = heldAvplay;
+        heldAvplay = null;
+        try { old.setVideoStillMode('false'); } catch (e) {}
+        try { old.stop(); } catch (e) {}
+        try { old.close(); } catch (e) {}
+        spareAvplay = old;
+    }
+
+    function holdTransitionFrame() {
+        if (heldAvplay || heldCanvas) return;
+        if (backend === BACKEND_HTML5) {
+            var v = h5el();
+            if (!v || !v.videoWidth || !v.videoHeight) return;
+            try {
+                var canvas = document.createElement('canvas');
+                canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+                canvas.getContext('2d').drawImage(v, 0, 0);
+                canvas.id = 'transition-frame';
+                canvas.style.objectFit = v.style.objectFit || 'contain';
+                document.body.insertBefore(canvas, document.getElementById('subtitle-overlay'));
+                heldCanvas = canvas;
+                v.pause();
+            } catch (e) {}
+            return;
+        }
+        if (backend !== BACKEND_AVPLAY || !av()) return;
+        try {
+            // Keep the old decoder alive: closing it discards its display buffer.
+            var next = spareAvplay || webapis.avplaystore.getPlayer();
+            if (next === av()) return;
+            spareAvplay = next;
+            av().setVideoStillMode('true');
+            if (av().getState() === 'PLAYING') av().pause();
+            avStopPolling();
+            heldAvplay = av();
+            avplay = next;
+            spareAvplay = null;
+        } catch (e) {
+            // shortcut: older TVs may lack parallel players; verify frame holding on the target TV.
+            try { av().setVideoStillMode('false'); } catch (ignored) {}
+            if (typeof Debug !== 'undefined') Debug.warn('Frame hold unavailable: ' + e.message);
+        }
     }
 
     /* One-time inventory of the geometry calls the firmware actually has.
@@ -885,6 +942,7 @@ var Player = (function () {
             try {
                 var s = av().getState();
                 var t = av().getCurrentTime();
+                if (t > 0) releaseTransitionFrame();
                 var d = av().getDuration();
                 emit('onprogress', { state: s, time: t, duration: d });
                 var now = Date.now();
@@ -928,12 +986,19 @@ var Player = (function () {
             if (onFallback) { onFallback('AVPlay API not available'); return; }
             emit('onerror', 'AVPlay API not available'); return;
         }
+        var openingPlayer = av();
+        var token = ++avOpenToken;
+        function currentOpen() { return token === avOpenToken && av() === openingPlayer; }
         var path = avplayUrl(url);
         if (typeof Debug !== 'undefined') Debug.player('AV open path=' + path);
 
         try { av().close(); } catch (e) {}
         try {
             av().open(path);
+            if (heldAvplay) {
+                avSetDisplayRect();
+                av().setStreamingProperty('PREBUFFER_MODE', '0');
+            }
             if (typeof Debug !== 'undefined') Debug.player('AV open() returned');
         } catch (e) {
             if (typeof Debug !== 'undefined') Debug.error('AV open() threw: ' + (e.message || e));
@@ -942,6 +1007,7 @@ var Player = (function () {
             return;
         }
         var subListener = function (duration, text, type, attr) {
+            if (!currentOpen()) return;
             if (typeof Debug !== 'undefined')
                 Debug.player('SUB cb dur=' + duration + ' type=' + type +
                              ' text=' + JSON.stringify(text || '').slice(0, 80) +
@@ -959,7 +1025,8 @@ var Player = (function () {
         };
 
         try {
-            av().setListener({
+            var callbacks = {
+                oncurrentplaytime: function (time) { if (time > 0) releaseTransitionFrame(); },
                 onbufferingstart:    function () { avNoteBuffering(true);  emit('onbuffering', true);  },
                 onbufferingcomplete: function () { avNoteBuffering(false); emit('onbuffering', false); },
                 onstreamcompleted:   function () { emit('oncomplete'); },
@@ -985,7 +1052,12 @@ var Player = (function () {
                         showSubtitleText(eventData, 5000);
                     }
                 }
+            };
+            Object.keys(callbacks).forEach(function (name) {
+                var callback = callbacks[name];
+                callbacks[name] = function () { if (currentOpen()) callback.apply(null, arguments); };
             });
+            av().setListener(callbacks);
         } catch (e) {}
 
         /* Also assign the subtitle callback directly on the av object — some
@@ -997,6 +1069,7 @@ var Player = (function () {
         try {
             av().prepareAsync(
                 function () {
+                    if (!currentOpen()) return;
                     avSetDisplayRect();
                     avSetDisplayMethod();
 
@@ -1022,6 +1095,7 @@ var Player = (function () {
                     emit('onstatechange', 'playing');
                 },
                 function (err) {
+                    if (!currentOpen()) return;
                     var msg = err && err.message ? err.message : err;
                     if (typeof Debug !== 'undefined') Debug.error('AV prepareAsync failed: ' + msg);
                     if (onFallback) { onFallback('prepare: ' + msg); return; }
@@ -1724,6 +1798,8 @@ var Player = (function () {
             emit('onerror', NetworkAccess.refusal(NetworkAccess.hostOf(url)).message);
             return;
         }
+        if (opts.holdFrame) holdTransitionFrame();
+        else releaseTransitionFrame();
         cancelEmbeddedSubExtraction('opening another file');
         containerSubTracks = [];        // previous file's header list
         ++lastContainerListToken;       // and any header read still in flight
@@ -1823,6 +1899,8 @@ var Player = (function () {
         else                  play();
     }
     function stop() {
+        ++avOpenToken;
+        releaseTransitionFrame();
         clearTimeout(h5OpenWatchdog);
         cancelEmbeddedSubExtraction('playback stopped');
         cancelTrackExtraction('playback stopped');

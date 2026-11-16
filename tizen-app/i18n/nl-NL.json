@@ -62,6 +62,7 @@
   "settings.audioLang": "Voorkeurstaal audio",
   "settings.subtitleLang": "Voorkeurstaal ondertitels",
   "settings.repeatMode": "Herhaalmodus",
+  "settings.commercialMode": "Commerciële modus",
   "settings.autoPlay": "Volgend bestand automatisch afspelen",
   "settings.resume": "Afspelen hervatten",
   "settings.recentClear": "Recent afgespeeld wissen",

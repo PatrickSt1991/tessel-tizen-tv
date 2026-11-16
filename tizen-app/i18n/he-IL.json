@@ -62,6 +62,7 @@
   "settings.audioLang": "שפת שמע מועדפת",
   "settings.subtitleLang": "שפת כתוביות מועדפת",
   "settings.repeatMode": "מצב חזרה",
+  "settings.commercialMode": "מצב מסחרי",
   "settings.autoPlay": "הפעלה אוטומטית של הקובץ הבא",
   "settings.resume": "המשך הפעלה",
   "settings.recentClear": "ניקוי הופעלו לאחרונה",

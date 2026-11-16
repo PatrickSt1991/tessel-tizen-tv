@@ -62,6 +62,7 @@
   "settings.audioLang": "Tercih edilen ses dili",
   "settings.subtitleLang": "Tercih edilen altyazı dili",
   "settings.repeatMode": "Tekrar modu",
+  "settings.commercialMode": "Ticari mod",
   "settings.autoPlay": "Sonraki dosyayı otomatik oynat",
   "settings.resume": "Oynatmaya devam et",
   "settings.recentClear": "Son Oynatılanları Temizle",

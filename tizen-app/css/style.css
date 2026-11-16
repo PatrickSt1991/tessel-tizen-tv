@@ -1221,3 +1221,9 @@ button:focus { outline: none; }
 .browse-list li.now-playing::after { content: '♪'; color: var(--accent); margin-left: 24px; font-size: 24px; }
 /* Room under the last row, so it can scroll clear of the mini-player. */
 .mini-on .browse-list { padding-bottom: 120px; }
+
+/* Hold an HTML5 frame above the decoder while the next file opens. */
+#transition-frame {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: #000; pointer-events: none;
+}

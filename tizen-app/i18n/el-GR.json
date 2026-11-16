@@ -62,6 +62,7 @@
   "settings.audioLang": "Προτιμώμενη γλώσσα ήχου",
   "settings.subtitleLang": "Προτιμώμενη γλώσσα υποτίτλων",
   "settings.repeatMode": "Λειτουργία επανάληψης",
+  "settings.commercialMode": "Εμπορική λειτουργία",
   "settings.autoPlay": "Αυτόματη αναπαραγωγή επόμενου αρχείου",
   "settings.resume": "Συνέχιση αναπαραγωγής",
   "settings.recentClear": "Εκκαθάριση πρόσφατης αναπαραγωγής",

@@ -62,6 +62,7 @@
   "settings.audioLang": "لغة الصوت المفضلة",
   "settings.subtitleLang": "لغة الترجمة المفضلة",
   "settings.repeatMode": "وضع التكرار",
+  "settings.commercialMode": "الوضع التجاري",
   "settings.autoPlay": "تشغيل الملف التالي تلقائيًا",
   "settings.resume": "استئناف التشغيل",
   "settings.recentClear": "مسح «تم تشغيلها مؤخرًا»",

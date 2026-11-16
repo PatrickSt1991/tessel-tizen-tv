@@ -62,6 +62,7 @@
   "settings.audioLang": "Preferowany język dźwięku",
   "settings.subtitleLang": "Preferowany język napisów",
   "settings.repeatMode": "Tryb powtarzania",
+  "settings.commercialMode": "Tryb komercyjny",
   "settings.autoPlay": "Automatycznie odtwarzaj następny plik",
   "settings.resume": "Wznawianie odtwarzania",
   "settings.recentClear": "Wyczyść Ostatnio odtwarzane",

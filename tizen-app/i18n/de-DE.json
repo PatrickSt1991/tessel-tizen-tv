@@ -62,6 +62,7 @@
   "settings.audioLang": "Bevorzugte Audiosprache",
   "settings.subtitleLang": "Bevorzugte Untertitelsprache",
   "settings.repeatMode": "Wiederholmodus",
+  "settings.commercialMode": "Werbemodus",
   "settings.autoPlay": "Nächste Datei automatisch abspielen",
   "settings.resume": "Wiedergabe fortsetzen",
   "settings.recentClear": "Zuletzt abgespielt leeren",

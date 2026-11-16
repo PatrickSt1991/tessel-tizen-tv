@@ -62,6 +62,7 @@
   "settings.audioLang": "Жељени језик звука",
   "settings.subtitleLang": "Жељени језик титла",
   "settings.repeatMode": "Режим понављања",
+  "settings.commercialMode": "Комерцијални режим",
   "settings.autoPlay": "Аутоматски пусти следећу датотеку",
   "settings.resume": "Настави репродукцију",
   "settings.recentClear": "Обриши Недавно пуштено",
