@@ -22,6 +22,7 @@ var Settings = (function () {
         // reads as broken.  Only a TV with nothing stored gets the default,
         // so anyone who chose Off before keeps it (see load()).
         autoPlay:         true,
+        showControlsOnVideoChange: true, // Show controls on next/previous video, including auto-play.
         // Seconds each picture stays on screen in a slideshow (issue #126).
         slideshowSeconds: 5,
         // What to do when a file with a saved position is opened again:

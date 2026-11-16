@@ -70,6 +70,7 @@
   "settings.audioLang": "Preferred audio language",
   "settings.subtitleLang": "Preferred subtitle language",
   "settings.repeatMode": "Repeat mode",
+  "settings.videoChangeControls": "Show controls when switching videos",
   "settings.autoPlay": "Auto-play next file",
   "settings.resume": "Resume playback",
   "settings.recentClear": "Clear Recently Played",

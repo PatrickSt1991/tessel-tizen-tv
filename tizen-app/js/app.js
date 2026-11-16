@@ -202,7 +202,8 @@
                  * it can detect the "PLAYING but stuck at time=0" case.  The
                  * watchdog disarms itself once it sees time advancing. */
                 hideSpinner();
-                showOSD(true);
+                if (showOpeningControls) showOSD(true);
+                showOpeningControls = true;
                 scheduleOSDHide();
                 applyLanguagePreferences();
                 updateSpeedButton();   // Player.open reset speed to 1×; reflect it on the OSD
@@ -399,6 +400,7 @@
             case 'setting-audio-lang':    openLangPicker('audioLang',    I18n.t('settings.audioLang'), LanguageList.forAudio());    break;
             case 'setting-subtitle-lang': openLangPicker('subtitleLang', I18n.t('settings.subtitleLang'), LanguageList.forSubtitle()); break;
             case 'setting-repeat-mode':   openRepeatPicker(); break;
+            case 'setting-video-change-controls': openVideoChangeControlsPicker(); break;
             case 'setting-auto-play':     openAutoPlayPicker(); break;
             case 'setting-resume-mode':   openResumeModePicker(); break;
             case 'setting-recent':        openRecentPicker(); break;
@@ -1397,6 +1399,7 @@
 
     /* ── Common: open a URI in player view ────────────────────────── */
     var openWatchdog = null;
+    var showOpeningControls = true;
     function playUri(uri, title, opts) {
         opts = opts || {};
         if (!NetworkAccess.check(uri, title, function () { playUri(uri, title, opts); })) return;
@@ -1471,6 +1474,7 @@
         document.getElementById('audio-card').classList.toggle('hidden', !isAudio);
         document.getElementById('audio-title').textContent = isAudio ? (title || uri) : '';
         state.playingIsAudio = isAudio;
+        showOpeningControls = !opts.trackChange || isAudio || Settings.get('showControlsOnVideoChange') !== false;
         showAudioTags(isAudio ? uri : null, opts);
         updateMiniPlayer();
         markNowPlaying();
@@ -1484,7 +1488,7 @@
             document.getElementById('osd-top').classList.remove('hidden');
             document.getElementById('osd-bottom').classList.remove('hidden');
         } else {
-            showOSD(true);
+            showOSD(showOpeningControls);
         }
         showSpinner(I18n.t('player.openingShort'));
         hideError();
@@ -1749,7 +1753,7 @@
         state.playlistIndex = ni;
         if (isAuto) UI.toast(I18n.t('player.upNext', item.title));
         playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null,
-                                        background: state.background });
+                                        background: state.background, trackChange: true });
         return true;
     }
     /* OSD Prev / MediaTrackPrevious: restart the current file when we're
@@ -1773,7 +1777,7 @@
         var item = state.playlist[pi];
         state.playlistIndex = pi;
         playUri(item.uri, item.title, { subtitles: item.subtitles || [], file: item.file || null, tagSrc: item.tagSrc || null,
-                                        background: state.background });
+                                        background: state.background, trackChange: true });
         return true;
     }
     /* Dim the prev/next OSD buttons when there's nothing on that side.
@@ -2125,8 +2129,8 @@
 
     function installMediaSessionHandlers() {
         if (!('mediaSession' in navigator)) return;
-        function ifPlaying(fn) {
-            return function () { if (state.view === 'player') { fn(); flashOSD(); } };
+        function ifPlaying(fn, trackChange) {
+            return function () { if (state.view === 'player') { fn(); if (!trackChange) flashOSD(); } };
         }
         var pairs = [
             ['play',          ifPlaying(function () { Player.play(); })],
@@ -2134,8 +2138,8 @@
             ['stop',          ifPlaying(function () { exitPlayer(); })],
             ['seekbackward',  ifPlaying(function () { Player.seekRel(-30000); })],
             ['seekforward',   ifPlaying(function () { Player.seekRel( 30000); })],
-            ['previoustrack', ifPlaying(function () { handlePrev(); })],
-            ['nexttrack',     ifPlaying(function () { playNext(false); })]
+            ['previoustrack', ifPlaying(function () { handlePrev(); }, true)],
+            ['nexttrack',     ifPlaying(function () { playNext(false); }, true)]
         ];
         for (var i = 0; i < pairs.length; i++) {
             try { navigator.mediaSession.setActionHandler(pairs[i][0], pairs[i][1]); } catch (e) {}
@@ -2249,6 +2253,7 @@
         document.getElementById('setting-audio-lang-value').textContent    = LanguageList.nameFor(Settings.get('audioLang'));
         document.getElementById('setting-subtitle-lang-value').textContent = LanguageList.nameFor(Settings.get('subtitleLang'));
         document.getElementById('setting-repeat-mode-value').textContent   = repeatName(Settings.get('repeatMode'));
+        document.getElementById('setting-video-change-controls-value').textContent = I18n.t(Settings.get('showControlsOnVideoChange') ? 'common.on' : 'common.off');
         document.getElementById('setting-auto-play-value').textContent     = I18n.t(Settings.get('autoPlay') ? 'common.on' : 'common.off');
         document.getElementById('setting-resume-mode-value').textContent   = resumeModeName(Settings.get('resumeMode'));
         document.getElementById('setting-recent-value').textContent        = I18n.t(Settings.get('recentHistory') ? 'common.on' : 'common.off');
@@ -2561,6 +2566,16 @@
             Settings.set('slideshowSeconds', val);
             refreshSettingsValues();
             UI.toast(I18n.t('toast.setTo', I18n.t('settings.slideshow'), slideshowName(val)));
+        });
+    }
+    function openVideoChangeControlsPicker() {
+        pickerSetting = 'showControlsOnVideoChange';
+        openPicker(I18n.t('settings.videoChangeControls'), [
+            { code: 'off', name: I18n.t('common.off') },
+            { code: 'on', name: I18n.t('common.on') }
+        ], Settings.get('showControlsOnVideoChange') ? 'on' : 'off', function (val) {
+            Settings.set('showControlsOnVideoChange', val === 'on');
+            refreshSettingsValues();
         });
     }
     function openAutoPlayPicker() {

@@ -118,3 +118,28 @@ test('the Ko-fi banner shows until switched off', function () {
     assert.strictEqual(loadSettings(null).get('showSupport'), true);
     assert.strictEqual(loadSettings({ showSupport: false }).get('showSupport'), false);
 });
+
+test('video changes show controls by default and preserve an Off preference', function () {
+    assert.strictEqual(loadSettings(null).get('showControlsOnVideoChange'), true);
+    assert.strictEqual(loadSettings({ autoPlay: false }).get('showControlsOnVideoChange'), true);
+    var s = loadSettings({ showControlsOnVideoChange: false });
+    assert.strictEqual(s.get('showControlsOnVideoChange'), false);
+    s.set('showControlsOnVideoChange', true);
+    assert.strictEqual(s.get('showControlsOnVideoChange'), true);
+});
+
+test('video transitions respect the controls preference while initial opens and audio show controls', function () {
+    var src = fs.readFileSync(path.join(__dirname, '../../tizen-app/js/app.js'), 'utf8');
+    var decision = src.match(/showOpeningControls = !opts\.trackChange[^;]+;/)[0];
+    [
+        { change: true, audio: false, setting: false, expected: false },
+        { change: true, audio: false, setting: true, expected: true },
+        { change: false, audio: false, setting: false, expected: true },
+        { change: true, audio: true, setting: false, expected: true }
+    ].forEach(function (c) {
+        var box = { opts: { trackChange: c.change }, isAudio: c.audio,
+            Settings: { get: function () { return c.setting; } } };
+        vm.runInNewContext(decision, box);
+        assert.strictEqual(box.showOpeningControls, c.expected);
+    });
+});
