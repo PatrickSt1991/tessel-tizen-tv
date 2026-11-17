@@ -240,3 +240,22 @@ test('a missing or broken store reads as empty and swallows failed writes', func
     assert.strictEqual(mi.get(e).dur, 10, 'kept in memory for this run');
     assert.strictEqual(MediaInfo.create(null, deps).get(e), null);
 });
+
+test('a USB file keeps its record when the drive is mounted under another name (issue #181)', function () {
+    function usb(mount) {
+        return { uri: 'file:///opt/media/' + mount + '/Series/a.mkv', name: 'a.mkv', file: null, size: 500, mtime: new Date(2026, 0, 1) };
+    }
+    var st = storage();
+    var mi = MediaInfo.create(st, deps);
+    mi.put(usb('USBDriveB1'), { dur: 1425000 });
+    assert.strictEqual(mi.get(usb('USBDriveA1')).dur, 1425000);
+    assert.deepStrictEqual(Object.keys(st.json(mi.KEY)), ['usb:/Series/a.mkv']);
+    var other = usb('USBDriveA1'); other.size = 501;
+    assert.strictEqual(mi.get(other), null, 'another size is still another file');
+
+    // A record an older version stored under the full path is read too.
+    var old = {};
+    old['file:///opt/media/USBDriveB1/Series/a.mkv'] = { dur: 7000, video: null, audio: [], subs: [], size: 500, mtime: new Date(2026, 0, 1).getTime(), ts: 5 };
+    var init = {}; init[MediaInfo.KEY] = old;
+    assert.strictEqual(MediaInfo.create(storage(init), deps).get(usb('USBDriveA1')).dur, 7000);
+});

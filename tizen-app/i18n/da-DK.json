@@ -286,6 +286,7 @@
   "player.upNext": "Næste: {0}",
   "player.restarted": "Genstartet",
   "player.noPrev": "Intet forrige element",
+  "err.fileGone": "Filen blev ikke fundet — er drevet tilsluttet?",
   "err.legacyTitle": "Denne {0}-fil kan ikke afspilles på dette tv",
   "err.legacyHint": "Containeren blev åbnet, men dit tv’s hardwaredekoder genkender ikke codec’et indeni.  {0}-filer fra slut-90’erne / 2000’erne indeholder som regel DivX, Xvid, WMV9 eller lignende — Samsung-tv’er afkoder kun H.264, HEVC og en håndfuld andre direkte.\n\nTre måder at afspille dem på:\n  1. Opsæt den tilhørende Tessel-transkodningsserver (anbefales til SMB-shares): et lille Go-program, du kører på en Linux-maskine, Windows-pc, Mac mini, NAS eller Proxmox-VM.  Par den fra Indstillinger → Transkodningsserver, og derefter streames hver fil gennem den — codecs, tv’et ikke kan håndtere, transkodes løbende, alt andet sendes uændret igennem.  Se {1} (transcode-v*-filer).\n  2. Stream via Plex eller Jellyfin, hvis du allerede kører en af dem — de transkoder også på serveren, giv blot URL’en til Åbn netværksstream.\n  3. Genkod én gang med HandBrake eller ffmpeg:\n       {2}",
   "err.mkvTitle": "Denne MKV kunne ikke afspilles",

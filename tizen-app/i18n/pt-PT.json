@@ -286,6 +286,7 @@
   "player.upNext": "A seguir: {0}",
   "player.restarted": "Reiniciado",
   "player.noPrev": "Não há item anterior",
+  "err.fileGone": "Ficheiro não encontrado — a unidade está ligada?",
   "err.legacyTitle": "Este ficheiro {0} não pode ser reproduzido nesta TV",
   "err.legacyHint": "O contentor abriu, mas o descodificador de hardware da sua TV não reconhece o codec lá dentro.  Os ficheiros {0} do final dos anos 90 / anos 2000 costumam usar DivX, Xvid, WMV9 ou semelhantes — as TVs Samsung só descodificam nativamente H.264, HEVC e poucos outros.\n\nTrês formas de os reproduzir:\n  1. Configure o servidor de transcodificação Tessel complementar (recomendado para partilhas SMB): um pequeno binário Go que executa num computador Linux, PC Windows, Mac mini, NAS ou VM Proxmox.  Emparelhe-o em Definições → Servidor de transcodificação e, a partir daí, todos os ficheiros passam por ele — os codecs incompatíveis com a TV são transcodificados em tempo real e o resto passa intacto.  Consulte {1} (recursos transcode-v*).\n  2. Transmita via Plex ou Jellyfin, se já tiver um — também transcodificam no servidor; basta indicar o URL em Abrir transmissão de rede.\n  3. Recodifique uma vez com o HandBrake ou o ffmpeg:\n       {2}",
   "err.mkvTitle": "Não foi possível reproduzir este MKV",

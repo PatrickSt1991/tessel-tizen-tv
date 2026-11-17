@@ -155,3 +155,77 @@ test('the folder continues at the most recent file, or after it once that is fin
     assert.strictEqual(h.snapshot().continueAt(eps), 'e4', 'nothing after the last row');
     assert.strictEqual(h.snapshot().continueAt(['e2', 'e3']), 'e3', 'only the rows listed count');
 });
+
+/* ── USB drives that change mount (issue #181) ─────────────────────── */
+var B1 = 'file:///opt/media/USBDriveB1/Series/Bleach/';
+var A1 = 'file:///opt/media/USBDriveA1/Series/Bleach/';
+
+test('a USB file keeps its history when the drive is mounted under another name', function () {
+    var h = history();
+    h.markWatched(B1 + 'E41.mkv');
+    h.saveResumePos(B1 + 'E42.mkv', 10 * MIN, 40 * MIN);
+
+    assert.ok(h.isWatched(A1 + 'E41.mkv'));
+    assert.strictEqual(h.resumePosFor(A1 + 'E42.mkv'), 10 * MIN);
+    var s = h.snapshot();
+    assert.ok(s.state(A1 + 'E41.mkv').finished);
+    assert.strictEqual(s.state(A1 + 'E42.mkv').progress, 0.25);
+    assert.strictEqual(s.continueAt([A1 + 'E41.mkv', A1 + 'E42.mkv', A1 + 'E43.mkv']), A1 + 'E42.mkv',
+        'the uri handed in, not the key it is stored under');
+
+    // Carrying on under the new mount updates the one entry there is.
+    h.saveResumePos(A1 + 'E42.mkv', 20 * MIN, 40 * MIN);
+    assert.strictEqual(h.resumePosFor(B1 + 'E42.mkv'), 20 * MIN);
+    assert.deepStrictEqual(Object.keys(h.storage.json(h.RESUME_KEY)), ['usb:/Series/Bleach/E42.mkv']);
+    h.markWatched(A1 + 'E42.mkv');
+    assert.strictEqual(h.resumePosFor(B1 + 'E42.mkv'), 0);
+    assert.deepStrictEqual(Object.keys(h.storage.json(h.WATCHED_KEY)).sort(),
+        ['usb:/Series/Bleach/E41.mkv', 'usb:/Series/Bleach/E42.mkv']);
+});
+
+test('history stored under full paths by an older version still counts, the newest entry winning', function () {
+    var init = {};
+    init[WatchHistory.WATCHED_KEY] = {};
+    init[WatchHistory.WATCHED_KEY][B1 + 'E41.mkv'] = 100;
+    init[WatchHistory.WATCHED_KEY][A1 + 'E41.mkv'] = 300;
+    init[WatchHistory.WATCHED_KEY]['http://nas/x.mkv'] = 200;
+    init[WatchHistory.RESUME_KEY] = {};
+    init[WatchHistory.RESUME_KEY][B1 + 'E43.mkv'] = { pos: 5 * MIN, dur: 40 * MIN, ts: 100 };
+    init[WatchHistory.RESUME_KEY][A1 + 'E43.mkv'] = { pos: 9 * MIN, dur: 40 * MIN, ts: 50 };
+    var h = history(init);
+
+    assert.ok(h.isWatched(A1 + 'E41.mkv') && h.isWatched(B1 + 'E41.mkv') && h.isWatched('http://nas/x.mkv'));
+    assert.strictEqual(h.snapshot().state(A1 + 'E41.mkv').lastTs, 300);
+    assert.strictEqual(h.resumePosFor(A1 + 'E43.mkv'), 5 * MIN, 'the position saved last, whatever its mount');
+
+    // The next write stores the maps under the new keys.
+    h.markWatched('http://nas/y.mkv');
+    assert.deepStrictEqual(Object.keys(h.storage.json(h.WATCHED_KEY)).sort(),
+        ['http://nas/x.mkv', 'http://nas/y.mkv', 'usb:/Series/Bleach/E41.mkv']);
+});
+
+test('forgetting a USB file or folder works from either mount, old entries included', function () {
+    var init = {};
+    init[WatchHistory.WATCHED_KEY] = {};
+    init[WatchHistory.WATCHED_KEY][B1 + 'E41.mkv'] = 100;
+    init[WatchHistory.WATCHED_KEY]['file:///opt/media/USBDriveB1/Films/f.mkv'] = 100;
+    var h = history(init);
+    h.saveResumePos(A1 + 'E42.mkv', 10 * MIN, 40 * MIN);
+
+    assert.strictEqual(h.urisUnder(A1).length, 2);
+    assert.strictEqual(h.urisUnder('file:///opt/media/USBDriveC1/').length, 3, 'the whole drive');
+    assert.strictEqual(h.forget([A1 + 'E41.mkv']), 1);
+    assert.ok(!h.isWatched(B1 + 'E41.mkv'));
+    assert.strictEqual(h.forgetUnder(B1), 1);
+    assert.strictEqual(h.resumePosFor(A1 + 'E42.mkv'), 0);
+    assert.ok(h.isWatched('file:///opt/media/USBDriveA1/Films/f.mkv'), 'another folder is untouched');
+});
+
+test('a file that is not on a USB drive is stored under its uri, as before', function () {
+    var h = history();
+    h.markWatched('http://192.168.1.2:8127/smb/stream?path=/opt/media/USBDriveA1/a.mkv');
+    h.markWatched('file:///opt/usr/home/owner/content/a.mkv');
+    assert.deepStrictEqual(Object.keys(h.storage.json(h.WATCHED_KEY)).sort(), [
+        'file:///opt/usr/home/owner/content/a.mkv',
+        'http://192.168.1.2:8127/smb/stream?path=/opt/media/USBDriveA1/a.mkv']);
+});

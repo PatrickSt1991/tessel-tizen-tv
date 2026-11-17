@@ -286,6 +286,7 @@
   "player.upNext": "Tiếp theo: {0}",
   "player.restarted": "Đã phát lại từ đầu",
   "player.noPrev": "Không có mục trước",
+  "err.fileGone": "Không tìm thấy tệp — ổ đĩa đã được kết nối chưa?",
   "err.legacyTitle": "Không thể phát tệp {0} này trên TV",
   "err.legacyHint": "Container đã mở nhưng bộ giải mã phần cứng của TV không nhận ra codec bên trong.  Tệp {0} từ cuối thập niên 90 / những năm 2000 thường dùng DivX, Xvid, WMV9 hoặc tương tự — TV Samsung chỉ giải mã gốc H.264, HEVC và một vài định dạng khác.\n\nBa cách để phát:\n  1. Thiết lập máy chủ chuyển mã Tessel đi kèm (khuyến nghị cho thư mục chia sẻ SMB): một chương trình Go nhỏ bạn chạy một lần trên máy Linux, PC Windows, Mac mini, NAS hoặc Proxmox VM.  Ghép nối từ Cài đặt → Máy chủ chuyển mã, từ đó mọi tệp sẽ truyền qua nó — codec TV không hỗ trợ được chuyển mã trực tiếp, mọi thứ khác đi qua nguyên vẹn.  Xem {1} (tệp transcode-v*).\n  2. Phát qua Plex hoặc Jellyfin nếu bạn đã có — chúng cũng chuyển mã phía máy chủ, chỉ cần đưa URL vào Mở luồng mạng.\n  3. Mã hóa lại một lần bằng HandBrake hoặc ffmpeg:\n       {2}",
   "err.mkvTitle": "Không thể phát tệp MKV này",

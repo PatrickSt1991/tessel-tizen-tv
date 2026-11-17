@@ -286,6 +286,7 @@
   "player.upNext": "Sıradaki: {0}",
   "player.restarted": "Yeniden başlatıldı",
   "player.noPrev": "Önceki öğe yok",
+  "err.fileGone": "Dosya bulunamadı — sürücü bağlı mı?",
   "err.legacyTitle": "Bu dosya ({0}) bu TV'de oynatılamıyor",
   "err.legacyHint": "Kapsayıcı açıldı, ancak TV'nizin donanım kod çözücüsü içindeki codec'i tanımıyor.  90'ların sonu / 2000'lerden kalma {0} dosyaları genellikle DivX, Xvid, WMV9 veya benzerini içerir — Samsung TV'ler yerel olarak yalnızca H.264, HEVC ve birkaç başka biçimi çözer.\n\nBunları oynatmanın üç yolu:\n  1. Yardımcı Tessel dönüştürme sunucusunu kurun (SMB paylaşımları için önerilir): Linux makinede, Windows PC'de, Mac mini'de, NAS'ta veya Proxmox VM'de bir kez çalıştırdığınız küçük bir Go programı.  Ayarlar → Dönüştürme sunucusu bölümünden eşleştirin; bundan sonra her dosya onun üzerinden akar — TV ile uyumsuz codec'ler anında dönüştürülür, diğer her şey dokunulmadan geçer.  Bkz. {1} (transcode-v* dosyaları).\n  2. Zaten kullanıyorsanız Plex veya Jellyfin üzerinden akış yapın — onlar da sunucu tarafında dönüştürür, URL'yi Ağ Akışı Aç'a vermeniz yeterli.\n  3. HandBrake veya ffmpeg ile bir kez yeniden kodlayın:\n       {2}",
   "err.mkvTitle": "Bu MKV oynatılamadı",

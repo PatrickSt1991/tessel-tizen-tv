@@ -9,6 +9,13 @@
  * resume position.  Positions are checkpointed every few seconds while
  * playing and saved on exit / standby.
  *
+ * A file on a USB drive is stored under its path on the drive, without the
+ * mount (UsbPaths.key): the TV mounts the same drive as USBDriveA1 one day
+ * and USBDriveB1 the next, and history kept under the full path was lost
+ * every time it did (issue #181).  Callers pass the file's URI as before;
+ * entries stored under full paths by older versions are folded in when the
+ * maps are read.
+ *
  * ES5 on purpose, like the rest of the app. */
 
 var WatchHistory = (function () {
@@ -21,12 +28,21 @@ var WatchHistory = (function () {
     var RESUME_MIN_MS = 30000;   // positions in the first 30 s aren't worth resuming
     var WATCHED_FRACTION = 0.9;  // a file stopped past this fraction counts as watched
 
+    // UsbPaths is a global in the app; a Node test requires this file bare.
+    var paths = typeof UsbPaths !== 'undefined' ? UsbPaths
+              : (typeof require === 'function' ? require('./usb-paths.js') : null);
+    function keyOf(uri) { return paths && uri ? paths.key(uri) : uri; }
+    function watchedTs(ts) { return ts; }
+    function resumeTs(r) { return r && r.ts; }
+
     function create(storage, now) {
         now = now || function () { return Date.now(); };
 
         function read(key) {
-            try { return JSON.parse(storage.getItem(key) || '{}') || {}; }
+            var m;
+            try { m = JSON.parse(storage.getItem(key) || '{}') || {}; }
             catch (e) { return {}; }
+            return paths ? paths.foldKeys(m, key === WATCHED_KEY ? watchedTs : resumeTs) : m;
         }
         function write(key, m) {
             try { storage.setItem(key, JSON.stringify(m)); } catch (e) {}
@@ -41,23 +57,25 @@ var WatchHistory = (function () {
         }
 
         function isWatched(uri) {
-            return !!uri && !!read(WATCHED_KEY)[uri];
+            return !!uri && !!read(WATCHED_KEY)[keyOf(uri)];
         }
         function markWatched(uri) {
             if (!uri) return;
+            uri = keyOf(uri);
             clearResumePos(uri);   // a finished file starts from the beginning next time
             var w = read(WATCHED_KEY);
             w[uri] = now();
-            trim(w, WATCHED_MAX, function (ts) { return ts; });
+            trim(w, WATCHED_MAX, watchedTs);
             write(WATCHED_KEY, w);
         }
 
         function resumePosFor(uri) {
-            var r = uri ? read(RESUME_KEY)[uri] : null;
+            var r = uri ? read(RESUME_KEY)[keyOf(uri)] : null;
             return (r && r.pos > RESUME_MIN_MS) ? r.pos : 0;
         }
         function saveResumePos(uri, timeMs, durMs) {
             if (!uri) return;
+            uri = keyOf(uri);
             var m = read(RESUME_KEY);
             if (!timeMs || timeMs < RESUME_MIN_MS) {
                 // Stopped near the start: drop any stale position.
@@ -65,11 +83,12 @@ var WatchHistory = (function () {
                 return;
             }
             m[uri] = { pos: Math.floor(timeMs), dur: Math.floor(durMs || 0), ts: now() };
-            trim(m, RESUME_MAX, function (r) { return r.ts; });
+            trim(m, RESUME_MAX, resumeTs);
             write(RESUME_KEY, m);
         }
         function clearResumePos(uri) {
             if (!uri) return;
+            uri = keyOf(uri);
             var m = read(RESUME_KEY);
             if (m[uri]) { delete m[uri]; write(RESUME_KEY, m); }
         }
@@ -78,7 +97,7 @@ var WatchHistory = (function () {
         function forget(uris) {
             var w = read(WATCHED_KEY), r = read(RESUME_KEY), n = 0;
             for (var i = 0; i < uris.length; i++) {
-                var u = uris[i];
+                var u = keyOf(uris[i]);
                 if (!w[u] && !r[u]) continue;
                 n++;
                 delete w[u]; delete r[u];
@@ -86,9 +105,11 @@ var WatchHistory = (function () {
             if (n) { write(WATCHED_KEY, w); write(RESUME_KEY, r); }
             return n;
         }
-        /* Return the stored uris starting with prefix (a folder's uri plus
-         * "/"): files with history in that folder or its subfolders. */
+        /* Return the stored keys starting with prefix (a folder's uri plus
+         * "/"): files with history in that folder or its subfolders.  What
+         * comes back is for forget(); a USB file's key is not its URI. */
         function urisUnder(prefix) {
+            prefix = keyOf(prefix);
             var w = read(WATCHED_KEY), r = read(RESUME_KEY), seen = {}, out = [];
             [w, r].forEach(function (m) {
                 Object.keys(m).forEach(function (u) {
@@ -117,6 +138,7 @@ var WatchHistory = (function () {
              * WATCHED_FRACTION counts as finished even without a watched
              * mark, e.g. when the TV was switched off during the credits. */
             function state(uri) {
+                uri = keyOf(uri);
                 var ts = w[uri] || 0, pos = r[uri] || null;
                 var s = { watched: !!ts, progress: null, finished: !!ts && !pos,
                           lastTs: Math.max(ts, pos ? pos.ts || 0 : 0) };

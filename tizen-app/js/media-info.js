@@ -10,6 +10,9 @@
  *     audio  [{ codec, lang }] in file order
  *     subs   [{ codec, lang, name }] in file order
  * A record is valid while the file's size and modification time match.
+ * A file on a USB drive is stored under its path on the drive
+ * (UsbPaths.key), so the record outlives the drive being mounted under
+ * another name (issue #181).
  * Settings → Backup skips it, since it can be rebuilt.  Files in
  * unsupported containers are stored with dur 0, so their folder isn't
  * probed again on each open; the player fills in the real duration once
@@ -178,6 +181,13 @@ var MediaInfo = (function () {
 
     /* ── Cache ──────────────────────────────────────────────────────── */
 
+    // UsbPaths is a global in the app; a Node test requires this file bare.
+    var paths = typeof UsbPaths !== 'undefined' ? UsbPaths
+              : (typeof require === 'function' ? require('./usb-paths.js') : null);
+    /* A USB file is cached under its path on the drive, so the record
+     * survives the TV mounting the drive under another name (issue #181). */
+    function keyOf(uri) { return paths ? paths.key(uri) : uri; }
+
     function create(storage, deps, now) {
         now = now || function () { return Date.now(); };
         var map = null;   // parsed on first use, then kept in memory
@@ -186,6 +196,8 @@ var MediaInfo = (function () {
             if (map) return map;
             try { map = JSON.parse(storage.getItem(KEY) || '{}') || {}; }
             catch (e) { map = {}; }
+            // Records stored under full USB paths by older versions.
+            if (paths) map = paths.foldKeys(map, function (r) { return r && r.ts; });
             return map;
         }
         function save() {
@@ -195,7 +207,7 @@ var MediaInfo = (function () {
         /* Return the cached record for a listing entry ({ uri, name, size,
          * mtime, file }), or null if it is missing or stale. */
         function get(entry) {
-            var r = load()[entry.uri];
+            var r = load()[keyOf(entry.uri)];
             return r && r.size === entry.size && r.mtime === mtimeOf(entry) ? r : null;
         }
         /* Merge info (any of dur, video, audio, subs) into the entry's
@@ -209,7 +221,7 @@ var MediaInfo = (function () {
             if (info.audio !== undefined) r.audio = info.audio || [];
             if (info.subs !== undefined)  r.subs  = info.subs || [];
             r.size = entry.size; r.mtime = mtimeOf(entry); r.ts = now();
-            m[entry.uri] = r;
+            m[keyOf(entry.uri)] = r;
             var keys = Object.keys(m);
             if (keys.length > MAX) {
                 keys.sort(function (a, b) { return m[a].ts - m[b].ts; })

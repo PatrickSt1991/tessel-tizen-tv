@@ -46,9 +46,14 @@
         if (typeof item.tagSrc === 'string') entry.tagSrc = item.tagSrc;
         if (typeof item.art === 'string') entry.art = item.art;
 
-        var list = getRecent().filter(function (x) { return x.uri !== entry.uri; });
+        // The same USB file under the name the drive was mounted by last
+        // time is the same entry (issue #181).
+        var key = UsbPaths.key(entry.uri);
+        var list = getRecent().filter(function (x) { return UsbPaths.key(x.uri) !== key; });
         list.unshift(entry);
-        list = list.slice(0, 20);
+        setRecent(list.slice(0, 20));
+    }
+    function setRecent(list) {
         try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch (e) {}
     }
 
@@ -237,7 +242,21 @@
                 (typeof WebDAV !== 'undefined' && WebDAV.isStreamUrl(state.playingUri)))) {
                 try { SMB.dumpServiceLogs(); } catch (e) {}
             }
-            showError(text);
+            // A USB file that isn't there (the drive was unplugged, or the
+            // file deleted) fails as PLAYER_ERROR_INVALID_URI, which on an
+            // MKV read as a codec problem (issue #181).  Ask the drives
+            // before blaming the file.
+            var failed = state.playingUri;
+            if (typeof tizen === 'undefined' || !tizen.filesystem || !UsbPaths.split(failed)) { showError(text); return; }
+            UsbPaths.exists(tizen.filesystem, failed, function (there) {
+                if (state.playingUri !== failed) return;
+                if (there === false) {
+                    if (typeof Debug !== 'undefined') Debug.error('not on any USB drive: ' + failed);
+                    showError(I18n.t('err.fileGone'), 'gone');
+                } else {
+                    showError(text);
+                }
+            });
         });
         Player.setListener('onbuffering', function (active) {
             if (active) showSpinner(I18n.t('player.buffering'));
@@ -656,6 +675,11 @@
         state.browseAtRoot = true;
         state.browseDir   = null;
         state.listBack    = null;
+        // Emptied before the view comes up.  Listing the drives takes a
+        // moment, and until it was done the view showed the rows of
+        // whatever was listed last — Recently Played, Favorites, the drives
+        // themselves — with the cursor on the first of them (issue #181).
+        document.getElementById('browse-list').innerHTML = '';
         UI.showView('view-browse'); state.view = 'browse';
         document.getElementById('browse-title').textContent = I18n.t('browse.storage');
         document.getElementById('browse-path').textContent = '/';
@@ -946,22 +970,43 @@
         openUsbFolder(f);
     }
     /* A pinned local folder: resolved through its virtual root first, by
-     * full path when the root is unknown or has gone. */
+     * full path when the root is unknown or has gone.  When it is at
+     * neither, the drive may be mounted under another name than when the
+     * folder was pinned (USBDriveB1 then, USBDriveA1 now): the folder is
+     * looked for on the drives plugged in, and the entry updated to where
+     * it turned up (issue #181). */
     function openUsbFolder(f) {
         if (typeof tizen === 'undefined' || !tizen.filesystem) { UI.toast(I18n.t('favorites.folderGone')); return; }
         var tries = [];
         if (f.root && f.rootPath && f.path.indexOf(f.rootPath + '/') === 0)
             tries.push(f.root + f.path.slice(f.rootPath.length));
         tries.push(f.path);
+        function show(dir, root) {
+            state.browseAtRoot = false;
+            state.browseRoot   = root;
+            UI.showView('view-browse'); state.view = 'browse';
+            listInto(dir);
+        }
+        function elsewhere() {
+            UsbPaths.drives(tizen.filesystem, function (drives) {
+                UsbPaths.locate(tizen.filesystem, drives, f.path, true, function (hit) {
+                    if (!hit) { UI.toast(I18n.t('favorites.folderGone')); return; }
+                    var root = { name: hit.drive.label, fullPath: hit.drive.fullPath };
+                    var path = hit.file.fullPath || '';
+                    var onRoot = !!root.fullPath && path.indexOf(root.fullPath + '/') === 0;
+                    if (typeof Debug !== 'undefined') Debug.browse('favorite ' + f.path + ' found at ' + path);
+                    if (path) Favorites.move(f.id, onRoot ? { path: path, root: root.name, rootPath: root.fullPath }
+                                                          : { path: path });
+                    show(hit.file, onRoot ? root : null);
+                });
+            });
+        }
         (function next(i) {
-            if (i >= tries.length) { UI.toast(I18n.t('favorites.folderGone')); return; }
+            if (i >= tries.length) { elsewhere(); return; }
             try {
                 tizen.filesystem.resolve(tries[i], function (dir) {
                     if (!dir || !dir.isDirectory) { next(i + 1); return; }
-                    state.browseAtRoot = false;
-                    state.browseRoot   = f.root && f.rootPath ? { name: f.root, fullPath: f.rootPath } : null;
-                    UI.showView('view-browse'); state.view = 'browse';
-                    listInto(dir);
+                    show(dir, f.root && f.rootPath ? { name: f.root, fullPath: f.rootPath } : null);
                 }, function () { next(i + 1); }, 'r');
             } catch (e) { next(i + 1); }
         })(0);
@@ -1045,21 +1090,69 @@
         var playlist = list.map(function (item) {
             return { uri: item.uri, title: item.title, subtitles: item.subtitles, tagSrc: item.tagSrc, art: item.art };
         });
-        list.forEach(function (item, i) {
+        // Until the USB files have been looked up (below), OK on a row
+        // waits for that rather than opening a path that may have moved.
+        var located = false, waiting = null, rows = [];
+        function play(entry) {
+            if (!located) { waiting = entry; return; }
+            var i = playlist.indexOf(entry);
+            if (i >= 0) playFromList('recent', playlist, i, null);
+        }
+        playlist.forEach(function (entry) {
             var li = document.createElement('li');
-            li.dataset.uri = item.uri;
-            var watched = WatchHistory.isWatched(item.uri);
+            li.dataset.uri = entry.uri;
+            var watched = WatchHistory.isWatched(entry.uri);
             if (watched) li.classList.add('watched-item');
             li.innerHTML = watchedIcon(watched, 'recent') +
-                           '<span class="name">' + escapeHtml(item.title) + '</span>' +
-                           '<span class="meta">' + escapeHtml(item.uri) + '</span>';
-            li.addEventListener('click', function () {
-                playFromList('recent', playlist, i, null);
-            });
+                           '<span class="name">' + escapeHtml(entry.title) + '</span>' +
+                           '<span class="meta">' + escapeHtml(entry.uri) + '</span>';
+            li.addEventListener('click', function () { play(entry); });
             ul.appendChild(li);
+            rows.push({ li: li, entry: entry });
         });
         markNowPlaying();
         UI.focusInList(ul);
+
+        /* A USB drive doesn't get the same mount every time it is plugged
+         * in (USBDriveA1, then USBDriveB1), and an entry keeps the path
+         * its file had when it was played.  Find each file on the drives
+         * that are there now; the stored list and these rows follow
+         * (issue #181).  A list without USB files is done at once. */
+        UsbPaths.relocate(typeof tizen !== 'undefined' ? tizen.filesystem : null,
+                          playlist.map(function (p) { return p.uri; }), function (moves) {
+            var n = Object.keys(moves).length;
+            if (n) {
+                if (typeof Debug !== 'undefined') Debug.browse('recent: ' + n + ' file(s) found under another USB mount');
+                // Read again: something may have played, and been added,
+                // while the drives were asked.
+                var stored = UsbPaths.relocateItems(getRecent(), moves);
+                if (stored.changed) setRecent(stored.list);
+            }
+            located = true;
+            // Another list has replaced this one in the meantime.
+            if (state.view !== 'browse' || !rows.length || rows[0].li.parentNode !== ul) return;
+            if (n) {
+                var seen = {}, focusLost = false;
+                rows.forEach(function (row) {
+                    var now = UsbPaths.relocateItems([row.entry], moves).list[0];
+                    for (var k in now) row.entry[k] = now[k];
+                    if (seen[row.entry.uri]) {
+                        // The same file as a row above, now that both are found.
+                        if (row.li.classList.contains('focused')) focusLost = true;
+                        if (waiting === row.entry) waiting = seen[row.entry.uri];
+                        playlist.splice(playlist.indexOf(row.entry), 1);
+                        ul.removeChild(row.li);
+                        return;
+                    }
+                    seen[row.entry.uri] = row.entry;
+                    row.li.dataset.uri = row.entry.uri;
+                    row.li.lastElementChild.textContent = row.entry.uri;
+                });
+                markNowPlaying();
+                if (focusLost) UI.focusInList(ul); else UI.refreshFocusables();
+            }
+            if (waiting) play(waiting);
+        });
     }
 
     /* ── Playlists (issue #110) ───────────────────────────────────────
@@ -2150,7 +2243,8 @@
     function hideSpinner() { document.getElementById('spinner').classList.add('hidden'); }
 
     /* kind 'codec': the message is our own (and so translated), and the
-     * codec hint below can't be matched out of its text. */
+     * codec hint below can't be matched out of its text.
+     * kind 'gone': the file isn't there; no hint about what is in it. */
     function showError(msg, kind) {
         if (state.background) { backgroundError(msg); return; }
         // Hide all sibling overlays so the error stays the only focusable thing
@@ -2175,7 +2269,9 @@
         // know these codecs.
         var isLegacyContainer = /\.(avi|wmv|flv|rm|rmvb|mpe?g|vob|divx|asf)($|\?)/i.test(uri);
 
-        if (isLegacyContainer) {
+        if (kind === 'gone') {
+            hint = '';
+        } else if (isLegacyContainer) {
             var ext = (uri.match(/\.([a-z0-9]+)(?:[?#]|$)/i) || [,''])[1].toLowerCase();
             msg = I18n.t('err.legacyTitle', ext.toUpperCase());
             hint = I18n.t('err.legacyHint', ext.toUpperCase(), RELEASES_URL,

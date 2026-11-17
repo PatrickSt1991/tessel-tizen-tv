@@ -76,3 +76,40 @@ test('a damaged list reads as empty rather than throwing', function () {
     assert.deepStrictEqual(favs.list().map(function (f) { return f.path; }), ['/ok']);
     assert.deepStrictEqual(Favorites.create(null).list(), []);
 });
+
+/* ── USB drives that change mount (issue #181) ─────────────────────── */
+test('a USB folder is the same folder when the drive is mounted under another name', function () {
+    var favs = Favorites.create(storage());
+    var a = favs.add({ kind: 'usb', path: '/opt/media/USBDriveB1/Series/Bleach', root: 'removable_sdb1', rootPath: '/opt/media/USBDriveB1' });
+    assert.strictEqual(favs.find({ kind: 'usb', path: '/opt/media/USBDriveA1/Series/Bleach' }).id, a.id);
+    assert.strictEqual(favs.find({ kind: 'usb', path: 'removable_sda1/Series/Bleach' }).id, a.id, 'firmware with virtual full paths');
+    assert.strictEqual(favs.add({ kind: 'usb', path: '/opt/media/USBDriveA1/Series/Bleach', name: 'Again' }).id, a.id);
+    assert.strictEqual(favs.list().length, 1);
+    assert.strictEqual(favs.find({ kind: 'usb', path: '/opt/media/USBDriveA1/Series' }), null, 'its parent is another folder');
+    // A share folder is still compared by its exact path.
+    favs.add({ kind: 'smb', srv: '', path: '/opt/media/USBDriveB1/x', name: 'x' });
+    assert.strictEqual(favs.find({ kind: 'smb', srv: '', path: '/opt/media/USBDriveA1/x' }), null);
+});
+
+test('move() stores where a pinned USB folder was found, and only that', function () {
+    var st = storage();
+    var favs = Favorites.create(st);
+    var a = favs.add({ kind: 'usb', path: '/opt/media/USBDriveB1/Series', name: 'My shows', root: 'removable_sdb1', rootPath: '/opt/media/USBDriveB1' });
+    var s = favs.add({ kind: 'smb', srv: '', path: '/Shows', name: 'Shows' });
+
+    var moved = favs.move(a.id, { path: '/opt/media/USBDriveA1/Series', root: 'removable_sda1', rootPath: '/opt/media/USBDriveA1' });
+    assert.deepStrictEqual([moved.id, moved.name, moved.path, moved.root, moved.rootPath],
+        [a.id, 'My shows', '/opt/media/USBDriveA1/Series', 'removable_sda1', '/opt/media/USBDriveA1']);
+    assert.deepStrictEqual(st.json('vlctv_favorites_v1')[0], moved);
+
+    // Without a root to go with it, the old root is dropped rather than kept.
+    var bare = favs.move(a.id, { path: '/opt/media/USBDriveC1/Series' });
+    assert.deepStrictEqual([bare.path, bare.root, bare.rootPath], ['/opt/media/USBDriveC1/Series', undefined, undefined]);
+
+    assert.strictEqual(favs.move(s.id, { path: '/Other' }), null, 'a share folder does not move');
+    assert.strictEqual(favs.move('nope', { path: '/x' }), null);
+    assert.strictEqual(favs.move(a.id, { path: '' }), null);
+    assert.strictEqual(favs.move(a.id, null), null);
+    assert.strictEqual(favs.get(s.id).path, '/Shows');
+    assert.strictEqual(favs.get(a.id).path, '/opt/media/USBDriveC1/Series');
+});

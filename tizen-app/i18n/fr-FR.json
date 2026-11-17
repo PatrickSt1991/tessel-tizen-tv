@@ -286,6 +286,7 @@
   "player.upNext": "À suivre : {0}",
   "player.restarted": "Redémarré",
   "player.noPrev": "Aucun élément précédent",
+  "err.fileGone": "Fichier introuvable — le lecteur est-il branché ?",
   "err.legacyTitle": "Ce fichier {0} ne peut pas être lu sur cette TV",
   "err.legacyHint": "Le conteneur s’est ouvert mais le décodeur matériel de votre TV ne reconnaît pas le codec qu’il contient.  Les fichiers {0} de la fin des années 90 / 2000 contiennent généralement du DivX, Xvid, WMV9 ou similaire — les TV Samsung ne décodent nativement que H.264, HEVC et quelques autres.\n\nTrois façons de les lire :\n  1. Installez le serveur de transcodage Tessel associé (recommandé pour les partages SMB) : un petit binaire Go à lancer sur une machine Linux, un PC Windows, un Mac mini, un NAS ou une VM Proxmox.  Associez-le via Paramètres → Serveur de transcodage : dès lors, chaque fichier passe par lui — les codecs incompatibles avec la TV sont transcodés à la volée, le reste passe tel quel.  Voir {1} (fichiers transcode-v*).\n  2. Diffusez via Plex ou Jellyfin si vous en avez un — ils transcodent aussi côté serveur, il suffit de passer l’URL à Ouvrir un flux réseau.\n  3. Réencodez une fois avec HandBrake ou ffmpeg :\n       {2}",
   "err.mkvTitle": "Ce MKV n’a pas pu être lu",

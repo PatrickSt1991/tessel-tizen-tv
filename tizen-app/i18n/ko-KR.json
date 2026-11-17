@@ -286,6 +286,7 @@
   "player.upNext": "다음 재생: {0}",
   "player.restarted": "처음부터 재생",
   "player.noPrev": "이전 항목이 없습니다",
+  "err.fileGone": "파일을 찾을 수 없습니다 — 드라이브가 연결되어 있나요?",
   "err.legacyTitle": "이 {0} 파일은 이 TV에서 재생할 수 없습니다",
   "err.legacyHint": "컨테이너는 열렸지만 TV의 하드웨어 디코더가 안에 든 코덱을 인식하지 못합니다. 1990년대 후반~2000년대의 {0} 파일은 대개 DivX, Xvid, WMV9 등을 사용하며, 삼성 TV는 H.264, HEVC 등 일부 코덱만 기본으로 디코딩합니다.\n\n재생하는 방법은 세 가지입니다:\n  1. Tessel 트랜스코딩 서버를 함께 설치하세요 (SMB 공유에 권장): Linux 머신, Windows PC, Mac mini, NAS 또는 Proxmox VM에서 한 번 실행해 두는 작은 Go 바이너리입니다. 설정 → 트랜스코딩 서버에서 페어링하면 이후 모든 파일이 서버를 통해 스트리밍됩니다. TV와 호환되지 않는 코덱은 실시간으로 트랜스코딩되고, 나머지는 그대로 전달됩니다. {1} (transcode-v* 에셋)을 참고하세요.\n  2. Plex나 Jellyfin을 이미 사용 중이라면 그것으로 스트리밍하세요 — 서버 측에서 트랜스코딩하므로 URL을 네트워크 스트림 열기에 넣기만 하면 됩니다.\n  3. HandBrake나 ffmpeg로 한 번 다시 인코딩하세요:\n       {2}",
   "err.mkvTitle": "이 MKV를 재생할 수 없습니다",

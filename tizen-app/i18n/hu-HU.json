@@ -286,6 +286,7 @@
   "player.upNext": "Következik: {0}",
   "player.restarted": "Újraindítva",
   "player.noPrev": "Nincs előző elem",
+  "err.fileGone": "A fájl nem található — csatlakoztatva van a meghajtó?",
   "err.legacyTitle": "Ez a fájl ({0}) nem játszható le ezen a TV-n",
   "err.legacyHint": "A konténer megnyílt, de a TV hardveres dekódere nem ismeri fel a benne lévő kodeket.  A 90-es évek végéről / 2000-es évekből származó {0} fájlok általában DivX, Xvid, WMV9 vagy hasonló kodeket tartalmaznak – a Samsung TV-k natívan csak H.264, HEVC és néhány más formátumot dekódolnak.\n\nHárom módon játszhatók le:\n  1. Állítsa be a kiegészítő Tessel átkódoló szervert (SMB-megosztásokhoz ajánlott): egy kis Go program, amelyet egyszer kell elindítani Linuxos gépen, Windows PC-n, Mac minin, NAS-on vagy Proxmox VM-en.  Párosítsa a Beállítások → Átkódoló szerver menüben, és onnantól minden fájl rajta keresztül streamel – a TV-vel nem kompatibilis kodekek menet közben átkódolódnak, minden más változatlanul megy át.  Lásd: {1} (transcode-v* fájlok).\n  2. Streameljen Plexen vagy Jellyfinen keresztül, ha már használ ilyet – ezek is a szerveren kódolnak át, csak adja meg az URL-t a Hálózati stream megnyitása menüben.\n  3. Kódolja át egyszer HandBrake-kel vagy ffmpeggel:\n       {2}",
   "err.mkvTitle": "Ez az MKV nem játszható le",

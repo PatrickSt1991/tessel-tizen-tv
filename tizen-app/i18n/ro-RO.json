@@ -286,6 +286,7 @@
   "player.upNext": "Urmează: {0}",
   "player.restarted": "Reluat de la început",
   "player.noPrev": "Niciun element anterior",
+  "err.fileGone": "Fișierul nu a fost găsit — este unitatea conectată?",
   "err.legacyTitle": "Acest fișier {0} nu poate fi redat pe acest televizor",
   "err.legacyHint": "Containerul s-a deschis, dar decodorul hardware al televizorului nu recunoaște codecul din interior.  Fișierele {0} de la sfârșitul anilor '90 / anii 2000 conțin de obicei DivX, Xvid, WMV9 sau similare — televizoarele Samsung decodează nativ doar H.264, HEVC și câteva altele.\n\nTrei moduri de a le reda:\n  1. Configurați serverul de transcodare Tessel (recomandat pentru partajări SMB): un mic program Go pe care îl rulați pe un sistem Linux, PC Windows, Mac mini, NAS sau VM Proxmox.  Asociați-l din Setări → Server de transcodare și de atunci fiecare fișier va fi transmis prin el — codecurile incompatibile cu televizorul sunt transcodate din mers, restul trece neatins.  Vedeți {1} (fișierele transcode-v*).\n  2. Transmiteți prin Plex sau Jellyfin dacă îl folosiți deja — și acestea transcodează pe server; dați URL-ul la Deschidere flux de rețea.\n  3. Recodați o singură dată cu HandBrake sau ffmpeg:\n       {2}",
   "err.mkvTitle": "Acest MKV nu a putut fi redat",
