@@ -286,6 +286,7 @@
   "player.upNext": "Volgende: {0}",
   "player.restarted": "Herbegin",
   "player.noPrev": "Geen vorige item nie",
+  "err.fileGone": "Lêer nie gevind nie — is die skyf gekoppel?",
   "err.legacyTitle": "Hierdie {0}-lêer kan nie op hierdie TV gespeel word nie",
   "err.legacyHint": "Die houer het oopgemaak, maar jou TV se hardeware-dekodeerder herken nie die kodek daarin nie.  {0}-lêers uit die laat 90's / 2000's bevat gewoonlik DivX, Xvid, WMV9 of soortgelyk — Samsung-TV's dekodeer slegs H.264, HEVC en 'n handjievol ander self.\n\nDrie maniere om dit te speel:\n  1. Stel die meegaande Tessel-transkodeerbediener op (aanbeveel vir SMB-deelmappe): 'n klein Go-program wat jy een keer op 'n Linux-masjien, Windows-rekenaar, Mac mini, NAS of Proxmox-VM laat loop.  Koppel dit via Instellings → Transkodeerbediener, en van dan af stroom elke lêer daardeur — kodeks wat die TV nie ondersteun nie, word dadelik getranskodeer, alles anders gaan onaangeraak deur.  Sien {1} (transcode-v*-lêers).\n  2. Stroom via Plex of Jellyfin as jy reeds een het — hulle transkodeer ook aan die bedienerkant; gee net die URL aan Open netwerkstroom.\n  3. Herkodeer een keer met HandBrake of ffmpeg:\n       {2}",
   "err.mkvTitle": "Hierdie MKV kon nie gespeel word nie",

@@ -286,6 +286,7 @@
   "player.upNext": "A continuació: {0}",
   "player.restarted": "Reiniciat",
   "player.noPrev": "No hi ha cap element anterior",
+  "err.fileGone": "No s’ha trobat el fitxer — està connectada la unitat?",
   "err.legacyTitle": "Aquest fitxer {0} no es pot reproduir en aquest televisor",
   "err.legacyHint": "El contenidor s’ha obert, però el descodificador de maquinari del televisor no reconeix el còdec que conté.  Els fitxers {0} de finals dels 90 / els 2000 solen portar DivX, Xvid, WMV9 o similars; els televisors Samsung només descodifiquen de manera nativa H.264, HEVC i uns quants més.\n\nTres maneres de reproduir-los:\n  1. Configura el servidor de transcodificació Tessel complementari (recomanat per a carpetes SMB): un petit binari Go que executes en un equip Linux, un PC Windows, un Mac mini, un NAS o una VM de Proxmox.  Vincula’l des de Configuració → Servidor de transcodificació i, a partir d’aleshores, tots els fitxers passen per ell: els còdecs incompatibles amb el televisor es transcodifiquen al moment i la resta passa sense canvis.  Consulta {1} (fitxers transcode-v*).\n  2. Fes streaming amb Plex o Jellyfin si ja en tens un; també transcodifiquen al servidor, només cal passar l’URL a Obre un flux de xarxa.\n  3. Torna a codificar-los una vegada amb HandBrake o ffmpeg:\n       {2}",
   "err.mkvTitle": "Aquest MKV no s’ha pogut reproduir",

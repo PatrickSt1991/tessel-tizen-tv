@@ -286,6 +286,7 @@
   "player.upNext": "Następnie: {0}",
   "player.restarted": "Od początku",
   "player.noPrev": "Brak poprzedniej pozycji",
+  "err.fileGone": "Nie znaleziono pliku — czy dysk jest podłączony?",
   "err.legacyTitle": "Tego pliku {0} nie można odtworzyć na tym telewizorze",
   "err.legacyHint": "Kontener się otworzył, ale sprzętowy dekoder telewizora nie rozpoznaje kodeka w środku.  Pliki {0} z końca lat 90. / z lat 2000. zwykle zawierają DivX, Xvid, WMV9 lub podobne — telewizory Samsung natywnie dekodują tylko H.264, HEVC i kilka innych.\n\nTrzy sposoby na odtworzenie takich plików:\n  1. Skonfiguruj towarzyszący serwer transkodowania Tessel (zalecane dla udziałów SMB): mały program w Go uruchamiany na komputerze z Linuksem, PC z Windows, Macu mini, NAS lub maszynie wirtualnej Proxmox.  Sparuj go w menu Ustawienia → Serwer transkodowania, a od tej pory każdy plik będzie przez niego przesyłany — kodeki nieobsługiwane przez telewizor są transkodowane w locie, reszta przechodzi bez zmian.  Zobacz {1} (pliki transcode-v*).\n  2. Przesyłaj strumieniowo przez Plex lub Jellyfin, jeśli już go używasz — one też transkodują po stronie serwera; po prostu podaj URL w Otwórz strumień sieciowy.\n  3. Przekoduj raz za pomocą HandBrake lub ffmpeg:\n       {2}",
   "err.mkvTitle": "Nie udało się odtworzyć tego pliku MKV",

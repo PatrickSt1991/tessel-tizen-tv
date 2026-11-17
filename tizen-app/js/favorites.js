@@ -14,6 +14,10 @@
  * is the folder's full path, `root` the Tizen virtual root it is on
  * (removable_…) and `rootPath` that root's full path, so the folder can be
  * opened again through the virtual-root form that every firmware resolves.
+ * The TV doesn't mount a drive under the same name every time, so two USB
+ * folders are the same folder when their paths on the drive are
+ * (UsbPaths.key), and move() brings an entry up to date once the folder
+ * has been found under its new mount (issue #181).
  *
  * ES5 on purpose, like the rest of the app. */
 
@@ -22,14 +26,19 @@ var Favorites = (function () {
 
     var KEY = 'vlctv_favorites_v1';
 
+    // UsbPaths is a global in the app; a Node test requires this file bare.
+    var paths = typeof UsbPaths !== 'undefined' ? UsbPaths
+              : (typeof require === 'function' ? require('./usb-paths.js') : null);
+    function driveKey(path) { return paths ? paths.key(path) : path; }
+
     /* The same folder: on a server, the same server and path; on USB, the
-     * same full path. */
+     * same path on the drive, wherever the drive is mounted. */
     function onServer(kind) { return kind === 'smb' || kind === 'webdav'; }
     function isKind(kind) { return onServer(kind) || kind === 'usb'; }
     function same(a, b) {
         if (!a || !b || a.kind !== b.kind) return false;
         if (onServer(a.kind)) return String(a.srv || '') === String(b.srv || '') && a.path === b.path;
-        return a.path === b.path;
+        return driveKey(a.path) === driveKey(b.path);
     }
 
     function create(storage) {
@@ -89,8 +98,25 @@ var Favorites = (function () {
         function remove(id) {
             write(list().filter(function (f) { return f.id !== id; }));
         }
+        /* A pinned USB folder found under another mount: store where it is
+         * now.  Returns the entry, or null when there is none to update. */
+        function move(id, where) {
+            var items = list();
+            var i = indexOf(items, id);
+            if (i < 0 || items[i].kind !== 'usb' || !where || typeof where.path !== 'string' || !where.path) return null;
+            items[i].path = where.path;
+            if (where.root && where.rootPath) {
+                items[i].root = String(where.root);
+                items[i].rootPath = String(where.rootPath);
+            } else {
+                delete items[i].root;
+                delete items[i].rootPath;
+            }
+            write(items);
+            return items[i];
+        }
 
-        return { KEY: KEY, list: list, get: get, find: find, add: add, remove: remove, same: same };
+        return { KEY: KEY, list: list, get: get, find: find, add: add, remove: remove, move: move, same: same };
     }
 
     var api = create(typeof localStorage !== 'undefined' ? localStorage : null);

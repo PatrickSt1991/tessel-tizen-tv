@@ -286,6 +286,7 @@
   "player.upNext": "Näst på tur: {0}",
   "player.restarted": "Startade om",
   "player.noPrev": "Inget föregående objekt",
+  "err.fileGone": "Filen hittades inte — är enheten ansluten?",
   "err.legacyTitle": "Den här {0}-filen kan inte spelas upp på den här tv:n",
   "err.legacyHint": "Containern öppnades, men tv:ns hårdvaruavkodare känner inte igen codecen inuti.  {0}-filer från slutet av 90-talet / 2000-talet innehåller oftast DivX, Xvid, WMV9 eller liknande — Samsung-tv:ar avkodar bara H.264, HEVC och en handfull andra direkt.\n\nTre sätt att spela upp dem:\n  1. Konfigurera den tillhörande Tessel-omkodningsservern (rekommenderas för SMB-resurser): ett litet Go-program som du kör på en Linux-dator, Windows-dator, Mac mini, NAS eller Proxmox-VM.  Parkoppla den från Inställningar → Omkodningsserver, och därefter strömmas varje fil via den — codecs som tv:n inte klarar omkodas i farten, allt annat skickas vidare orört.  Se {1} (transcode-v*-filer).\n  2. Strömma via Plex eller Jellyfin om du redan kör någon av dem — de omkodar också på servern, ge bara URL:en till Öppna nätverksström.\n  3. Koda om en gång med HandBrake eller ffmpeg:\n       {2}",
   "err.mkvTitle": "Den här MKV-filen kunde inte spelas upp",

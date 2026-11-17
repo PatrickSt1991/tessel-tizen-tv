@@ -294,6 +294,7 @@
   "player.upNext": "Up next: {0}",
   "player.restarted": "Restarted",
   "player.noPrev": "No previous item",
+  "err.fileGone": "File not found — is the drive connected?",
   "err.legacyTitle": "This {0} file can’t be played on this TV",
   "err.legacyHint": "The container opened but your TV’s hardware decoder doesn’t recognise the codec inside.  {0} files from the late-90s / 2000s usually carry DivX, Xvid, WMV9 or similar — Samsung TVs only decode H.264, HEVC and a handful of others natively.\n\nThree ways to play these:\n  1. Set up the companion Tessel transcode server (recommended for SMB shares): a small Go binary you run once on a Linux box, Windows PC, Mac mini, NAS or Proxmox VM.  Pair it from Settings → Transcode server, and from then on every file streams through it — TV-incompatible codecs get transcoded on the fly, everything else passes through untouched.  See {1} (transcode-v* assets).\n  2. Stream via Plex or Jellyfin if you already run one — they transcode server-side too, just hand the URL to Open Network Stream.\n  3. Re-encode once with HandBrake or ffmpeg:\n       {2}",
   "err.mkvTitle": "This MKV couldn’t be played",

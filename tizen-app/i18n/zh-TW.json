@@ -286,6 +286,7 @@
   "player.upNext": "即將播放：{0}",
   "player.restarted": "已重新開始",
   "player.noPrev": "沒有上一個項目",
+  "err.fileGone": "找不到檔案 — 磁碟機已連接嗎？",
   "err.legacyTitle": "此電視無法播放這個 {0} 檔案",
   "err.legacyHint": "容器已開啟，但電視的硬體解碼器無法辨識其中的編解碼器。90 年代末至 2000 年代的 {0} 檔案通常使用 DivX、Xvid、WMV9 等格式——三星電視原生只能解碼 H.264、HEVC 等少數幾種。\n\n播放這類檔案有三種方法：\n  1. 架設配套的 Tessel 轉碼伺服器（建議用於 SMB 共用資料夾）：這是一個小巧的 Go 程式，只需在 Linux 主機、Windows 電腦、Mac mini、NAS 或 Proxmox 虛擬機器上執行一次。在「設定 → 轉碼伺服器」中配對後，所有檔案都會經由它串流——電視不相容的編解碼器會即時轉碼，其餘內容原封不動傳輸。請參閱 {1}（transcode-v* 資產）。\n  2. 如果你已在執行 Plex 或 Jellyfin，可透過它串流——它們也會在伺服器端轉碼，只要將網址填入「開啟網路串流」即可。\n  3. 使用 HandBrake 或 ffmpeg 重新編碼一次：\n       {2}",
   "err.mkvTitle": "無法播放此 MKV",

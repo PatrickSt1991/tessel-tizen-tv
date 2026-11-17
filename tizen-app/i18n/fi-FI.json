@@ -286,6 +286,7 @@
   "player.upNext": "Seuraavaksi: {0}",
   "player.restarted": "Aloitettu alusta",
   "player.noPrev": "Ei edellistä kohdetta",
+  "err.fileGone": "Tiedostoa ei löydy — onko asema kytketty?",
   "err.legacyTitle": "Tätä tiedostoa ({0}) ei voi toistaa tässä TV:ssä",
   "err.legacyHint": "Säiliö avautui, mutta TV:n laitteistodekooderi ei tunnista sen sisältämää koodekkia.  {0}-tiedostot 90-luvun lopulta / 2000-luvulta sisältävät yleensä DivX-, Xvid-, WMV9- tai vastaavaa videota — Samsung-TV:t purkavat natiivisti vain H.264:ää, HEVC:tä ja muutamaa muuta.\n\nKolme tapaa toistaa näitä:\n  1. Ota käyttöön Tesselin transkoodauspalvelin (suositellaan SMB-jaoille): pieni Go-ohjelma, jota ajat Linux-koneella, Windows-PC:llä, Mac minillä, NAS:lla tai Proxmox-virtuaalikoneella.  Muodosta pari kohdassa Asetukset → Transkoodauspalvelin, ja siitä lähtien jokainen tiedosto virtaa sen kautta — TV:lle sopimattomat koodekit transkoodataan lennossa, kaikki muu kulkee läpi koskemattomana.  Katso {1} (transcode-v*-tiedostot).\n  2. Suoratoista Plexin tai Jellyfinin kautta, jos sinulla on jo sellainen — nekin transkoodaavat palvelimella, anna vain URL kohtaan Avaa verkkovirta.\n  3. Koodaa kerran uudelleen HandBrakella tai ffmpegillä:\n       {2}",
   "err.mkvTitle": "Tätä MKV-tiedostoa ei voitu toistaa",

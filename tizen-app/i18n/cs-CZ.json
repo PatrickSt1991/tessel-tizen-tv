@@ -286,6 +286,7 @@
   "player.upNext": "Další: {0}",
   "player.restarted": "Spuštěno znovu",
   "player.noPrev": "Žádná předchozí položka",
+  "err.fileGone": "Soubor nenalezen — je disk připojen?",
   "err.legacyTitle": "Tento soubor ({0}) nelze na této TV přehrát",
   "err.legacyHint": "Kontejner se otevřel, ale hardwarový dekodér vaší TV nerozpozná kodek uvnitř.  Soubory {0} z přelomu tisíciletí obvykle obsahují DivX, Xvid, WMV9 nebo podobné – TV Samsung nativně dekódují jen H.264, HEVC a několik dalších.\n\nTři způsoby, jak je přehrát:\n  1. Nastavte doprovodný transkódovací server Tessel (doporučeno pro sdílení SMB): malý program v Go, který jednou spustíte na počítači s Linuxem, PC s Windows, Macu mini, NAS nebo VM v Proxmoxu.  Spárujte ho v Nastavení → Transkódovací server a od té doby se každý soubor streamuje přes něj – kodeky, které TV nepodporuje, se převádějí za chodu, vše ostatní projde beze změny.  Viz {1} (soubory transcode-v*).\n  2. Streamujte přes Plex nebo Jellyfin, pokud je už používáte – také transkódují na serveru, stačí předat URL do Otevřít síťový stream.\n  3. Jednou překódujte pomocí HandBrake nebo ffmpeg:\n       {2}",
   "err.mkvTitle": "Tento soubor MKV nelze přehrát",
