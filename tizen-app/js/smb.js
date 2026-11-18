@@ -926,14 +926,17 @@ var SMB = (function () {
 
     /* A pinned folder from the Favorites tile (issue #140), or a server
      * from the Servers list: straight into `path` on saved server `srv`,
-     * and Back from the share root goes to `back` when given.  false when
-     * that server is no longer saved, so the caller can say so. */
-    function openFolder(srv, path, back) {
+     * and Back from the share root goes to `back` when given.  With `top`
+     * the folder itself is as far up as Back goes: a pinned folder comes
+     * out to Favorites, not to the folder it sits in (issue #183).  false
+     * when that server is no longer saved, so the caller can say so. */
+    function openFolder(srv, path, back, top) {
         var c = serverById(srv);
         if (!c || !c.host || !c.share) return false;
         exitTo = back || null;
         setupBack();
         openServer(srv, path);
+        if (top) pathStack = [];
         return true;
     }
 

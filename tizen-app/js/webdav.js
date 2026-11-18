@@ -466,13 +466,15 @@ var WebDAV = (function () {
     }
     /* A pinned folder from the Favorites tile, or a server from the Servers
      * list: straight into `path` on saved server `srv`, and Back from the
-     * root goes to `back` when given.  false when that server is no longer
-     * saved. */
-    function openFolder(srv, path, back) {
+     * root goes to `back` when given.  With `top` the folder itself is as
+     * far up as Back goes (a pinned folder, issue #183).  false when that
+     * server is no longer saved. */
+    function openFolder(srv, path, back, top) {
         if (!serverById(srv)) return false;
         exitTo = back || null;
         setupBack();
         openServer(srv, path);
+        if (top) pathStack = [];
         return true;
     }
 
