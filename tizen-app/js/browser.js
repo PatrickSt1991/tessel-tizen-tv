@@ -228,6 +228,23 @@ var Browser = (function () {
         return file && file.parent ? file.parent : null;
     }
 
+    /* Where Back goes from the folder at dirPath (issue #183):
+     *   'favorites'  it is the pinned folder that was opened from Favorites,
+     *   'roots'      it is the top of the drive being browsed,
+     *   'parent'     anything else: one folder up.
+     * The top of a drive has to be told by its path.  File.parent is not
+     * null there on every firmware: on Tizen 6.0 the parent of
+     * /opt/media/USBDriveA1 is /opt/media, a folder that is not the drive
+     * list and holds nothing but the drive.  A path that came from
+     * File.parent ends in a slash, one from resolve() does not. */
+    function upTarget(dirPath, rootPath, pinnedPath) {
+        function bare(p) { return String(p || '').replace(/\/+$/, ''); }
+        var at = bare(dirPath);
+        if (at && pinnedPath && at === bare(pinnedPath)) return 'favorites';
+        if (at && rootPath && at === bare(rootPath)) return 'roots';
+        return 'parent';
+    }
+
     /* Build the URI to hand to the player for a local File.  We use tizen's
      * own toURI() — file:///opt/media/USBDriveXX/... — which the WebView's
      * HTML5 <video> element can load (AVPlay can't on this firmware). */
@@ -409,6 +426,7 @@ var Browser = (function () {
         listRoots:        listRoots,
         listDir:          listDir,
         parentOf:         parentOf,
+        upTarget:         upTarget,
         avplayURI:        avplayURI,
         isMedia:          isMedia,
         isSubtitle:       isSubtitle,

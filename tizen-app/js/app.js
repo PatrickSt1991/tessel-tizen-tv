@@ -97,6 +97,7 @@
         browseDir:  null,          // current Tizen File or null at root listing
         browseAtRoot: true,        // true when listing the virtual roots
         browseRoot: null,          // { name, fullPath } of the virtual root being browsed, if known
+        browsePinned: null,        // { id, path } of the pinned folder opened from Favorites, if any
         playingUri: null,
         playingTitle: '',
         // Where the current playback was launched from, so exiting the
@@ -674,6 +675,7 @@
     function openBrowserAtRoot(focusPath) {
         state.browseAtRoot = true;
         state.browseDir   = null;
+        state.browsePinned = null;
         state.listBack    = null;
         // Emptied before the view comes up.  Listing the drives takes a
         // moment, and until it was done the view showed the rows of
@@ -714,7 +716,7 @@
                     listInto(r.dir);
                 });
                 ul.appendChild(li);
-                if (focusPath && r.fullPath === focusPath) focus = li;
+                if (focusPath && String(r.fullPath).replace(/\/+$/, '') === focusPath.replace(/\/+$/, '')) focus = li;
             });
             UI.focusInList(ul, focus);
         });
@@ -923,20 +925,27 @@
         }
         return f.path;
     }
-    function openFavorites() {
+    /* focusId: the entry to put the cursor on, when coming back out of a
+     * pinned folder.  false when there is nothing to list. */
+    function openFavorites(focusId) {
         var list = Favorites.list();
-        if (!list.length) { UI.toast(I18n.t('favorites.none')); return; }
+        if (!list.length) { UI.toast(I18n.t('favorites.none')); return false; }
         if (typeof Debug !== 'undefined') Debug.view('favorites');
         UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = true;
+        state.browseDir = null;
+        state.browsePinned = null;
         state.listBack = null;
         document.getElementById('browse-title').textContent = I18n.t('home.favorites');
         document.getElementById('browse-path').textContent = '';
         var ul = document.getElementById('browse-list'); ul.innerHTML = '';
+        var focus = null;
         list.forEach(function (f) {
             var li = document.createElement('li');
             li.dataset.dir = '1';
             li.dataset.favId = f.id;
-            li.innerHTML = '<span class="icon">' + (f.kind === 'usb' ? '💾' : '📁') + '</span>' +
+            if (focusId && f.id === focusId) focus = li;
+            // A folder wherever it is: the drive icon is for drives (issue #183).
+            li.innerHTML = '<span class="icon">📁</span>' +
                            '<span class="name">' + escapeHtml(f.name) + '</span>' +
                            '<span class="fav-mark">♥</span>' +
                            '<span class="meta">' + escapeHtml(favoriteWhere(f)) + '</span>';
@@ -944,16 +953,25 @@
             li.addEventListener('click', function () { openFavorite(f); });
             ul.appendChild(li);
         });
-        UI.focusInList(ul);
+        UI.focusInList(ul, focus);
+        return true;
+    }
+    /* Back out of a pinned folder: the Favorites list again, with the
+     * cursor on that folder (issue #183); Home when it was unpinned
+     * meanwhile and none are left. */
+    function backToFavorites(id) {
+        if (!openFavorites(id)) backToHome();
     }
     function openFavorite(f) {
         if (typeof Debug !== 'undefined') Debug.action('favorite ' + f.kind + ' ' + f.path);
         if (f.kind !== 'usb' && !NetworkAccess.checkFeature(f.name, function () { openFavorite(f); })) return;
+        function back() { backToFavorites(f.id); }
         if (f.kind === 'smb') {
-            // The SMB browser takes over the view and BACK; leaving the
-            // folder walks up to the share root and out to Home as usual.
+            // The SMB browser takes over the view and BACK.  The pinned
+            // folder is the top of what it shows: Back there comes out to
+            // Favorites, not to the folder it sits in (issue #183).
             state.view = 'home';
-            if (!SMB.openFolder(f.srv, f.path)) {
+            if (!SMB.openFolder(f.srv, f.path, back, true)) {
                 state.view = 'browse';
                 UI.toast(I18n.t('favorites.serverGone'));
             }
@@ -961,7 +979,7 @@
         }
         if (f.kind === 'webdav') {
             state.view = 'home';
-            if (!WebDAV.openFolder(f.srv, f.path)) {
+            if (!WebDAV.openFolder(f.srv, f.path, back, true)) {
                 state.view = 'browse';
                 UI.toast(I18n.t('dav.serverGone'));
             }
@@ -984,6 +1002,8 @@
         function show(dir, root) {
             state.browseAtRoot = false;
             state.browseRoot   = root;
+            // Back from this folder goes to Favorites (browseUp).
+            state.browsePinned = { id: f.id, path: dir.fullPath };
             UI.showView('view-browse'); state.view = 'browse';
             listInto(dir);
         }
@@ -1071,11 +1091,18 @@
         return !!v && !v.classList.contains('hidden');
     }
 
-    /* Go up a level, with the cursor on the folder that was listed. */
+    /* Go up a level, with the cursor on the folder that was listed.  From
+     * a pinned folder that is the Favorites list, from the top of a drive
+     * the list of drives (issue #183). */
     function browseUp() {
         if (state.browseAtRoot) { backToHome(); return; }
+        var here = state.browseDir && state.browseDir.fullPath;
+        var to = Browser.upTarget(here, state.browseRoot && state.browseRoot.fullPath,
+                                  state.browsePinned && state.browsePinned.path);
+        if (to === 'favorites') { backToFavorites(state.browsePinned.id); return; }
+        if (to === 'roots') { openBrowserAtRoot(state.browseRoot.fullPath); return; }
         var p = Browser.parentOf(state.browseDir);
-        if (!p) { openBrowserAtRoot(state.browseDir && state.browseDir.fullPath); return; }
+        if (!p) { openBrowserAtRoot(here); return; }
         listInto(p, Browser.avplayURI(state.browseDir));
     }
 
@@ -1083,6 +1110,7 @@
         var list = getRecent();
         if (!list.length) { UI.toast(I18n.t('recent.none')); return; }
         UI.showView('view-browse'); state.view = 'browse'; state.browseAtRoot = true;
+        state.browsePinned = null;
         state.listBack = null;
         document.getElementById('browse-title').textContent = I18n.t('home.recent');
         document.getElementById('browse-path').textContent = '';
