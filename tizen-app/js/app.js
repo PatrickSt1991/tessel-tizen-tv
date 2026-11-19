@@ -1084,6 +1084,15 @@
         li.classList.toggle('is-fav', !!Favorites.find(fav));
         return true;
     }
+    /* Play on a row of the browse list does what OK does: plays the file,
+     * opens the folder (issue #185).  Return false when no row has focus. */
+    function playFocusedRow() {
+        if (!browseShowing()) return false;
+        var li = document.querySelector('#browse-list li.focused');
+        if (!li) return false;
+        li.click();
+        return true;
+    }
     /* The browse list is on screen — also under the SMB browser, which
      * draws into the same view without touching state.view. */
     function browseShowing() {
@@ -3310,6 +3319,7 @@
                     if (scrub.active) commitScrub();
                     Player.togglePause(); flashOSD(); return true;
                 }
+                if (code !== K.PAUSE && !pickerOpen && playFocusedRow()) return true;
                 return false;
             case K.STOP:
                 if (state.view === 'player') { exitPlayer(); return true; }
