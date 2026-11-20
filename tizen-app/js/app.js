@@ -1084,12 +1084,15 @@
         li.classList.toggle('is-fav', !!Favorites.find(fav));
         return true;
     }
-    /* Play on a row of the browse list does what OK does: plays the file,
-     * opens the folder (issue #185).  Return false when no row has focus. */
+    /* The rows Play acts on: files, channels and the Play all / Shuffle all
+     * rows.  Folders are left to OK, as in the TV's own file browser. */
+    var PLAY_ROWS = 'li[data-dir="0"]:not(.unopenable), li[data-channel], li.folder-play';
+    /* Play on a file row of the browse list does what OK does (issue #185).
+     * Return false when the focused row is not one Play acts on. */
     function playFocusedRow() {
         if (!browseShowing()) return false;
         var li = document.querySelector('#browse-list li.focused');
-        if (!li) return false;
+        if (!li || !li.matches(PLAY_ROWS)) return false;
         li.click();
         return true;
     }
@@ -1138,6 +1141,7 @@
         playlist.forEach(function (entry) {
             var li = document.createElement('li');
             li.dataset.uri = entry.uri;
+            li.dataset.dir = '0';
             var watched = WatchHistory.isWatched(entry.uri);
             if (watched) li.classList.add('watched-item');
             li.innerHTML = watchedIcon(watched, 'recent') +
@@ -1372,6 +1376,7 @@
         var hint = document.getElementById('hint-save');
         var hintFav = document.getElementById('hint-fav');
         var hintForget = document.getElementById('hint-forget');
+        var hintPlay = document.getElementById('hint-play');
         var filter = document.getElementById('playlist-filter-wrap');
         var input = document.getElementById('playlist-filter');
         // Not every keyboard layout reports typing as `input` on every
@@ -1383,6 +1388,7 @@
         });
         if (!ul || typeof MutationObserver === 'undefined') return;
         new MutationObserver(function () {
+            if (hintPlay) hintPlay.classList.toggle('hidden', !ul.querySelector(PLAY_ROWS));
             if (hint) hint.classList.toggle('hidden', !ul.querySelector('li[data-channel]'));
             if (hintFav) hintFav.classList.toggle('hidden', !ul.querySelector('li[data-fav]'));
             // Also show it for folders, since files below them may have history.
