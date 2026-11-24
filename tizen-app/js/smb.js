@@ -36,10 +36,12 @@ var SMB = (function () {
     }
 
     /* Tizen 9 and later start a web service through the Service class of the wrt:service module.
-     * Dynamic import via module script ensures older TVs run none of this and start as before. */
+     * Dynamic import via module script ensures older TVs run none of this and start as before.
+     * loadWrtService is the import alone, without the version check: ensureService falls back
+     * on it when a TV below 9 accepts the old launch and then never runs the service, which is
+     * what a late-2026 firmware for Tizen 8.0 sets does (issue #188). */
     var wrtTried = false;
-    function withWrtService(cb) {
-        if (platformMajor() < 9) return cb();
+    function loadWrtService(cb) {
         if (typeof window !== 'undefined' && window.tesselService) return cb();
         if (wrtTried) return cb();       // the module script is added once; a failed import stays failed
         wrtTried = true;
@@ -52,23 +54,25 @@ var SMB = (function () {
             }
             cb();
         }
-        if (typeof window !== 'undefined' && window.addEventListener) {
-            window.addEventListener('tessel-wrt-service', once);
-        }
-        setTimeout(once, 3000);
         try {
-            if (typeof document !== 'undefined' && document.createElement && document.body) {
-                var s = document.createElement('script');
-                s.type = 'module';
-                s.text = "import { Service } from 'wrt:service'; window.tesselService = Service; window.dispatchEvent(new Event('tessel-wrt-service'));";
-                s.onerror = once;
-                document.body.appendChild(s);
-            } else {
-                once();
+            if (typeof document === 'undefined' || !document.createElement || !document.body) return once();
+            var s = document.createElement('script');
+            if (!('noModule' in s)) return once();   // an engine without module scripts would never run it
+            if (typeof window !== 'undefined' && window.addEventListener) {
+                window.addEventListener('tessel-wrt-service', once);
             }
+            setTimeout(once, 3000);
+            s.type = 'module';
+            s.text = "import { Service } from 'wrt:service'; window.tesselService = Service; window.dispatchEvent(new Event('tessel-wrt-service'));";
+            s.onerror = once;
+            document.body.appendChild(s);
         } catch (e) {
             once();
         }
+    }
+    function withWrtService(cb) {
+        if (platformMajor() < 9) return cb();
+        loadWrtService(cb);
     }
     withWrtService(function () {});
 
@@ -268,6 +272,7 @@ var SMB = (function () {
     }
 
     /* ── launch the hybrid service, then wait for it to answer /smb/ping ──── */
+    var OTHER_WAY_MS = 4000, AGAIN_MS = 12000, GIVE_UP_MS = 30000;
     function ensureService(cb) {
         // Don't start the service when Network access is 'none'.
         if (typeof NetworkAccess !== 'undefined' && NetworkAccess.level() === 'none')
@@ -275,72 +280,108 @@ var SMB = (function () {
 
         withWrtService(function () {
             var launchStatus = 'pending';
-            function launch() {
-                var appId = (typeof tizen !== 'undefined' && tizen.application && tizen.application.getCurrentApplication) ?
-                    tizen.application.getCurrentApplication().appInfo.id : 'madebypatk.vlcweb';
-                var pkgId = appId.split('.')[0];
-                var svcId = pkgId + '.smbproxy';
-                dbg('launching service ' + svcId);
+            var firstWay = '';
+            var appId = (typeof tizen !== 'undefined' && tizen.application && tizen.application.getCurrentApplication) ?
+                tizen.application.getCurrentApplication().appInfo.id : 'madebypatk.vlcweb';
+            var pkgId = appId.split('.')[0];
+            var svcId = pkgId + '.smbproxy';
 
-                // Tizen 9/10: start web service via Service class of wrt:service
+            // Tizen 9/10: start web service via Service class of wrt:service
+            function startViaWrt() {
                 var Svc = (typeof window !== 'undefined') ? window.tesselService : null;
-                if (typeof Svc === 'function') {
+                if (typeof Svc !== 'function') return false;
+                try {
+                    var started = new Svc(svcId).start();
+                    if (started && typeof started.then === 'function') {
+                        started.then(
+                            function () { launchStatus = 'ok'; dbg('service started via wrt:service'); },
+                            function (e) { launchStatus = 'failed (' + (e && e.message || e) + ')'; dbg('wrt:service start error: ' + (e && e.message || e)); }
+                        );
+                    } else {
+                        launchStatus = 'ok';
+                        dbg('service started via wrt:service');
+                    }
+                    return true;
+                } catch (e) {
+                    launchStatus = 'failed (' + (e && e.message || e) + ')';
+                    dbg('wrt:service start threw: ' + (e && e.message || e));
+                    return false;
+                }
+            }
+
+            // Older Tizen (4 to 8): an app control, or a plain launch where that is refused
+            function startLegacy() {
+                if (typeof tizen === 'undefined' || !tizen.application) return;
+                if (tizen.ApplicationControl && tizen.application.launchAppControl) {
                     try {
-                        var started = new Svc(svcId).start();
-                        if (started && typeof started.then === 'function') {
-                            started.then(
-                                function () { launchStatus = 'ok'; dbg('service started via wrt:service'); },
-                                function (e) { launchStatus = 'failed (' + (e && e.message || e) + ')'; dbg('wrt:service start error: ' + (e && e.message || e)); }
-                            );
-                        } else {
-                            launchStatus = 'ok';
-                            dbg('service started via wrt:service');
-                        }
+                        tizen.application.launchAppControl(
+                            new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/service'),
+                            svcId,
+                            function () { launchStatus = 'ok'; dbg('service launchAppControl ok'); },
+                            function (e) {
+                                dbg('launchAppControl failed, falling back to launch: ' + (e && e.message));
+                                try {
+                                    tizen.application.launch(svcId,
+                                        function () { launchStatus = 'ok'; dbg('service launch ok'); },
+                                        function (e2) { launchStatus = 'error: ' + (e2 && e2.message); dbg('service launch error: ' + (e2 && e2.message)); });
+                                } catch (e3) { launchStatus = 'threw: ' + e3.message; dbg('service launch threw: ' + e3.message); }
+                            }
+                        );
                         return;
                     } catch (e) {
-                        launchStatus = 'failed (' + (e && e.message || e) + ')';
-                        dbg('wrt:service start threw: ' + (e && e.message || e));
+                        dbg('launchAppControl threw: ' + e.message);
                     }
                 }
+                try {
+                    tizen.application.launch(svcId,
+                        function () { launchStatus = 'ok'; dbg('service launch ok'); },
+                        function (e) { launchStatus = 'error: ' + (e && e.message); dbg('service launch error: ' + (e && e.message)); });
+                } catch (e) {
+                    launchStatus = 'threw: ' + e.message;
+                    dbg('service launch threw: ' + e.message);
+                }
+            }
 
-                // Fallbacks for older Tizen (Tizen 4-8):
-                if (typeof tizen !== 'undefined' && tizen.application) {
-                    if (tizen.ApplicationControl && tizen.application.launchAppControl) {
-                        try {
-                            tizen.application.launchAppControl(
-                                new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/service'),
-                                svcId,
-                                function () { launchStatus = 'ok'; dbg('service launchAppControl ok'); },
-                                function (e) {
-                                    dbg('launchAppControl failed, falling back to launch: ' + (e && e.message));
-                                    try {
-                                        tizen.application.launch(svcId,
-                                            function () { launchStatus = 'ok'; dbg('service launch ok'); },
-                                            function (e2) { launchStatus = 'error: ' + (e2 && e2.message); dbg('service launch error: ' + (e2 && e2.message)); });
-                                    } catch (e3) { launchStatus = 'threw: ' + e3.message; dbg('service launch threw: ' + e3.message); }
-                                }
-                            );
-                            return;
-                        } catch (e) {
-                            dbg('launchAppControl threw: ' + e.message);
-                        }
-                    }
-                    try {
-                        tizen.application.launch(svcId,
-                            function () { launchStatus = 'ok'; dbg('service launch ok'); },
-                            function (e) { launchStatus = 'error: ' + (e && e.message); dbg('service launch error: ' + (e && e.message)); });
-                    } catch (e) {
-                        launchStatus = 'threw: ' + e.message;
-                        dbg('service launch threw: ' + e.message);
-                    }
+            function launch() {
+                dbg('launching service ' + svcId);
+                if (startViaWrt()) { firstWay = 'wrt'; return; }
+                firstWay = 'legacy';
+                startLegacy();
+            }
+
+            /* Nothing answered after the first launch: start the service the way the first
+             * launch did not.  A TV can report the old launch as accepted and still never
+             * run the service (issue #188), so this does not look at launchStatus. */
+            function launchOtherWay() {
+                if (firstWay === 'wrt') {
+                    dbg('no answer yet, launching service ' + svcId + ' the old way');
+                    return startLegacy();
                 }
+                var wasOk = launchStatus === 'ok';
+                loadWrtService(function () {
+                    if (found) return;
+                    if (typeof window !== 'undefined' && typeof window.tesselService === 'function') {
+                        dbg('no answer yet, launching service ' + svcId + ' via wrt:service');
+                        if (startViaWrt()) return;
+                    } else {
+                        dbg('no answer yet, and wrt:service is not available on this TV');
+                    }
+                    if (!wasOk) { dbg('launching service ' + svcId + ' again'); startLegacy(); }
+                });
             }
 
             launch();
 
-            // The service may already be running from a previous open; poll either way.
+            /* The service may already be running from a previous open; poll either way.
+             * Half a minute, by the clock: the first start after an install or a restart
+             * of the TV is slow, and 7.5 s was too short for it on a 2019 set (TV-Store,
+             * which starts its service the same way).  After 4 s the other way of
+             * starting is tried, after 12 s the first one again, in case the TV dropped
+             * the request. */
             var tries = 0;
             var found = false;
+            var began = Date.now();
+            var otherTried = false, againTried = false;
             (function poll() {
                 var list = getCandidates();
                 var left = list.length;
@@ -361,11 +402,14 @@ var SMB = (function () {
                         if (err) lastErr = err;
                         if (--left > 0) return;
                         if (found) return;
-                        if (tries === 10 && launchStatus !== 'ok') {
-                            launch();
-                        }
-                        if (++tries > 25) {
-                            dbg('service ping gave up after ' + tries + ' tries: ' + (lastErr ? lastErr.message : 'unreachable'));
+                        var waited = Date.now() - began;
+                        ++tries;
+                        if (!otherTried && waited >= OTHER_WAY_MS) { otherTried = true; launchOtherWay(); }
+                        else if (!againTried && waited >= AGAIN_MS) { againTried = true; launch(); }
+                        if (waited >= GIVE_UP_MS) {
+                            dbg('service ping gave up after ' + tries + ' tries in ' + Math.round(waited / 1000) + ' s: ' +
+                                (lastErr ? lastErr.message : 'unreachable') + ', launch ' + launchStatus);
+                            explainNoService(svcId, list);
                             return cb(new Error('SMB service did not start'));
                         }
                         setTimeout(poll, 300);
@@ -373,6 +417,41 @@ var SMB = (function () {
                 });
             })();
         });
+    }
+
+    /* The service never answered.  Put what the page can find out about it in the debug
+     * log: there is no shell on a retail TV, and "did not start" alone does not say
+     * whether the TV lacks the service, never ran it, or runs it and blocks the page. */
+    function explainNoService(svcId, list) {
+        try {
+            var ver = '?';
+            try { ver = tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version'); } catch (e) {}
+            dbg('no service: platform ' + ver + ', tried ' + list.join(' ') +
+                ', wrt:service ' + ((typeof window !== 'undefined' && typeof window.tesselService === 'function') ? 'available' : 'not available'));
+            if (typeof tizen !== 'undefined' && tizen.application) {
+                try {
+                    var info = tizen.application.getAppInfo(svcId);
+                    dbg('no service: ' + svcId + ' is installed' + (info && info.version ? ' (' + info.version + ')' : ''));
+                } catch (e) {
+                    dbg('no service: ' + svcId + ' is not installed: ' + (e && (e.name || e.message)));
+                }
+                try {
+                    tizen.application.getAppsContext(function (ctxs) {
+                        var running = false, n = ctxs ? ctxs.length : 0;
+                        for (var i = 0; i < n; i++) if (ctxs[i] && ctxs[i].appId === svcId) running = true;
+                        dbg('no service: ' + svcId + (running ? ' is' : ' is not') + ' among the ' + n + ' running apps');
+                    }, function (e) { dbg('no service: running apps not readable: ' + (e && (e.name || e.message))); });
+                } catch (e) {
+                    dbg('no service: running apps not readable: ' + (e && (e.name || e.message)));
+                }
+            }
+            // A request the page may send but not read: it succeeds whenever anything answers on the port.
+            if (typeof fetch === 'function') {
+                fetch(list[0] + '/smb/ping', { mode: 'no-cors', cache: 'no-store' }).then(
+                    function () { dbg('no service: the port answers, so the service runs and the page is kept from reading it'); },
+                    function (e) { dbg('no service: nothing answers on the port (' + (e && e.message || e) + ')'); });
+            }
+        } catch (e) {}
     }
 
     function connect(id, cb) {
