@@ -9,6 +9,10 @@ tizen-app/.buildResult/
 tizen-app/.buildResult.zip
 tizen-app/.tproject
 tizen-app/.project
+tizen-lite/.buildResult/
+tizen-lite/.buildResult.zip
+tizen-lite/.tproject
+tizen-lite/.project
 tizen-studio/
 tizen-studio-data/
 tizen-installer

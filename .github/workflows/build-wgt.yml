@@ -135,6 +135,24 @@ jobs:
           ls -lh release/
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      # Tessel Lite (tizen-lite/, for 2015 to 2017 sets) has its own lite-v*
+      # releases.  The app release carries the newest tessel-lite.wgt as well, so
+      # there is one page to download from; build-lite-wgt.yml does the same the
+      # other way round.  Never a reason to hold the app release back.
+      - name: Fetch latest Tessel Lite wgt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+                  --jq '[.[] | select(.tagName | startswith("lite-v"))] | sort_by(.createdAt) | last | .tagName // ""' || true)
+          if [ -z "$TAG" ]; then
+            echo "No lite-v* release found; the app release goes out without tessel-lite.wgt."
+            exit 0
+          fi
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'tessel-lite.wgt' --dir release \
+            || echo "::warning::could not fetch tessel-lite.wgt from $TAG"
+          ls -lh release/
+
       # Backstop for the version-check PR workflow: a push to main that did not
       # bump config.xml would otherwise stamp a second release with the same
       # version.  Fail here instead of publishing a duplicate.
