@@ -5,6 +5,8 @@ on:
     paths:
       - 'tizen-app/**'
       - 'tests/tizen-app/**'
+      - 'tizen-lite/**'
+      - 'tests/tizen-lite/**'
       - 'scripts/**'
       - 'tests/scripts/**'
       - 'transcode-server/internal/web/static/**'
@@ -14,6 +16,8 @@ on:
     paths:
       - 'tizen-app/**'
       - 'tests/tizen-app/**'
+      - 'tizen-lite/**'
+      - 'tests/tizen-lite/**'
       - 'scripts/**'
       - 'tests/scripts/**'
       - 'transcode-server/internal/web/static/**'
@@ -32,4 +36,4 @@ jobs:
           node-version: '22'
 
       - name: Run subtitle tests
-        run: node --test tests/tizen-app/*.test.js tests/scripts/*.test.js
+        run: node --test tests/tizen-app/*.test.js tests/tizen-lite/*.test.js tests/scripts/*.test.js

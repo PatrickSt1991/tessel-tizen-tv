@@ -1,0 +1,178 @@
+name: Build Tessel Lite WGT
+
+# Tessel Lite (tizen-lite/) is the URL-only player for 2015 to 2017 sets.  It is
+# its own package with its own version, released under lite-v* tags that never
+# take the "Latest" badge from the TV app.  A pull request builds and signs the
+# package without releasing it.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tizen-lite/**'
+      - '.github/workflows/build-lite-wgt.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tizen-lite/**'
+      - '.github/workflows/build-lite-wgt.yml'
+
+permissions:
+  contents: write
+
+env:
+  TIZEN_STUDIO_VER: 5.5
+  PROFILE:          VLCTV
+  CERT_PASSWORD:    1234
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install required packages
+        run: sudo apt-get update && sudo apt-get install -y expect libxml2-utils
+
+      - name: Download Tizen Studio CLI
+        run: |
+          curl -sSLo tizen-installer \
+            "https://download.tizen.org/sdk/Installer/tizen-studio_${TIZEN_STUDIO_VER}/web-cli_Tizen_Studio_${TIZEN_STUDIO_VER}_ubuntu-64.bin"
+
+      - name: Install Tizen Studio
+        run: |
+          chmod +x tizen-installer
+          ./tizen-installer --accept-license "${GITHUB_WORKSPACE}/tizen-studio"
+          rm tizen-installer
+
+      - name: Create author certificate + security profile
+        run: |
+          TIZEN="${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin/tizen"
+          DATA_DIR="${GITHUB_WORKSPACE}/tizen-studio-data"
+
+          $TIZEN certificate \
+              -a VLCTV -p ${CERT_PASSWORD} \
+              -c US -s California -ct SanFrancisco \
+              -o VLCTV -n VLCTV-Author \
+              -e dev@example.org \
+              -f vlctvAuthor
+
+          $TIZEN security-profiles add \
+              -n ${PROFILE} \
+              -a "${DATA_DIR}/keystore/author/vlctvAuthor.p12" \
+              -p ${CERT_PASSWORD}
+
+          $TIZEN cli-config "profiles.path=${DATA_DIR}/profile/profiles.xml"
+
+      - name: Patch profiles.xml with passwords
+        # The CLI leaves passwords blank or pointed at .pwd files that don't
+        # exist on the runner substitute literal passwords so signing works
+        # non-interactively.
+        run: |
+          DATA_DIR="${GITHUB_WORKSPACE}/tizen-studio-data"
+          PROFILES="${DATA_DIR}/profile/profiles.xml"
+
+          sed -i "s|${DATA_DIR}/keystore/author/vlctvAuthor.pwd|${CERT_PASSWORD}|g" "$PROFILES"
+          sed -i "s|${DATA_DIR}/tools/certificate-generator/certificates/distributor/tizen-distributor-signer.pwd|tizenpkcs12passfordsigner|g" "$PROFILES"
+          sed -i 's|password=""|password="tizenpkcs12passfordsigner"|g' "$PROFILES"
+
+      - name: Validate web app source
+        run: |
+          TIZEN="${GITHUB_WORKSPACE}/tizen-studio/tools/ide/bin/tizen"
+          cd tizen-lite
+          # build-web prepares .buildResult/ with the bundle to sign
+          $TIZEN build-web -- "$PWD"
+
+      - name: Sign + package WGT (non-interactive via expect)
+        run: |
+          cat > package.exp << 'EOF'
+          #!/usr/bin/expect -f
+          set timeout 300
+          spawn $env(GITHUB_WORKSPACE)/tizen-studio/tools/ide/bin/tizen package -t wgt -s $env(PROFILE) -- $env(GITHUB_WORKSPACE)/tizen-lite/.buildResult
+          expect {
+            "Author password:"        { send "$env(CERT_PASSWORD)\r"; exp_continue }
+            "Save author password"    { send "n\r"; exp_continue }
+            "Distributor1 password:"  { send "tizenpkcs12passfordsigner\r"; exp_continue }
+            "Save distributor1 password" { send "n\r"; exp_continue }
+            eof
+          }
+          EOF
+          chmod +x package.exp
+          ./package.exp
+
+          mkdir -p release
+          mv tizen-lite/.buildResult/*.wgt release/tessel-lite.wgt
+          ls -lh release/
+
+      - name: Compute version + date tags
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(xmllint --xpath 'string(/*/@version)' tizen-lite/config.xml)
+          DATE_TAG=$(date +'%Y%m%d-%H%M')
+          DATE_PRETTY=$(date +'%Y-%m-%d %H:%M UTC')
+          # A change that did not raise the version in tizen-lite/config.xml is
+          # built and kept as a run artifact, and not released a second time.
+          EXISTING=$(VERSION="$VERSION" gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
+                       --jq '[.[].tagName | select(startswith("lite-v" + env.VERSION + "-"))] | join(", ")')
+          if [ -n "$EXISTING" ]; then
+            echo "::notice file=tizen-lite/config.xml::Tessel Lite $VERSION is already released as $EXISTING; raise the version to release this build"
+          fi
+          {
+            echo "version=$VERSION"
+            echo "date_tag=$DATE_TAG"
+            echo "date_pretty=$DATE_PRETTY"
+            echo "existing=$EXISTING"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact (per-run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tessel-lite-${{ steps.meta.outputs.date_tag }}
+          path: release/tessel-lite.wgt
+
+      - name: Create GitHub Release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.meta.outputs.existing == ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: 'lite-v${{ steps.meta.outputs.version }}-${{ steps.meta.outputs.date_tag }}'
+          name:    'Tessel Lite v${{ steps.meta.outputs.version }} ${{ steps.meta.outputs.date_pretty }}'
+          files:   release/tessel-lite.wgt
+          # The "Latest" badge belongs to the TV app.
+          make_latest: false
+          body: |
+            # Tessel Lite
+
+            Plays a network stream from its URL on Samsung TVs from 2015 to 2017 (Tizen 2.3 to 3.0), which cannot run Tessel itself. A 2018 or newer TV wants `tessel.wgt` from the [latest Tessel release](https://github.com/${{ github.repository }}/releases/latest) instead.
+
+            Built ${{ steps.meta.outputs.date_pretty }} by GitHub Actions. Not tried on a TV by the maintainer: there is no set this old here.
+
+            ## Install
+
+            The `.wgt` is signed with a generic CI certificate and will not match your TV's DUID. Re-sign it with your own Samsung distributor certificate in Tizen Studio, then:
+
+            ```bash
+            sdb connect <tv-ip>
+            sdb install tessel-lite.wgt
+            ```
+          draft:      false
+          prerelease: false
+
+      # The app release is the page people download from, so it carries the
+      # newest tessel-lite.wgt too (build-wgt.yml attaches it when it runs).
+      - name: Attach to the latest app release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && steps.meta.outputs.existing == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APP_TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+                      --jq '[.[] | select(.tagName | test("^v[0-9]"))] | sort_by(.createdAt) | last | .tagName // ""')
+          if [ -z "$APP_TAG" ]; then
+            echo "No app release yet; nothing to attach to."
+            exit 0
+          fi
+          gh release upload "$APP_TAG" release/tessel-lite.wgt --clobber --repo "$GITHUB_REPOSITORY"
+          echo "Attached tessel-lite.wgt to $APP_TAG"

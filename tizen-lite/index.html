@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, user-scalable=no"/>
+<title>Tessel Lite</title>
+<link rel="stylesheet" href="css/lite.css">
+</head>
+<body>
+
+<!-- AVPlay draws the video where this element is. -->
+<object id="player-object" type="application/avplayer"></object>
+
+<div id="home">
+    <h1>Tessel <span>Lite</span></h1>
+    <p class="lead">Type the address of a stream and press Play.</p>
+
+    <div id="url-row" class="row">
+        <input id="url" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+               placeholder="http://example.com/stream.m3u8">
+    </div>
+    <div id="play-row" class="row button">Play</div>
+
+    <h2 id="recent-title">Played before</h2>
+    <div id="recent"></div>
+
+    <p id="message"></p>
+    <p id="hint"></p>
+</div>
+
+<div id="osd">
+    <div id="osd-title"></div>
+    <div id="osd-state"></div>
+    <div id="osd-bar"><div id="osd-fill"></div></div>
+    <div id="osd-time"></div>
+    <div id="osd-hint">OK: pause &nbsp; Left / Right: 10 seconds &nbsp; Rewind / Forward: 1 minute &nbsp; Back: stop</div>
+</div>
+
+<!-- Samsung's own APIs (AVPlay).  The TV serves this file; it is not in the package. -->
+<script src="$WEBAPIS/webapis/webapis.js"></script>
+<script src="js/core.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

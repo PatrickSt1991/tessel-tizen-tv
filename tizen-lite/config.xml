@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns:tizen="http://tizen.org/ns/widgets"
+        xmlns="http://www.w3.org/ns/widgets"
+        id="http://madebypatrick.com/tessel-lite"
+        version="1.0.0"
+        viewmodes="maximized">
+    <!-- Tessel Lite: a URL goes in, AVPlay plays it.  For the sets the full app
+         cannot run on: 2015 (Tizen 2.3) and 2016 (Tizen 2.4) have a WebKit from
+         2013, 2017 (Tizen 3.0) has Chromium 47, and none of them knows the CSS the
+         full app is built on.  Its own package, so it never replaces Tessel. -->
+    <tizen:application id="tessellite.player"
+                       package="tessellite"
+                       required_version="2.3"/>
+    <content src="index.html"/>
+    <icon src="icon.png"/>
+    <name>Tessel Lite</name>
+    <author>Patrick</author>
+    <description>Plays a network stream from its URL on older Samsung Tizen TVs (2015 to 2017).</description>
+
+    <tizen:profile name="tv-samsung"/>
+
+    <!-- Any HTTP(S) origin: the stream is wherever the user says it is. -->
+    <access origin="*" subdomains="true"/>
+
+    <tizen:setting screen-orientation="landscape"
+                   context-menu="disable"
+                   background-support="disable"
+                   encryption="disable"
+                   install-location="auto"
+                   hwkey-event="enable"/>
+
+    <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <!-- For tizen.tvinputdevice.registerKey(): without it the TV keeps
+         Play/Pause/FF/RW and the red key for itself. -->
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+</widget>

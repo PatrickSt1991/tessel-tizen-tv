@@ -33,7 +33,15 @@ through Samsung's AVPlay.
    sdb install tessel.wgt
    ```
 
-Works on Tizen TVs from 2017 onward. SMB shares, DLNA and WebDAV servers need Tizen 4.0+ (2018 sets and later). Tested on a 2019 RU7020, a 2023 S90C and a 2024 QN90D (Tizen 9.0).
+Tessel needs Tizen 4.0 or later, which is a 2018 set or newer. It is tested on a 2019 RU7020, a 2023 S90C and a 2024 QN90D (Tizen 9.0); nobody has reported on a 2018 set yet.
+
+### Older TVs: Tessel Lite
+
+A set from 2015, 2016 or 2017 (Tizen 2.3, 2.4, 3.0) cannot run Tessel: its browser engine is older than what the app is built on. For those there is **Tessel Lite**, a separate small app that does one thing: you type the address of a stream and it plays it, with pause, seeking and a list of what you played before. No USB, no SMB, DLNA or WebDAV, no subtitles, English only.
+
+Download `tessel-lite.wgt` from [Releases](https://github.com/PatrickSt1991/tessel-tizen-tv/releases), re-sign it with your own distributor certificate and install it with `sdb install tessel-lite.wgt`, as in the manual steps above. It installs next to Tessel, not over it.
+
+Tessel Lite is written for those sets from Samsung's documentation and has not been run on one: there is no TV that old here. If you try it, an [issue](https://github.com/PatrickSt1991/tessel-tizen-tv/issues) saying what happened, with the model of the TV, is welcome either way.
 
 ## Docs
 
