@@ -2,7 +2,7 @@
 <widget xmlns:tizen="http://tizen.org/ns/widgets"
         xmlns="http://www.w3.org/ns/widgets"
         id="http://madebypatrick.com/vlctv"
-        version="1.37.7"
+        version="1.37.8"
         viewmodes="maximized">
     <tizen:application id="madebypatk.vlcweb"
                        package="madebypatk"
@@ -19,7 +19,8 @@
          The .wgt sandbox can't open raw TCP to port 445; this service can, and
          re-serves files over HTTP with Range support so AVPlay can stream them.
          Started through wrt:service on Tizen 9+, launchAppControl / launch before;
-         whichever comes first, the other is tried when nothing answers (issue #188).
+         whichever comes first, the other is tried when nothing answers (issue #188),
+         and a TV where the other one worked starts with it from then on (issue #191).
          Packaged as one function-wrapped file by scripts/bundle-service.js. -->
     <tizen:service id="madebypatk.smbproxy">
         <tizen:content src="service/service.js"/>
