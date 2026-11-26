@@ -37,7 +37,7 @@ Tessel needs Tizen 4.0 or later, which is a 2018 set or newer. It is tested on a
 
 ### Older TVs: Tessel Lite
 
-A set from 2015, 2016 or 2017 (Tizen 2.3, 2.4, 3.0) cannot run Tessel: its browser engine is older than what the app is built on. For those there is **Tessel Lite**, a separate small app that does one thing: you type the address of a stream and it plays it, with pause, seeking and a list of what you played before. No USB, no SMB, DLNA or WebDAV, no subtitles, English only.
+A set from 2015, 2016 or 2017 (Tizen 2.3, 2.4, 3.0) cannot run Tessel: its browser engine is older than what the app is built on. For those there is **Tessel Lite**, a separate small app that does one thing: you give it the address of a stream and it plays it, with pause, seeking and a list of what you played before. Type the address on the TV, or send it from your phone at [tessel.madebypatrick.nl](https://tessel.madebypatrick.nl/) with the code Lite shows, as in Tessel itself. No USB, no SMB, DLNA or WebDAV, no subtitles, English only.
 
 Download `tessel-lite.wgt` from [Releases](https://github.com/PatrickSt1991/tessel-tizen-tv/releases), re-sign it with your own distributor certificate and install it with `sdb install tessel-lite.wgt`, as in the manual steps above. It installs next to Tessel, not over it.
 

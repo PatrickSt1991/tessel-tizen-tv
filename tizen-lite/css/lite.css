@@ -10,7 +10,7 @@ html, body {
     /* Black, and nothing opaque over the player object while a stream plays:
      * the video plane sits behind the page. */
     background: #000;
-    color: #f2f2f2;
+    color: #fff;
     font-family: "SamsungOne", "Samsung Sharp Sans", Arial, Helvetica, sans-serif;
     font-size: 30px;
 }
@@ -21,12 +21,14 @@ html, body {
     z-index: 0;
 }
 
-/* ── Home ─────────────────────────────────────────────────────────── */
+/* ── Home ───────────────────────────────────────────────────────────
+ * The colours are those of Tessel itself (tizen-app/css/style.css), written
+ * out because this engine has no custom properties. */
 #home {
     position: absolute; left: 0; top: 0;
     width: 1920px; height: 1080px;
     z-index: 2;
-    background: #14161a;
+    background: #1e2a3d;
 }
 body.playing #home { display: none; }
 
@@ -35,27 +37,27 @@ h1 {
     margin: 0;
     font-size: 64px; font-weight: bold;
 }
-h1 span { color: #ff8a1f; font-weight: normal; }
+h1 span { color: #4fc3f7; font-weight: normal; }
 
 .lead {
     position: absolute; left: 160px; top: 170px;
     margin: 0;
-    color: #a9aeb8;
+    color: #d0dae5;
 }
 
 .row {
     position: absolute; left: 160px;
     width: 1600px; height: 80px;
     -webkit-box-sizing: border-box; box-sizing: border-box;
-    border: 4px solid #2c3038;
+    border: 4px solid #36445c;
     -webkit-border-radius: 10px; border-radius: 10px;
-    background: #1e2127;
+    background: #2a3854;
     line-height: 72px;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
-.row.focus { border-color: #ff8a1f; background: #2a2e36; }
+.row.focus { border-color: #4fc3f7; background: #3a4a6a; }
 
 #url-row { top: 250px; }
 #url {
@@ -68,15 +70,27 @@ h1 span { color: #ff8a1f; font-weight: normal; }
     font-family: inherit; font-size: 32px;
     line-height: 72px;
 }
+#url::-webkit-input-placeholder { color: #8da0b8; }
 
-#play-row { top: 350px; width: 320px; text-align: center; font-weight: bold; }
-#play-row.focus { background: #ff8a1f; color: #14161a; }
+#play-row { top: 350px; width: 320px; text-align: center; font-weight: bold; color: #81d4fa; }
+#play-row.focus { background: #4fc3f7; color: #102035; }
+
+#phone-row { top: 350px; left: 500px; width: 320px; text-align: center; }
+#phone-info {
+    position: absolute; left: 860px; top: 350px; width: 900px; height: 80px;
+    margin: 0;
+    line-height: 80px;
+    font-size: 26px;
+    color: #8da0b8;
+    overflow: hidden; white-space: nowrap;
+}
+#phone-info b { color: #d0dae5; font-weight: normal; }
 
 h2 {
     position: absolute; left: 160px; top: 470px;
     margin: 0;
     font-size: 30px; font-weight: normal;
-    color: #a9aeb8;
+    color: #d0dae5;
 }
 
 #recent { position: absolute; left: 0; top: 530px; width: 1920px; height: 400px; }
@@ -92,7 +106,7 @@ h2 {
     position: absolute; left: 160px; top: 1010px; width: 1600px;
     margin: 0;
     font-size: 24px;
-    color: #7d838e;
+    color: #8da0b8;
 }
 
 /* ── Player overlay ───────────────────────────────────────────────── */
@@ -107,7 +121,7 @@ body.playing.osd #osd { display: block; }
 
 #osd-title {
     position: absolute; left: 160px; top: 36px; width: 1600px;
-    font-size: 28px; color: #a9aeb8;
+    font-size: 28px; color: #d0dae5;
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
 #osd-state { position: absolute; left: 160px; top: 90px; width: 1000px; font-size: 40px; font-weight: bold; }
@@ -115,9 +129,9 @@ body.playing.osd #osd { display: block; }
 #osd-bar {
     position: absolute; left: 160px; top: 170px;
     width: 1600px; height: 12px;
-    background: #3a3f48;
+    background: #324159;
     -webkit-border-radius: 6px; border-radius: 6px;
     overflow: hidden;
 }
-#osd-fill { width: 0; height: 12px; background: #ff8a1f; }
-#osd-hint { position: absolute; left: 160px; top: 220px; width: 1600px; font-size: 24px; color: #7d838e; }
+#osd-fill { width: 0; height: 12px; background: #4fc3f7; }
+#osd-hint { position: absolute; left: 160px; top: 220px; width: 1600px; font-size: 24px; color: #8da0b8; }
