@@ -40,11 +40,13 @@ var SMB = (function () {
      * loadWrtService is the import alone, without the version check: ensureService falls back
      * on it when a TV below 9 accepts the old launch and then never runs the service, which is
      * what a late-2026 firmware for Tizen 8.0 sets does (issue #188). */
-    var wrtTried = false;
+    var wrtTried = false, wrtWaiting = null;
     function loadWrtService(cb) {
         if (typeof window !== 'undefined' && window.tesselService) return cb();
+        if (wrtWaiting) { wrtWaiting.push(cb); return; }   // the import is still on its way
         if (wrtTried) return cb();       // the module script is added once; a failed import stays failed
         wrtTried = true;
+        wrtWaiting = [cb];
         var done = false;
         function once() {
             if (done) return;
@@ -52,7 +54,9 @@ var SMB = (function () {
             if (typeof window !== 'undefined' && window.removeEventListener) {
                 window.removeEventListener('tessel-wrt-service', once);
             }
-            cb();
+            var waiting = wrtWaiting;
+            wrtWaiting = null;
+            for (var i = 0; i < waiting.length; i++) waiting[i]();
         }
         try {
             if (typeof document === 'undefined' || !document.createElement || !document.body) return once();
@@ -70,8 +74,34 @@ var SMB = (function () {
             once();
         }
     }
+    /* Which way of starting brought the service up on this TV, when it was not the one
+     * its Tizen version starts with (issue #191).  Without it such a TV waits four
+     * seconds on the first way every time the service has to be started.  Only the
+     * exception is stored, so a TV that behaves as its version says keeps nothing. */
+    var WAY_KEY = 'vlctv_service_way_v1';
+    function defaultWay() { return platformMajor() >= 9 ? 'wrt' : 'legacy'; }
+    function rememberedWay() {
+        try {
+            var w = localStorage.getItem(WAY_KEY);
+            if (w === 'wrt' || w === 'legacy') return w;
+        } catch (e) {}
+        return '';
+    }
+    function rememberWay(way) {
+        if (way !== 'wrt' && way !== 'legacy') return;
+        try {
+            if (way === defaultWay()) {
+                if (localStorage.getItem(WAY_KEY) === null) return;
+                localStorage.removeItem(WAY_KEY);
+            } else {
+                if (localStorage.getItem(WAY_KEY) === way) return;
+                localStorage.setItem(WAY_KEY, way);
+            }
+            dbg('service start: remembering ' + way + ' as the way that works on this TV');
+        } catch (e) {}
+    }
     function withWrtService(cb) {
-        if (platformMajor() < 9) return cb();
+        if ((rememberedWay() || defaultWay()) !== 'wrt') return cb();
         loadWrtService(cb);
     }
     withWrtService(function () {});
@@ -280,7 +310,8 @@ var SMB = (function () {
 
         withWrtService(function () {
             var launchStatus = 'pending';
-            var firstWay = '';
+            var firstWay = '', lastWay = '', legacyTried = false;
+            var remembered = rememberedWay();
             var appId = (typeof tizen !== 'undefined' && tizen.application && tizen.application.getCurrentApplication) ?
                 tizen.application.getCurrentApplication().appInfo.id : 'madebypatk.vlcweb';
             var pkgId = appId.split('.')[0];
@@ -292,10 +323,15 @@ var SMB = (function () {
                 if (typeof Svc !== 'function') return false;
                 try {
                     var started = new Svc(svcId).start();
+                    lastWay = 'wrt';
                     if (started && typeof started.then === 'function') {
                         started.then(
                             function () { launchStatus = 'ok'; dbg('service started via wrt:service'); },
-                            function (e) { launchStatus = 'failed (' + (e && e.message || e) + ')'; dbg('wrt:service start error: ' + (e && e.message || e)); }
+                            function (e) {
+                                launchStatus = 'failed (' + (e && e.message || e) + ')';
+                                dbg('wrt:service start error: ' + (e && e.message || e));
+                                if (lastWay === 'wrt') lastWay = legacyTried ? 'legacy' : '';   // not the one to remember
+                            }
                         );
                     } else {
                         launchStatus = 'ok';
@@ -312,6 +348,7 @@ var SMB = (function () {
             // Older Tizen (4 to 8): an app control, or a plain launch where that is refused
             function startLegacy() {
                 if (typeof tizen === 'undefined' || !tizen.application) return;
+                lastWay = 'legacy'; legacyTried = true;
                 if (tizen.ApplicationControl && tizen.application.launchAppControl) {
                     try {
                         tizen.application.launchAppControl(
@@ -343,8 +380,9 @@ var SMB = (function () {
             }
 
             function launch() {
-                dbg('launching service ' + svcId);
-                if (startViaWrt()) { firstWay = 'wrt'; return; }
+                dbg('launching service ' + svcId + (remembered ? ' (' + remembered + ' first, it worked here before)' : ''));
+                // wrt:service whenever it is there, unless this TV is known to need the old launch
+                if (remembered !== 'legacy' && startViaWrt()) { firstWay = 'wrt'; return; }
                 firstWay = 'legacy';
                 startLegacy();
             }
@@ -397,6 +435,8 @@ var SMB = (function () {
                             } else {
                                 dbg('service ping ok on ' + base + ' after ' + tries + ' tries');
                             }
+                            // Answered at once: it was running already, and no launch gets the credit.
+                            if (tries > 0) rememberWay(lastWay);
                             return cb(null);
                         }
                         if (err) lastErr = err;

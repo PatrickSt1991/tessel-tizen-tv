@@ -19,7 +19,7 @@ var SMB_SRC = fs.readFileSync(path.join(__dirname, '../../tizen-app/js/smb.js'),
  * Time is a counter that every timer moves on, so thirty seconds take no time. */
 function setup(opts) {
     opts = opts || {};
-    var env = { clock: 0, lines: [], appControls: [], wrtStarted: [], scripts: 0 };
+    var env = { clock: 0, lines: [], appControls: [], wrtStarted: [], scripts: 0, store: opts.store || {} };
     var listeners = {};
 
     function later(fn, ms) { setImmediate(function () { env.clock += (ms || 0); fn(); }); return 0; }
@@ -43,7 +43,12 @@ function setup(opts) {
         removeEventListener: function (n) { delete listeners[n]; },
         dispatchEvent: function (e) { if (listeners[e.type]) listeners[e.type](); }
     };
-    function Service(id) { this.start = function () { env.wrtStarted.push(id); return Promise.resolve(); }; }
+    function Service(id) {
+        this.start = function () {
+            env.wrtStarted.push(id);
+            return opts.wrtRejects ? Promise.reject(new Error('refused')) : Promise.resolve();
+        };
+    }
 
     var sandbox = {
         module: { exports: {} },
@@ -52,7 +57,11 @@ function setup(opts) {
         FileTypes: require('../../tizen-app/js/filetypes.js'),
         UI: { toast: function () {}, focusOn: function () {} },
         Settings: { get: function () { return false; } },
-        localStorage: { getItem: function () { return null; }, setItem: function () {}, removeItem: function () {} },
+        localStorage: {
+            getItem: function (k) { return Object.prototype.hasOwnProperty.call(env.store, k) ? env.store[k] : null; },
+            setItem: function (k, v) { env.store[k] = String(v); },
+            removeItem: function (k) { delete env.store[k]; }
+        },
         document: {
             readyState: 'complete',
             addEventListener: function () {},
@@ -162,5 +171,71 @@ test('a service that never answers: half a minute, a second launch, and the reas
             assert.ok(/no service: madebypatk\.smbproxy is not among the 1 running apps/.test(log), log);
             done();
         }));
+    }));
+});
+
+/* Issue #191: the way that brought the service up is kept, so the next start does
+ * not spend four seconds on the one this TV ignores. */
+var WAY_KEY = 'vlctv_service_way_v1';
+
+test('Tizen 8: the way that worked is remembered, and comes first the next time', function (t, done) {
+    var first = setup({ modules: true, wrt: true, answers: function (e) { return e.wrtStarted.length > 0; } });
+    first.SMB.ensureService(checked(done, function (err) {
+        assert.ifError(err);
+        assert.strictEqual(first.store[WAY_KEY], 'wrt');
+
+        var next = setup({ modules: true, wrt: true, store: first.store,
+                           answers: function (e) { return e.wrtStarted.length > 0; } });
+        next.SMB.ensureService(checked(done, function (err2) {
+            assert.ifError(err2);
+            assert.deepStrictEqual(next.wrtStarted, ['madebypatk.smbproxy']);
+            assert.strictEqual(next.appControls.length, 0, 'the old launch was not needed');
+            // the fake clock also counts the 3 s guard on the import, so: before the 4 s switch
+            assert.ok(next.clock < 4000, 'answered after ' + next.clock + ' ms');
+            assert.strictEqual(next.store[WAY_KEY], 'wrt');
+            done();
+        }));
+    }));
+});
+
+test('a TV that starts the way its Tizen version says stores nothing', function (t, done) {
+    var env = setup({ modules: true, wrt: true, answers: function (e) { return e.clock >= 2000; } });
+    env.SMB.ensureService(checked(done, function (err) {
+        assert.ifError(err);
+        assert.deepStrictEqual(Object.keys(env.store), []);
+        done();
+    }));
+});
+
+test('a remembered way that stops working gives way to the other one, and is forgotten', function (t, done) {
+    var store = {}; store[WAY_KEY] = 'wrt';
+    var env = setup({ modules: true, wrt: true, store: store,
+                      answers: function (e) { return e.appControls.length > 0; } });
+    env.SMB.ensureService(checked(done, function (err) {
+        assert.ifError(err);
+        assert.deepStrictEqual(env.wrtStarted, ['madebypatk.smbproxy'], 'the remembered way came first');
+        assert.deepStrictEqual(env.appControls, ['madebypatk.smbproxy'], 'then the old launch');
+        assert.ok(!(WAY_KEY in env.store), 'back to what Tizen 8 starts with');
+        done();
+    }));
+});
+
+test('a wrt:service start the TV refuses is not remembered', function (t, done) {
+    var env = setup({ modules: true, wrt: true, wrtRejects: true, answers: function (e) { return e.clock >= 8000; } });
+    env.SMB.ensureService(checked(done, function (err) {
+        assert.ifError(err);
+        assert.strictEqual(env.wrtStarted.length, 1);
+        assert.ok(!(WAY_KEY in env.store), JSON.stringify(env.store));
+        done();
+    }));
+});
+
+test('a service that was already running leaves the remembered way alone', function (t, done) {
+    var store = {}; store[WAY_KEY] = 'wrt';
+    var env = setup({ modules: true, wrt: false, store: store, answers: function () { return true; } });
+    env.SMB.ensureService(checked(done, function (err) {
+        assert.ifError(err);
+        assert.strictEqual(env.store[WAY_KEY], 'wrt');
+        done();
     }));
 });
