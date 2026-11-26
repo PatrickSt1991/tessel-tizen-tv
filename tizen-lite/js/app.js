@@ -201,7 +201,12 @@ var LiteApp = (function () {
     }
 
     var listener = {
-        onbufferingstart: function () { if (playing && state !== 'paused') setState('buffering'); },
+        // AVPlay buffers while it prepares too.  Until ready() the stream is
+        // still opening: saying "Buffering" or "Playing" then would be wrong,
+        // and would let OK try to pause a player that has not started.
+        onbufferingstart: function () {
+            if (playing && state !== 'paused' && state !== 'opening') setState('buffering');
+        },
         onbufferingprogress: function () {},
         onbufferingcomplete: function () { if (playing && state === 'buffering') setState('playing'); },
         oncurrentplaytime: function (ms) {
