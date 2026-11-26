@@ -75,6 +75,17 @@ h1 span { color: #4fc3f7; font-weight: normal; }
 #play-row { top: 350px; width: 320px; text-align: center; font-weight: bold; color: #81d4fa; }
 #play-row.focus { background: #4fc3f7; color: #102035; }
 
+#phone-row { top: 350px; left: 500px; width: 320px; text-align: center; }
+#phone-info {
+    position: absolute; left: 860px; top: 350px; width: 900px; height: 80px;
+    margin: 0;
+    line-height: 80px;
+    font-size: 26px;
+    color: #8da0b8;
+    overflow: hidden; white-space: nowrap;
+}
+#phone-info b { color: #d0dae5; font-weight: normal; }
+
 h2 {
     position: absolute; left: 160px; top: 470px;
     margin: 0;

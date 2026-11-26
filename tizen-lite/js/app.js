@@ -24,7 +24,11 @@ var LiteApp = (function () {
 
     var el = {};
     var recent = [];
-    var focus = 0;               // 0 the text field, 1 Play, 2.. the recent rows
+    var focus = 0;               // 0 the text field, 1 Play, 2 From phone, 3.. the recent rows
+    var FIRST_RECENT = 3;
+    var PHONE_PAGE = 'tessel.madebypatrick.nl';
+    var DROP_TIMEOUT_MS = 10000;
+    var fetching = false;
     var top = 0;                 // first recent row on screen
     var typing = false;
 
@@ -54,7 +58,7 @@ var LiteApp = (function () {
         el.recentTitle.style.display = recent.length ? 'block' : 'none';
         for (var i = top; i < recent.length && i < top + VISIBLE_RECENT; i++) {
             var row = document.createElement('div');
-            row.className = 'row' + (focus === i + 2 ? ' focus' : '');
+            row.className = 'row' + (focus === i + FIRST_RECENT ? ' focus' : '');
             row.style.top = ((i - top) * 80) + 'px';
             setText(row, recent[i]);
             el.recent.appendChild(row);
@@ -62,9 +66,9 @@ var LiteApp = (function () {
     }
 
     function renderFocus() {
-        if (focus > recent.length + 1) focus = recent.length + 1;
-        if (focus >= 2) {
-            var idx = focus - 2;
+        if (focus > recent.length + FIRST_RECENT - 1) focus = recent.length + FIRST_RECENT - 1;
+        if (focus >= FIRST_RECENT) {
+            var idx = focus - FIRST_RECENT;
             if (idx < top) top = idx;
             if (idx >= top + VISIBLE_RECENT) top = idx - VISIBLE_RECENT + 1;
         } else {
@@ -72,9 +76,11 @@ var LiteApp = (function () {
         }
         setClass(el.urlRow, 'focus', focus === 0);
         setClass(el.playRow, 'focus', focus === 1);
+        setClass(el.phoneRow, 'focus', focus === 2);
         renderRecent();
         setText(el.hint, focus === 0 ? 'OK: type an address, then Done on the keyboard' :
                          focus === 1 ? 'OK: play the address above' :
+                         focus === 2 ? 'OK: play the address you last sent from your phone' :
                                        'OK: play \u00a0\u00a0 Red: remove from this list');
     }
 
@@ -99,6 +105,58 @@ var LiteApp = (function () {
         open(url);
     }
 
+    /* ── An address sent from a phone ─────────────────────────────── */
+    function getText(url, done) {
+        var finished = false, timer = null, x = null;
+        function finish(err, text) {
+            if (finished) return;
+            finished = true;
+            if (timer) clearTimeout(timer);
+            done(err, text);
+        }
+        try {
+            x = new XMLHttpRequest();
+            x.open('GET', url, true);
+            x.onreadystatechange = function () {
+                if (x.readyState !== 4) return;
+                if (x.status >= 200 && x.status < 300) finish(null, x.responseText);
+                else finish(x.status ? 'HTTP ' + x.status : 'no connection');
+            };
+            x.send();
+        } catch (e) {
+            return finish(e && (e.name || e.message) || 'error');
+        }
+        // our own clock: xhr.timeout is not on every one of these engines
+        timer = setTimeout(function () {
+            attempt(function () { x.abort(); });
+            finish('no answer');
+        }, DROP_TIMEOUT_MS);
+    }
+
+    function playFromPhone() {
+        if (fetching) return;
+        fetching = true;
+        message('Looking for an address from your phone…');
+        var code = LiteCore.dropCode(localStorage);
+        getText(LiteCore.dropPollUrl(code), function (err, text) {
+            if (!err) return gotDrop(null, text);
+            // https did not work: an old set, or a network that gets in between
+            getText(LiteCore.dropPollUrl(code, true), gotDrop);
+        });
+    }
+
+    function gotDrop(err, text) {
+        fetching = false;
+        if (playing) return;
+        if (err) return message('Could not reach ntfy.sh, which carries the address (' + err + ').');
+        var sent = LiteCore.parseDrop(text);
+        if (!sent) return message('Nothing has been sent yet. Open ' + PHONE_PAGE + ' on your phone.');
+        var url = LiteCore.normalizeUrl(sent);
+        if (!url) return message('What your phone sent is not an address.');
+        el.url.value = url;          // on screen, so it is there to look at if it fails
+        open(url);
+    }
+
     function homeKey(code) {
         if (typing) {
             // Done lands on Play instead of starting the stream: a slip of the
@@ -116,18 +174,25 @@ var LiteApp = (function () {
             if (focus > 0) { focus--; renderFocus(); }
             return true;
         case KEY.DOWN:
-            if (focus < recent.length + 1) { focus++; renderFocus(); }
+            if (focus < recent.length + FIRST_RECENT - 1) { focus++; renderFocus(); }
+            return true;
+        case KEY.LEFT:
+            if (focus === 2) { focus = 1; renderFocus(); }
+            return true;
+        case KEY.RIGHT:
+            if (focus === 1) { focus = 2; renderFocus(); }
             return true;
         case KEY.ENTER:
         case KEY.PLAY:
         case KEY.PLAYPAUSE:
             if (focus === 0 && code === KEY.ENTER) startTyping();
             else if (focus <= 1) playTyped();
-            else open(recent[focus - 2]);
+            else if (focus === 2) playFromPhone();
+            else open(recent[focus - FIRST_RECENT]);
             return true;
         case KEY.RED:
-            if (focus >= 2) {
-                recent = LiteCore.removeRecent(localStorage, recent[focus - 2]);
+            if (focus >= FIRST_RECENT) {
+                recent = LiteCore.removeRecent(localStorage, recent[focus - FIRST_RECENT]);
                 renderFocus();
             }
             return true;
@@ -312,6 +377,8 @@ var LiteApp = (function () {
 
     function init() {
         el.url = $('url'); el.urlRow = $('url-row'); el.playRow = $('play-row');
+        el.phoneRow = $('phone-row');
+        setText($('phone-code'), LiteCore.dropCode(localStorage));
         el.recent = $('recent'); el.recentTitle = $('recent-title');
         el.message = $('message'); el.hint = $('hint');
         el.osdState = $('osd-state'); el.osdTitle = $('osd-title'); el.osdTime = $('osd-time');

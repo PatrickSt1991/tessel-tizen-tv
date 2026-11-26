@@ -52,6 +52,43 @@ var LiteCore = (function () {
         return writeRecent(storage, out);
     }
 
+    /* ── An address sent from a phone ─────────────────────────────────
+     * As in Tessel itself (tizen-app/js/url-drop.js): the phone page posts the
+     * address to a topic on ntfy.sh named after this TV's code, and the TV
+     * reads the topic when asked.  Same page, same topic names. */
+    var DROP_KEY = 'tessel_lite_drop_code';
+    var DROP_CODE_LENGTH = 10;       // base36: too many to guess on a public topic
+
+    function dropCode(storage, random) {
+        var code = null;
+        try { code = storage.getItem(DROP_KEY); } catch (e) {}
+        if (typeof code === 'string' && /^[a-z0-9]{10}$/.test(code)) return code;
+        code = '';
+        while (code.length < DROP_CODE_LENGTH) code += (random || Math.random)().toString(36).slice(2);
+        code = code.slice(0, DROP_CODE_LENGTH);
+        try { storage.setItem(DROP_KEY, code); } catch (e) {}
+        return code;
+    }
+
+    /* ntfy.sh answers on plain http as well.  A set from 2015 may no longer be
+     * able to set up today's https, so `plain` is there to fall back on. */
+    function dropPollUrl(code, plain) {
+        return (plain ? 'http' : 'https') + '://ntfy.sh/' + encodeURIComponent('vlctv-' + code) + '/json?poll=1';
+    }
+
+    /* The poll answers with one JSON object per line; the last message is the
+     * address sent most recently.  '' when nothing is waiting. */
+    function parseDrop(text) {
+        var lines = String(text === null || text === undefined ? '' : text).split('\n');
+        var latest = '';
+        for (var i = 0; i < lines.length; i++) {
+            var obj = null;
+            try { obj = JSON.parse(lines[i]); } catch (e) { continue; }
+            if (obj && obj.event === 'message' && typeof obj.message === 'string') latest = obj.message;
+        }
+        return latest.replace(/^\s+|\s+$/g, '');
+    }
+
     function two(n) { return (n < 10 ? '0' : '') + n; }
 
     /* Milliseconds as 1:02:03 or 2:03. */
@@ -74,6 +111,10 @@ var LiteCore = (function () {
         readRecent: readRecent,
         addRecent: addRecent,
         removeRecent: removeRecent,
+        DROP_KEY: DROP_KEY,
+        dropCode: dropCode,
+        dropPollUrl: dropPollUrl,
+        parseDrop: parseDrop,
         formatTime: formatTime,
         percent: percent
     };
