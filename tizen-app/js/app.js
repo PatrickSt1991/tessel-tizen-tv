@@ -783,9 +783,7 @@
                 if (seen && seen.lastTs) li.dataset.seen = '1';   // enables the ◄ hint
                 if (e.isDir || e.playable) { li.dataset.history = '1'; li.dataset.name = e.name; }   // marks rows ◄ can forget
                 if (e.kind === 'other') li.classList.add('unopenable');
-                var progress = seen && seen.progress !== null
-                    ? '<span class="progress"><i style="width:' + Math.round(seen.progress * 100) + '%"></i></span>'
-                    : '';
+                var progress = progressBar(seen);
                 var subBadge = (e.subtitles && e.subtitles.length)
                     ? '<span class="meta">CC ×' + e.subtitles.length + '</span>'
                     : '';
@@ -1138,14 +1136,17 @@
             var i = playlist.indexOf(entry);
             if (i >= 0) playFromList('recent', playlist, i, null);
         }
+        var hist = WatchHistory.snapshot();
         playlist.forEach(function (entry) {
             var li = document.createElement('li');
             li.dataset.uri = entry.uri;
             li.dataset.dir = '0';
-            var watched = WatchHistory.isWatched(entry.uri);
-            if (watched) li.classList.add('watched-item');
-            li.innerHTML = watchedIcon(watched, 'recent') +
-                           '<span class="name">' + escapeHtml(entry.title) + '</span>' +
+            // The same marks as in a folder: a check when watched, a bar
+            // when there is a position to continue from (issue #196).
+            var seen = hist.state(entry.uri);
+            if (seen.watched) li.classList.add('watched-item');
+            li.innerHTML = watchedIcon(seen.watched, 'recent') +
+                           '<span class="name">' + escapeHtml(entry.title) + progressBar(seen) + '</span>' +
                            '<span class="meta">' + escapeHtml(entry.uri) + '</span>';
             li.addEventListener('click', function () { play(entry); });
             ul.appendChild(li);
@@ -2361,6 +2362,13 @@
 
     /* Return the row's icon: a check if the file is watched, otherwise the
      * icon for kind ('recent' gives the Recently Played star). */
+    /* The bar under the name of a partly watched file; seen is what
+     * WatchHistory.snapshot().state() returned, or null. */
+    function progressBar(seen) {
+        if (!seen || seen.progress === null) return '';
+        return '<span class="progress"><i style="width:' + Math.round(seen.progress * 100) + '%"></i></span>';
+    }
+
     function watchedIcon(watched, kind) {
         if (watched) return '<span class="icon" title="' + escapeHtml(I18n.t('browse.watched')) + '">✓</span>';
         return '<span class="icon">' + (kind === 'recent' ? '★' : FileTypes.icon(kind)) + '</span>';

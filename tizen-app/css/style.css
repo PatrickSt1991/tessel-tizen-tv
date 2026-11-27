@@ -127,11 +127,14 @@ button:focus { outline: none; }
     color: var(--fg);
 }
 
+/* No soft shadow under the tile with the focus (issue #196): a Tizen 6 TV
+ * drew its 32px of blur as bands around the tile.  The border, the ring,
+ * the lighter fill and the size say where the remote is. */
 .tile:focus, .tile.focused {
     border-color: var(--accent);
     background: var(--bg-card-h);
     transform: scale(1.05) translateY(-4px);
-    box-shadow: var(--shadow), 0 0 0 6px var(--accent-soft);
+    box-shadow: 0 0 0 6px var(--accent-soft);
 }
 
 .tile-icon {
