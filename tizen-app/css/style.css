@@ -26,7 +26,6 @@
     --danger:    #ff6b6b;
 
     --border:    rgba(255,255,255,.08);
-    --shadow:    0 8px 32px rgba(0,0,0,.45);
     --r:         16px;
     --r-sm:      10px;
 }
@@ -428,11 +427,15 @@ button:focus { outline: none; }
     position: absolute;
     left: 0; right: 0; top: 0; bottom: 0;
     pointer-events: none;
-    /* Bumped from 50 to 80 — the OSDs have no explicit z-index (auto/0)
-     * but on Tizen Chromium 63 they appear to obscure the overlay anyway.
-     * 80 keeps it below the pickers (200) and toast (1000). */
+    /* Above the video, below the player's own controls (.osd, 85), the
+     * track menu (90), the pickers (200) and the toast (1000). */
     z-index: 80;
 }
+/* While the controls are up the top and bottom bands move clear of them
+ * (issue #196): --osd-top / --osd-bottom are set from the bars' heights
+ * in app.js. */
+#subtitle-overlay.osd-up .sub-band-top    { top: var(--osd-top, 8%); }
+#subtitle-overlay.osd-up .sub-band-bottom { bottom: var(--osd-bottom, 8%); }
 /* One band per vertical zone.  Font, colour and the outline shadow live here
  * (read from the --sub-* custom properties the Settings panel sets) so every
  * .sub-line inherits them.  A column flexbox stacks cues that share a band. */
@@ -490,6 +493,7 @@ button:focus { outline: none; }
 
 .osd {
     position: absolute; left: 0; right: 0;
+    z-index: 85;                /* over the subtitles (80) */
     color: var(--fg);
     pointer-events: auto;
     transition: opacity .25s ease;
@@ -676,9 +680,9 @@ button:focus { outline: none; }
     max-height: calc(100vh - 320px);
     display: flex;
     flex-direction: column;
-    box-shadow: var(--shadow);
     pointer-events: auto;
     text-align: left;
+    z-index: 90;                /* over the subtitles (80) and the OSD (85) */
 }
 .track-menu-body {
     flex: 1 1 auto;
@@ -997,7 +1001,6 @@ button:focus { outline: none; }
     border: 2px solid var(--border);
     border-radius: var(--r);
     padding: 32px;
-    box-shadow: var(--shadow);
     z-index: 200;
     text-align: left;
 }
@@ -1034,7 +1037,6 @@ button:focus { outline: none; }
     padding: 16px 36px;
     border-radius: 999px;
     font-size: 20px;
-    box-shadow: var(--shadow);
     z-index: 1000;
     border: 1px solid var(--border);
 }
@@ -1171,7 +1173,6 @@ button:focus { outline: none; }
     margin: 0 auto 36px;
     object-fit: cover;
     border-radius: var(--r);
-    box-shadow: var(--shadow);
 }
 .audio-sub { margin-top: 12px; font-size: 26px; color: var(--fg-mute); word-break: break-word; }
 
@@ -1188,7 +1189,6 @@ button:focus { outline: none; }
     background: rgba(20, 30, 46, .96);
     border: 2px solid var(--accent);
     border-radius: var(--r);
-    box-shadow: var(--shadow);
     z-index: 90;               /* above the views, below the toast */
     text-align: left;
     animation: mini-drift 600s ease-in-out infinite;

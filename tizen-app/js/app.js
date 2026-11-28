@@ -158,6 +158,7 @@
     /* ── Init ─────────────────────────────────────────────────────── */
     function init() {
         Remote.init();
+        watchOsdForSubtitles();
 
         // Wire button data-action click → dispatch.  Buttons stay
         // keyboard-activatable too because UI.activateFocused() calls click().
@@ -2111,6 +2112,31 @@
     }
 
     /* ── OSD show/hide ────────────────────────────────────────────── */
+    /* Subtitles step clear of the controls while those are up (issue
+     * #196).  The bars are hidden from half a dozen places, so this watches
+     * the bottom bar's class instead of trusting every one of them to say
+     * so.  The top of each bar is a fade to nothing; a line may sit in the
+     * faint end of it. */
+    var OSD_FADE = 70;
+    function syncSubtitleLift() {
+        var ov  = document.getElementById('subtitle-overlay');
+        var top = document.getElementById('osd-top');
+        var bot = document.getElementById('osd-bottom');
+        if (!ov || !top || !bot) return;
+        var up = !bot.classList.contains('hidden') && bot.offsetHeight > 0;
+        if (up) {
+            ov.style.setProperty('--osd-top',    Math.max(0, top.offsetHeight - OSD_FADE) + 'px');
+            ov.style.setProperty('--osd-bottom', Math.max(0, bot.offsetHeight - OSD_FADE) + 'px');
+        }
+        ov.classList.toggle('osd-up', up);
+    }
+    function watchOsdForSubtitles() {
+        var bot = document.getElementById('osd-bottom');
+        if (!bot || typeof MutationObserver === 'undefined') return;
+        new MutationObserver(syncSubtitleLift)
+            .observe(bot, { attributes: true, attributeFilter: ['class'] });
+    }
+
     var osdHideTimer = null;
     function showOSD(visible) {
         // Music in the background: no OSD to show, and focusing its buttons

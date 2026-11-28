@@ -2381,13 +2381,15 @@ var Player = (function () {
              *   2. Even when accepted in PLAYING, the audio decoder keeps
              *      draining whatever it had already buffered with the old
              *      track — so the user hears no change unless we force a
-             *      buffer flush.  A small seek backward (~750 ms) does it.
+             *      buffer flush.  A seek to where playback already is does
+             *      it; this used to go 750 ms back, which with the TV's own
+             *      rounding showed as a jump of a second or two (issue #196).
              *
              * Sequence:
              *   - record saved state + time + current AUDIO index
              *   - if PAUSED, av().play() to leave the invalid-op state
              *   - setSelectTrack('AUDIO', N)
-             *   - seekTo(saved-750) to flush old buffered audio
+             *   - seekTo(current time) to flush old buffered audio
              *   - if originally PAUSED, av().pause() (with a small delay so
              *     the swap can settle before we cycle state again).
              *
@@ -2434,7 +2436,8 @@ var Player = (function () {
 
             // Flush old buffer.  Skip near start-of-file (nothing buffered to flush).
             if (savedMs > 1000) {
-                var flushTo = Math.max(0, savedMs - 750);
+                var flushTo = savedMs;
+                try { flushTo = Math.max(savedMs, av().getCurrentTime() || 0); } catch (e) {}
                 try { av().seekTo(flushTo); } catch (e) {}
                 if (typeof Debug !== 'undefined') Debug.player('  audio-track flush seek → ' + flushTo + 'ms');
             }
