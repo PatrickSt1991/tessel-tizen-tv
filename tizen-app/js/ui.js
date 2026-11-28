@@ -108,6 +108,13 @@ var UI = (function () {
         // issue #174).
         if (el.tagName === 'INPUT' && active !== el) el.readOnly = true;
         el.focus({ preventScroll: false });
+        // A list row can't take DOM focus, so a button the cursor just left
+        // kept it, and its :focus style with it: Close in the CC menu stayed
+        // lit while the cursor was back on a track (issue #196).
+        var still = document.activeElement;
+        if (still && still !== el && still !== document.body && still.blur) {
+            try { still.blur(); } catch (e) {}
+        }
         focusIdx = focusable.indexOf(el);
         if (focusIdx < 0) focusIdx = 0;
 
